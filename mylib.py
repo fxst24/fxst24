@@ -1,5 +1,6 @@
 # coding: utf-8
 
+import matplotlib.pyplot as plt
 import forex_system
 import numpy as np
 import pandas as pd
@@ -8,6 +9,8 @@ import time
 
 from collections import OrderedDict
 from datetime import datetime
+from numba import float64, jit
+from scipy.optimize import curve_fit
 
 def calc_accuracy4win(*args):
     '''勝つための的中率を計算する。
@@ -34,6 +37,45 @@ def calc_accuracy4win(*args):
             prob = (a + b) / 2
 
     print("勝つための的中率 = ", prob)
+
+def calc_bandwalk_std(period, n):
+    '''バンドウォークの標準偏差を計算する。
+        Args:
+            period: 計算期間。
+            n: データ数。
+        Returns:
+              バンドウォークの標準偏差。
+    '''
+
+    temp = np.random.randn(n)
+    close = temp.cumsum()
+    v = np.ones(period) / period
+    mean = np.convolve(close, v, 'valid')
+    close = close[period-1:]  
+ 
+    @jit(float64(float64[:], float64[:]), nopython=True, cache=True)
+    def func(close, mean):
+        bandwalk_mean_std = [0.0, 0.0]
+        bandwalk_mean_std = np.array(bandwalk_mean_std)
+        up = 0
+        down = 0
+        length = len(close)
+        bandwalk = np.zeros(length)
+        for i in range(length):
+            if (close[i] > mean[i]):
+                up = up + 1
+            else:
+                up = 0
+            if (close[i] < mean[i]):
+                down = down + 1
+            else:
+                down = 0
+            bandwalk[i] = up - down
+        return bandwalk.std()
+ 
+    bandwalk_std = func(close, mean)
+
+    return bandwalk_std
 
 def calc_trades4win(*args):
     '''勝つためのトレード数を計算する。
@@ -454,3 +496,49 @@ def make_historical_data():
         data60.to_csv(filename60)
         data240.to_csv(filename240)
         data1440.to_csv(filename1440)
+
+def output_bandwalk_mean_std(*args):
+    '''バンドウォークの標準偏差を出力する。
+      Args:
+          *args: 可変長引数。
+    '''
+    max_period = args[0]
+    n = args[1]
+
+    bandwalk_std = np.empty(max_period)
+ 
+    for i in range(max_period):
+        period = i + 1
+        bandwalk_std[i] = calc_bandwalk_std(period, n)
+
+    # バンドウォークは計算期間が短いと不規則に見えるのでperiod=5から始める。
+    bandwalk_std = bandwalk_std[4:]
+
+    # モデルを作成する。
+    def func(x, a, b):
+        return x ** a + b
+
+    # period=5から始める。
+    x = list(range(5, max_period+1, 1))
+    x = np.array(x)
+    popt, pcov = curve_fit(func, x, bandwalk_std)
+    a = popt[0]
+    b = popt[1]
+    model = x ** a + b
+
+    # DataFrameに変換する。
+    bandwalk_std = pd.Series(bandwalk_std)
+    model = pd.Series(model)
+    # グラフを出力する。
+    result = pd.concat([bandwalk_std, model], axis=1)
+    result.columns  = ['bandwalk_std', 'model']
+    graph = result.plot()
+    graph.set_xlabel('period')
+    graph.set_ylabel('bandwalk')
+    plt.xticks([0, 5, 10, 15, 20, 25, 30, 35, 40, 45],
+               [5, 10, 15, 20, 25, 30, 35, 40, 45, 50])
+    plt.show()
+ 
+    # 傾きと切片を出力する。
+    print('指数 = ', a)
+    print('切片 = ', b)

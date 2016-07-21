@@ -375,9 +375,6 @@ class ForexSystem(object):
             bandwalk = joblib.load(path)
         # さもなければ計算する。
         else:
-            # 黄金数（目安として使用。数学的根拠は「？」）を計算する。
-            phi = (1.0 + np.sqrt(5.0)) / 2.0
-    
             # バンドウォークを計算する関数を定義する。
             @jit(float64[:](float64[:], float64[:], float64[:]),
                 nopython=True, cache=True)
@@ -414,7 +411,9 @@ class ForexSystem(object):
 
             # バンドウォークを計算する。
             bandwalk = calc_bandwalk(high, low, median)
-            bandwalk = bandwalk / float(period) * phi
+            a = 0.903  # 指数（正規化するために経験的に導き出した数値）
+            b = 0.393  # 切片（同上）
+            bandwalk = bandwalk / (float(period) ** a + b)
 
             # Seriesに変換する。
             bandwalk = pd.Series(bandwalk, index=index)
