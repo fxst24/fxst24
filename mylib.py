@@ -77,6 +77,34 @@ def calc_bandwalk_std(period, n):
 
     return bandwalk_std
 
+def calc_sharpe(*args):
+    '''一定の的中率におけるシャープレシオを計算する。
+      Args:
+          *args: 可変長引数。
+    '''
+
+    accuracy = float(args[0])  # 的中率
+
+    # 単純化のため、1日のボラティリティを固定する（0より大きな数値なら何でもよい）。
+    volatility = 1.0
+
+    # 1年当たりの営業日を260日、1日1トレードとしてトレード数を設定する。
+    trades = 260
+
+    # 1年当たりの利益を計算する（コストは考慮しない）。
+    yearly_return = (((volatility * accuracy) - (volatility *
+        (1.0 - accuracy))) * trades)
+
+    # √Tルールに基づき、1年当たりのリスクを計算する。
+    yearly_risk = volatility * np.sqrt(trades)
+
+    # シャープレシオを計算する。
+    sharpe_ratio = yearly_return / yearly_risk
+
+    # 結果を出力する。
+    print('的中率', round(accuracy * 100, 1), '% のシャープレシオ = ',
+          sharpe_ratio)
+
 def calc_trades4win(*args):
     '''勝つためのトレード数を計算する。
       Args:
@@ -305,7 +333,31 @@ def create_time_series_data(*args):
         y[i] = a * y[i - 1] +  e[i]
 
     return y
- 
+
+def escape(*args):
+    '''エスケープ処理を行う。
+      Args:
+          *args: 可変長引数。
+    '''
+
+    # 入力ファイルを読み込む。
+    filename_input = args[0]
+    file_input = open(filename_input)
+    code_input = file_input.read()
+    file_input.close()
+
+    # エスケープ処理を行う。
+    code_output = code_input.replace("&", "&amp;")  # これは最初に持ってくる。
+    code_output = code_output.replace(">", "&gt;")
+    code_output = code_output.replace("<", "&lt;")
+    code_output = code_output.replace("\"", "&quot;")
+
+    # 出力ファイルに書き込む。
+    filename_output = filename_input + ".txt"
+    file_output = open(filename_output, "w")
+    file_output.write(code_output)
+    file_output.close()
+
 def make_historical_data():
     '''ヒストリカルデータを作成する。
     '''
