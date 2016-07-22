@@ -581,6 +581,44 @@ def check_google_report1():
     print('テスト用データを用いた検証結果')
     tf_confusion_metrics(model, actual_classes, sess1, feed_dict)
 
+def check_google_report2():
+    '''Googleのレポートを検証する（②）。
+    '''
+
+    # ヒストリカルデータの開始日と終了日を設定する。
+    start = datetime(2010, 1, 1)
+    end = datetime(2015, 10, 1)
+      
+    # ヒストリカルデータをダウンロードする。
+    snp = web.DataReader('^GSPC', 'yahoo', start, end)
+    ftse = web.DataReader('^FTSE', 'yahoo', start, end)
+      
+    # 終値を格納する。
+    closing_data = pd.DataFrame()
+    closing_data['snp_close'] = snp['Close']
+    closing_data['ftse_close'] = ftse['Close']
+      
+    # 終値の欠損値を補間する。
+    closing_data = closing_data.fillna(method='ffill')
+      
+    # 終値の対数変化率を格納する。
+    log_return_data = pd.DataFrame()
+    log_return_data['snp_log_return'] = (
+    np.log(closing_data['snp_close'] /
+        closing_data['snp_close'].shift()))
+    log_return_data['ftse_log_return'] = (np.log(closing_data['ftse_close'] /
+        closing_data['ftse_close'].shift()))
+    # 最初の行はNaNなので削除する。
+    log_return_data = log_return_data[1:]
+      
+    correct_prediction = (log_return_data['snp_log_return'] *
+        log_return_data['ftse_log_return'])
+    correct_prediction[correct_prediction>=0] = 1
+    correct_prediction[correct_prediction<0] = 0
+    accuracy = correct_prediction.sum() / len(correct_prediction)
+    print('学習なしの超シンプルなモデル')
+    print('Accuracy = ', accuracy)
+
 def convert_hst2csv():
     '''hstファイルをcsvファイルに変換する。
     '''
