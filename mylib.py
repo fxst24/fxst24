@@ -1,9 +1,10 @@
 # coding: utf-8
 
-import matplotlib.pyplot as plt
 import forex_system
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import statsmodels.tsa.stattools as ts
 import struct
 import tensorflow as tf
 import time
@@ -13,6 +14,64 @@ from datetime import datetime
 from numba import float64, jit
 from pandas_datareader import data as web
 from scipy.optimize import curve_fit
+
+def backtest_mean_reversion_strategy(*args):
+    '''平均回帰戦略をバックテストする。
+      Args:
+          *args: 可変長引数。
+    '''
+
+    a = args[0]  # 係数（係数=1で単位根）
+    t = args[1]  # 時期（データ数と考えていい）
+
+    period = 20  # 計算期間
+    entry_threshold = 2.0
+
+    # シグナルを計算する。
+    close = create_time_series_data(a, t)
+    close = pd.Series(close)
+    mean = close.rolling(window=period).mean()
+    std = close.rolling(window=period).std()
+    z_score = (close - mean) / std
+    longs_entry = (z_score <= -entry_threshold) * 1
+    longs_exit = (z_score >= 0.0) * 1
+    shorts_entry = (z_score >= entry_threshold) * 1
+    shorts_exit = (z_score <= 0.0) * 1
+    longs = longs_entry.copy()
+    longs[longs==0] = np.nan
+    longs[longs_exit==1] = 0
+    longs = longs.fillna(method='ffill')
+    shorts = -shorts_entry.copy()
+    shorts[shorts==0] = np.nan
+    shorts[shorts_exit==1] = 0
+    shorts = shorts.fillna(method='ffill')
+    signal = longs + shorts
+    signal = signal.shift()
+    signal = signal.fillna(0)
+    signal = signal.astype(int)
+
+    # リターンを計算する。
+    ret = ((close - close.shift()) * signal)
+    ret = ret.fillna(0.0)
+    ret[(ret==float('inf')) | (ret==float('-inf'))] = 0.0
+
+    # 終値のグラフを出力する。
+    graph = close.plot()
+    graph.set_xlabel('t')
+    graph.set_ylabel('close')
+    plt.show()
+
+    # 資産曲線のグラフを出力する。
+    cumret = ret.cumsum()
+    graph = cumret.plot()
+    graph.set_xlabel('t')
+    graph.set_ylabel('equity_curve')
+    plt.show()
+
+    # 単位根検定のp値を出力する。
+    p_value = ts.adfuller(close)[1]
+    p_value = "{0:%}".format(p_value)
+    print('単位根検定のp値 = ', p_value)
 
 def calc_accuracy4win(*args):
     '''勝つための的中率を計算する。
@@ -57,8 +116,6 @@ def calc_bandwalk_std(period, n):
  
     @jit(float64(float64[:], float64[:]), nopython=True, cache=True)
     def func(close, mean):
-        bandwalk_mean_std = [0.0, 0.0]
-        bandwalk_mean_std = np.array(bandwalk_mean_std)
         up = 0
         down = 0
         length = len(close)
@@ -260,8 +317,8 @@ def check_google_report1():
         closing_data['nyse_close'].shift()))
     log_return_data['djia_log_return'] = (np.log(closing_data['djia_close'] /
         closing_data['djia_close'].shift()))
-    log_return_data['nikkei_log_return'] = (np.log(closing_data['nikkei_close'] /
-        closing_data['nikkei_close'].shift()))
+    log_return_data['nikkei_log_return'] = (np.log(closing_data['nikkei_close']
+        / closing_data['nikkei_close'].shift()))
     log_return_data['hangseng_log_return'] = (
         np.log(closing_data['hangseng_close'] /
         closing_data['hangseng_close'].shift()))
@@ -290,13 +347,16 @@ def check_google_report1():
             'nyse_log_return_1', 'nyse_log_return_2', 'nyse_log_return_3',
             'djia_log_return_1', 'djia_log_return_2', 'djia_log_return_3',
             'nikkei_log_return_1', 'nikkei_log_return_2', 'nikkei_log_return_3',
-            'hangseng_log_return_1', 'hangseng_log_return_2', 'hangseng_log_return_3',
+            'hangseng_log_return_1', 'hangseng_log_return_2',
+                'hangseng_log_return_3',
             'ftse_log_return_1', 'ftse_log_return_2', 'ftse_log_return_3',
             'dax_log_return_1', 'dax_log_return_2', 'dax_log_return_3',
             'aord_log_return_1', 'aord_log_return_2', 'aord_log_return_3'])
     for i in range(7, len(log_return_data)):
-        snp_log_return_positive = log_return_data['snp_log_return_positive'].ix[i]
-        snp_log_return_negative = log_return_data['snp_log_return_negative'].ix[i]
+        snp_log_return_positive = (
+            log_return_data['snp_log_return_positive'].ix[i])
+        snp_log_return_negative = (
+            log_return_data['snp_log_return_negative'].ix[i])
         # 先読みバイアスを排除するため、当日のデータを使わない。
         snp_log_return_1 = log_return_data['snp_log_return'].ix[i-1]
         snp_log_return_2 = log_return_data['snp_log_return'].ix[i-2]
@@ -468,7 +528,8 @@ def check_google_report1():
     sess.run(init)
      
     # 正解した予測を格納する。
-    correct_prediction = tf.equal(tf.argmax(model, 1), tf.argmax(actual_classes, 1))
+    correct_prediction = tf.equal(tf.argmax(model, 1),
+                                  tf.argmax(actual_classes, 1))
      
     # 正解率を格納する。
     accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
@@ -543,7 +604,8 @@ def check_google_report1():
     sess1.run(init)
      
     # 正解した予測を格納する。
-    correct_prediction = tf.equal(tf.argmax(model, 1), tf.argmax(actual_classes, 1))
+    correct_prediction = tf.equal(tf.argmax(model, 1),
+                                  tf.argmax(actual_classes, 1))
      
     # 正解率を格納する。
     accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
@@ -592,7 +654,7 @@ def check_google_report2():
     # ヒストリカルデータをダウンロードする。
     snp = web.DataReader('^GSPC', 'yahoo', start, end)
     ftse = web.DataReader('^FTSE', 'yahoo', start, end)
-      
+
     # 終値を格納する。
     closing_data = pd.DataFrame()
     closing_data['snp_close'] = snp['Close']
@@ -759,6 +821,160 @@ def escape(*args):
     file_output = open(filename_output, "w")
     file_output.write(code_output)
     file_output.close()
+
+def estimate_trades(*args):
+    '''トレード数を推定する。
+      Args:
+          *args: 可変長引数。
+    '''
+
+    mode = int(args[0])  # モード 0:計算期間 1:zスコア
+    n = int(args[1])  # データ数
+
+    # 「zスコア = 0.0」の場合の計算期間とトレード数の関係を見る。
+    if mode == 0:
+        entry_threshold = 0.0
+        trades = np.empty(46)
+        # 実行時間を短縮するため、計算期間は5〜50に限定する。
+        for i in range(46):
+            # シグナルを計算する。
+            period = i + 5
+            close = create_time_series_data(1.0, n)
+            close = pd.Series(close)
+            mean = close.rolling(window=period).mean()
+            std = close.rolling(window=period).std()
+            z_score = (close - mean) / std
+            longs_entry = (z_score <= -entry_threshold) * 1
+            longs_exit = (z_score >= 0.0) * 1
+            shorts_entry = (z_score >= entry_threshold) * 1
+            shorts_exit = (z_score <= 0.0) * 1
+            longs = longs_entry.copy()
+            longs[longs==0] = np.nan
+            longs[longs_exit==1] = 0
+            longs = longs.fillna(method='ffill')
+            shorts = -shorts_entry.copy()
+            shorts[shorts==0] = np.nan
+            shorts[shorts_exit==1] = 0
+            shorts = shorts.fillna(method='ffill')
+            signal = longs + shorts
+            signal = signal.shift()
+            signal = signal.fillna(0)
+            signal = signal.astype(int)
+
+            # トレード数を計算する。
+            temp1 = (((signal > 0) & (signal > signal.shift(1))) *
+                (signal - signal.shift(1)))
+            temp2 = (((signal < 0) & (signal < signal.shift(1))) *
+                (signal.shift(1) - signal))
+            trade = temp1 + temp2
+            trade = trade.fillna(0)
+            trade = trade.astype(int)
+            trades[i] = trade.sum()
+
+        # トレード数を割合に変換する。    
+        trades = np.array(trades) / n
+    
+        # トレード数を予測する。。
+        def func(x, a, b):
+            return a * x ** b
+        x = list(range(5, 51, 1))
+        x = np.array(x)
+        popt, pcov = curve_fit(func, x, trades)
+        a = popt[0]
+        b = popt[1]
+        pred = a * x ** b
+    
+        # DataFrameに変換する。
+        trades = pd.Series(trades)
+        pred = pd.Series(pred)
+
+        # グラフを出力する。
+        result = pd.concat([trades, pred], axis=1)
+        result.columns  = ['trades', 'pred']
+        graph = result.plot()
+        graph.set_xlabel('period')
+        graph.set_ylabel('trades')
+        plt.xticks([0, 5, 10, 15, 20, 25, 30, 35, 40, 45],
+                   [5, 10, 15, 20, 25, 30, 35, 40, 45, 50])
+        plt.show()
+     
+        # 傾きと指数を出力する。
+        print('傾き = ', a)
+        print('指数 = ', b)
+
+    # 「計算期間 = 20」の場合のzスコアとトレード数の関係を見る。
+    else:  # mode == 1
+        period = 20
+        trades = np.empty(46)
+        # 実行時間を短縮するため、zスコアはは0.125〜1.25に限定する。
+        for i in range(46):
+            # シグナルを計算する。
+            entry_threshold = (i + 5) * 0.025
+            close = create_time_series_data(1.0, n)
+            close = pd.Series(close)
+            mean = close.rolling(window=period).mean()
+            std = close.rolling(window=period).std()
+            z_score = (close - mean) / std
+            longs_entry = (z_score <= -entry_threshold) * 1
+            longs_exit = (z_score >= 0.0) * 1
+            shorts_entry = (z_score >= entry_threshold) * 1
+            shorts_exit = (z_score <= 0.0) * 1
+            longs = longs_entry.copy()
+            longs[longs==0] = np.nan
+            longs[longs_exit==1] = 0
+            longs = longs.fillna(method='ffill')
+            shorts = -shorts_entry.copy()
+            shorts[shorts==0] = np.nan
+            shorts[shorts_exit==1] = 0
+            shorts = shorts.fillna(method='ffill')
+            signal = longs + shorts
+            signal = signal.shift()
+            signal = signal.fillna(0)
+            signal = signal.astype(int)
+
+            # トレード数を計算する。
+            temp1 = (((signal > 0) & (signal > signal.shift(1))) *
+                (signal - signal.shift(1)))
+            temp2 = (((signal < 0) & (signal < signal.shift(1))) *
+                (signal.shift(1) - signal))
+            trade = temp1 + temp2
+            trade = trade.fillna(0)
+            trade = trade.astype(int)
+            trades[i] = trade.sum()
+
+        # トレード数を割合に変換する。
+        trades = np.array(trades) / n
+    
+        # トレード数を予測する。
+        def func(x, a, b, c):
+            return a * x ** b + c
+        x = list(range(5, 51, 1))
+        x = np.array(x) / 40.0
+        popt, pcov = curve_fit(func, x, trades)
+        a = popt[0]
+        b = popt[1]
+        c = popt[2]
+        pred = a * x ** b + c
+    
+        # DataFrameに変換する。
+        trades = pd.Series(trades)
+        pred = pd.Series(pred)
+
+        # グラフを出力する。
+        result = pd.concat([trades, pred], axis=1)
+        result.columns  = ['trades', 'pred']
+        graph = result.plot()
+        graph.set_xlabel('z_score')
+        graph.set_ylabel('trades')
+        plt.xticks([0, 5, 10, 15, 20, 25, 30, 35, 40, 45],
+                   [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1, 1.125,
+                    1.25])
+        plt.show()
+     
+        # 傾き、指数、切片を出力する。
+        print('傾き = ', a)
+        print('指数 = ', b)
+        print('切片 = ', c)
 
 def make_historical_data():
     '''ヒストリカルデータを作成する。
@@ -951,7 +1167,7 @@ def make_historical_data():
         data240.to_csv(filename240)
         data1440.to_csv(filename1440)
 
-def output_bandwalk_mean_std(*args):
+def output_bandwalk_std(*args):
     '''バンドウォークの標準偏差を出力する。
       Args:
           *args: 可変長引数。
