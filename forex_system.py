@@ -42,18 +42,16 @@ class ForexSystem(object):
         self.account_id = account_id
         self.access_token = access_token
         self.strategy_name = None
+        self.path = os.path.dirname(__file__)
 
         # バックテストの場合（バックテストの場合は環境が空）、
         if environment is None:
-            # 作業ディレクトリのパスを格納する（このファイルは作業ディレクトリ内にある）。
-            wd_path = os.path.dirname(__file__)
-
             # 一時フォルダが残っていたら削除する。
-            if os.path.exists(wd_path + '/tmp') == True:
-                shutil.rmtree(wd_path + '/tmp')
+            if os.path.exists(self.path + '/tmp') == True:
+                shutil.rmtree(self.path + '/tmp')
     
             # 一時フォルダを作成する。
-            os.mkdir(wd_path + '/tmp')
+            os.mkdir(self.path + '/tmp')
 
         # トレードの場合、APIを格納する（トレードの場合は環境が空ではない）。
         if environment is not None:
@@ -74,7 +72,8 @@ class ForexSystem(object):
         return ask
 
     def backtest(self, strategy, parameter, symbol, timeframe, position,
-                 rranges, spread, optimization, min_trade, start, end, path):
+                 rranges, spread, optimization, min_trade, start, end,
+                 filename):
         '''バックテストを行う。
           Args:
               strategy: 戦略関数。
@@ -88,7 +87,7 @@ class ForexSystem(object):
               min_trade: 最低トレード数。
               start: 開始日。
               end: 終了日。
-              path: 出力先フォルダーのパス
+              filename: 戦略プログラムのファイル名。
         '''
 
         # バックテストを行う。
@@ -109,6 +108,8 @@ class ForexSystem(object):
         # グラフを作成する。
         cum_ret = ret.cumsum()
         graph = cum_ret.plot()
+        graph.set_title(filename + '(' + symbol + str(timeframe) + ')')
+        graph.set_xlabel('date')
         graph.set_ylabel('cumulative return')
 
         # レポートを作成する。
@@ -125,29 +126,16 @@ class ForexSystem(object):
         report['durations'] = durations
         report['parameter'] = str(parameter)
 
-        # 出力先のフォルダーを作成する。
-        file = symbol + str(timeframe)
-        if os.path.exists(path) == False: os.makedirs(path)
-
-        # グラフをコンソールとファイルに出力する。
-        # コンソール出力より先にファイル出力する。
-        plt.savefig(path + '/' + file + '_bt.png')
+        # グラフを出力する。
         plt.show()
         plt.close()
 
-        # レポートをコンソールとファイルに出力する。
+        # レポートを出力する。
         pd.set_option('line_width', 1000)
+        print('strategy = ', filename)
         print('symbol = ', symbol)
         print('timeframe = ', str(timeframe))
         print(report)
-        f = open(path + '/' + file + '_bt.log', 'w')
-        print('symbol = ', symbol, file=f)
-        print('timeframe = ', str(timeframe), file=f)
-        print(report, file=f)
-        f.close()
-
-        # リターンを格納するオブジェクトを保存する。
-        joblib.dump(ret, path + '/' + file + '_bt.pkl')
          
     def bid(self, instrument):
         '''売値を得る。
@@ -662,13 +650,12 @@ class ForexSystem(object):
         '''
  
         # 計算結果の保存先のパスを格納する。
-        wd_path = os.path.dirname(__file__)
-        path = (wd_path + '/tmp/i_bandwalk_' + symbol + str(timeframe) +
+        file_path = (self.path + '/tmp/i_bandwalk_' + symbol + str(timeframe) +
             '_' + str(period) + '_' + str(shift) + '.pkl')
 
         # バックテストのとき、計算結果が保存されていれば復元する。
-        if self.environment is None and os.path.exists(path) == True:
-            bandwalk = joblib.load(path)
+        if self.environment is None and os.path.exists(file_path) == True:
+            bandwalk = joblib.load(file_path)
         # さもなければ計算する。
         else:
             # バンドウォークを計算する関数を定義する。
@@ -717,7 +704,7 @@ class ForexSystem(object):
 
             # バックテストのとき、保存する。
             if self.environment is None:
-                joblib.dump(bandwalk, path)
+                joblib.dump(bandwalk, file_path)
  
         return bandwalk
 
@@ -732,15 +719,14 @@ class ForexSystem(object):
         '''
 
         # 計算結果の保存先のパスを格納する。
-        wd_path = os.path.dirname(__file__)
-        path = (wd_path + '/tmp/i_close_' + symbol + str(timeframe) +
+        file_path = (self.path + '/tmp/i_close_' + symbol + str(timeframe) +
             '_' + str(shift) + '.pkl')
 
         # バックテストのとき、
         if self.environment is None:
             # 計算結果が保存されていれば復元する。
-            if os.path.exists(path) == True:
-                close = joblib.load(path)
+            if os.path.exists(file_path) == True:
+                close = joblib.load(file_path)
 
             # さもなければ計算する。
             else:
@@ -751,7 +737,7 @@ class ForexSystem(object):
                 temp.index = index
                 close = temp.iloc[:, 3]
                 close = close.shift(shift)
-                joblib.dump(close, path)
+                joblib.dump(close, file_path)
 
         # トレードのとき、
         else:  # self.environment is not None
@@ -782,13 +768,12 @@ class ForexSystem(object):
         '''
 
         # 計算結果の保存先のパスを格納する。
-        wd_path = os.path.dirname(__file__)
-        path = (wd_path + '/tmp/i_diff_' + symbol + str(timeframe) + '_' +
-        '.pkl')
+        file_path = (self.path + '/tmp/i_diff_' + symbol + str(timeframe) + 
+            '_' + '.pkl')
 
         # バックテストのとき、計算結果が保存されていれば復元する。
-        if self.environment is None and os.path.exists(path) == True:
-            diff = joblib.load(path)
+        if self.environment is None and os.path.exists(file_path) == True:
+            diff = joblib.load(file_path)
 
         # さもなければ計算する。
         else:
@@ -799,7 +784,7 @@ class ForexSystem(object):
 
             # バックテストのとき、保存する。
             if self.environment is None:
-                joblib.dump(diff, path)
+                joblib.dump(diff, file_path)
 
         return diff
 
@@ -814,15 +799,14 @@ class ForexSystem(object):
         '''
 
         # 計算結果の保存先のパスを格納する。
-        wd_path = os.path.dirname(__file__)
-        path = (wd_path + '/tmp/i_high_' + symbol + str(timeframe) +
+        file_path = (self.path + '/tmp/i_high_' + symbol + str(timeframe) +
             '_' + str(shift) + '.pkl')
 
         # バックテストのとき、
         if self.environment is None:
             # 計算結果が保存されていれば復元する。
-            if os.path.exists(path) == True:
-                high = joblib.load(path)
+            if os.path.exists(file_path) == True:
+                high = joblib.load(file_path)
 
             # さもなければ計算する。
             else:
@@ -833,7 +817,7 @@ class ForexSystem(object):
                 temp.index = index
                 high = temp.iloc[:, 1]
                 high = high.shift(shift)
-                joblib.dump(high, path)
+                joblib.dump(high, file_path)
 
         # トレードのとき、
         else:  # self.environment is not None
@@ -865,13 +849,12 @@ class ForexSystem(object):
         '''
 
         # 計算結果の保存先のパスを格納する。
-        wd_path = os.path.dirname(__file__)
-        path = (wd_path + '/tmp/i_hl_band_' + symbol + str(timeframe) + '_' +
-        '.pkl')
+        file_path = (self.path + '/tmp/i_hl_band_' + symbol + str(timeframe) +
+        '_' + '.pkl')
 
         # バックテストのとき、計算結果が保存されていれば復元する。
-        if self.environment is None and os.path.exists(path) == True:
-            hl_band = joblib.load(path)
+        if self.environment is None and os.path.exists(file_path) == True:
+            hl_band = joblib.load(file_path)
 
         # さもなければ計算する。
         else:
@@ -882,7 +865,7 @@ class ForexSystem(object):
 
             # バックテストのとき、保存する。
             if self.environment is None:
-                joblib.dump(hl_band, path)
+                joblib.dump(hl_band, file_path)
 
         return hl_band
 
@@ -906,15 +889,14 @@ class ForexSystem(object):
         '''
 
         # 計算結果の保存先のパスを格納する。
-        wd_path = os.path.dirname(__file__)
-        path = (wd_path + '/tmp/i_ku_bandwalk_' + symbol + str(timeframe) +
+        file_path = (self.path + '/tmp/i_ku_bandwalk_' + symbol + str(timeframe) +
             '_' + str(period) + '_' + str(shift) + '_' + str(aud) + str(cad) +
             str(chf) + str(eur) + str(gbp) + str(jpy) + str(nzd) + str(usd) +
             '.pkl')
 
         # バックテストのとき、計算結果が保存されていれば復元する。
-        if self.environment is None and os.path.exists(path) == True:
-            ku_bandwalk = joblib.load(path)
+        if self.environment is None and os.path.exists(file_path) == True:
+            ku_bandwalk = joblib.load(file_path)
         # さもなければ計算する。
         else:
             # Ku-Chartによるバンドウォークを計算する関数を定義する。
@@ -957,7 +939,7 @@ class ForexSystem(object):
 
             # バックテストのとき、保存する。
             if self.environment is None:
-                joblib.dump(ku_bandwalk, path)
+                joblib.dump(ku_bandwalk, file_path)
 
         return ku_bandwalk
 
@@ -980,14 +962,13 @@ class ForexSystem(object):
         '''
 
         # 計算結果の保存先のパスを格納する。
-        wd_path = os.path.dirname(__file__)
-        path = (wd_path + '/tmp/i_ku_close_' + str(timeframe) + '_' +
+        file_path = (self.path + '/tmp/i_ku_close_' + str(timeframe) + '_' +
             str(shift) + '_' + str(aud) + str(cad) + str(chf) + str(eur) +
             str(gbp) + str(jpy) + str(nzd) + str(usd) + '.pkl')
 
         # バックテストのとき、計算結果が保存されていれば復元する。
-        if self.environment is None and os.path.exists(path) == True:
-            ku_close = joblib.load(path)
+        if self.environment is None and os.path.exists(file_path) == True:
+            ku_close = joblib.load(file_path)
         # さもなければ計算する。
         else:
             ku_close = pd.DataFrame()
@@ -1143,7 +1124,7 @@ class ForexSystem(object):
 
             # バックテストのとき、保存する。
             if self.environment is None:
-                joblib.dump(ku_close, path)
+                joblib.dump(ku_close, file_path)
 
         return ku_close
 
@@ -1167,15 +1148,14 @@ class ForexSystem(object):
         '''
 
         # 計算結果の保存先のパスを格納する。
-        wd_path = os.path.dirname(__file__)
-        path = (wd_path + '/tmp/i_ku_z_score_' + symbol + str(timeframe) +
-            '_' + str(period) + '_' + str(shift) + '_' + str(aud) + str(cad) +
-            str(chf) + str(eur) + str(gbp) + str(jpy) + str(nzd) + str(usd) +
-            '.pkl')
+        file_path = (self.path + '/tmp/i_ku_z_score_' + symbol +
+            str(timeframe) + '_' + str(period) + '_' + str(shift) + '_' +
+            str(aud) + str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) +
+            str(nzd) + str(usd) + '.pkl')
 
         # バックテストのとき、計算結果が保存されていれば復元する。
-        if self.environment is None and os.path.exists(path) == True:
-            ku_z_score = joblib.load(path)
+        if self.environment is None and os.path.exists(file_path) == True:
+            ku_z_score = joblib.load(file_path)
         # さもなければ計算する。
         else:
             # zスコアを計算する関数を定義する。
@@ -1203,7 +1183,7 @@ class ForexSystem(object):
 
             # バックテストのとき、保存する。
             if self.environment is None:
-                joblib.dump(ku_z_score, path)
+                joblib.dump(ku_z_score, file_path)
 
         return ku_z_score
 
@@ -1218,15 +1198,14 @@ class ForexSystem(object):
         '''
 
         # 計算結果の保存先のパスを格納する。
-        wd_path = os.path.dirname(__file__)
-        path = (wd_path + '/tmp/i_low_' + symbol + str(timeframe) +
+        file_path = (self.path + '/tmp/i_low_' + symbol + str(timeframe) +
             '_' + str(shift) + '.pkl')
 
         # バックテストのとき、
         if self.environment is None:
             # 計算結果が保存されていれば復元する。
-            if os.path.exists(path) == True:
-                low = joblib.load(path)
+            if os.path.exists(file_path) == True:
+                low = joblib.load(file_path)
 
             # さもなければ計算する。
             else:
@@ -1237,7 +1216,7 @@ class ForexSystem(object):
                 temp.index = index
                 low = temp.iloc[:, 2]
                 low = low.shift(shift)
-                joblib.dump(low, path)
+                joblib.dump(low, file_path)
 
         # トレードのとき、
         else:  # self.environment is not None
@@ -1268,15 +1247,14 @@ class ForexSystem(object):
         '''
 
         # 計算結果の保存先のパスを格納する。
-        wd_path = os.path.dirname(__file__)
-        path = (wd_path + '/tmp/i_open_' + symbol + str(timeframe) +
+        file_path = (self.path + '/tmp/i_open_' + symbol + str(timeframe) +
             '_' + str(shift) + '.pkl')
 
         # バックテストのとき、
         if self.environment is None:
             # 計算結果が保存されていれば復元する。
-            if os.path.exists(path) == True:
-                op = joblib.load(path)
+            if os.path.exists(file_path) == True:
+                op = joblib.load(file_path)
 
             # さもなければ計算する。
             else:
@@ -1287,7 +1265,7 @@ class ForexSystem(object):
                 temp.index = index
                 op = temp.iloc[:, 0]
                 op = op.shift(shift)
-                joblib.dump(op, path)
+                joblib.dump(op, file_path)
 
         # トレードのとき、
         else:  # self.environment is not None
@@ -1318,15 +1296,14 @@ class ForexSystem(object):
         '''
 
         # 計算結果の保存先のパスを格納する。
-        wd_path = os.path.dirname(__file__)
-        path = (wd_path + '/tmp/i_volume_' + symbol + str(timeframe) +
+        file_path = (self.path + '/tmp/i_volume_' + symbol + str(timeframe) +
             '_' + shift + '.pkl')
 
         # バックテストのとき、
         if self.environment is None:
             # 計算結果が保存されていれば復元する。
-            if os.path.exists(path) == True:
-                volume = joblib.load(path)
+            if os.path.exists(file_path) == True:
+                volume = joblib.load(file_path)
 
             # さもなければ計算する。
             else:
@@ -1337,7 +1314,7 @@ class ForexSystem(object):
                 temp.index = index
                 volume = temp.iloc[:, 4]
                 volume = volume.shift(shift)
-                joblib.dump(volume, path)
+                joblib.dump(volume, file_path)
 
         # トレードのとき、
         else:  # self.environment is not None
@@ -1369,13 +1346,12 @@ class ForexSystem(object):
         '''
 
         # 計算結果の保存先のパスを格納する。
-        wd_path = os.path.dirname(__file__)
-        path = (wd_path + '/tmp/i_z_score_' + symbol + str(timeframe) +
+        file_path = (self.path + '/tmp/i_z_score_' + symbol + str(timeframe) +
             '_' + str(period) + '_' + str(shift) + '.pkl')
 
         # バックテストのとき、計算結果が保存されていれば復元する。
-        if self.environment is None and os.path.exists(path) == True:
-            z_score = joblib.load(path)
+        if self.environment is None and os.path.exists(file_path) == True:
+            z_score = joblib.load(file_path)
 
         # さもなければ計算する。
         else:
@@ -1405,7 +1381,7 @@ class ForexSystem(object):
 
             # バックテストのとき、計算結果を保存する。
             if self.environment is None:
-                joblib.dump(z_score, path)
+                joblib.dump(z_score, file_path)
 
         return z_score
 
@@ -1753,7 +1729,7 @@ class ForexSystem(object):
     def walk_forward_test(self, strategy, parameter, symbol, timeframe,
                           position, rranges, spread, optimization, min_trade,
                           in_sample_period, out_of_sample_period, fixed_window,
-                          start, end, path):
+                          start, end, filename):
         '''ウォークフォワードテストを行う。
           Args:
               strategy: 戦略関数。
@@ -1770,7 +1746,7 @@ class ForexSystem(object):
               fixed_window: ウィンドウ固定の設定。
               start: 開始日。
               end: 終了日。
-              path: 出力先フォルダーのパス。
+              filename: 戦略プログラムのファイル名。
         '''
 
         end_test = start
@@ -1834,8 +1810,10 @@ class ForexSystem(object):
             i = i + 1
 
         # グラフを作成する。
-        cum_ret = ret_all.cumsum()
+        cum_ret = ret.cumsum()
         graph = cum_ret.plot()
+        graph.set_title(filename + '(' + symbol + str(timeframe) + ')')
+        graph.set_xlabel('date')
         graph.set_ylabel('cumulative return')
 
         # レポートを作成する。
@@ -1857,34 +1835,18 @@ class ForexSystem(object):
         report.iloc[i][9] = int(durations.sum() / i)
         report.iloc[i][10] = ''
 
-        # 出力先のフォルダーを作成する。
-        file = symbol + str(timeframe)
-        if os.path.exists(path) == False: os.makedirs(path)
-
-        # グラフをコンソールとファイルに出力する。
-        # コンソール出力より先にファイル出力する。
-        plt.savefig(path + '/' + file + '_wft.png')
+        # グラフを出力する。
         plt.show()
         plt.close()
 
-        # レポートをコンソールとファイルに出力する。
+        # レポートを出力する。
         pd.set_option('line_width', 1000)
+        print('strategy = ', filename)
         print('symbol = ', symbol)
         print('timeframe = ', str(timeframe))
         print(report.iloc[:i+1, ])
-        f = open(path + '/' + file + '_wft.log', 'w')
-        print('symbol = ', symbol, file=f)
-        print('timeframe = ', str(timeframe), file=f)
-        print(report.iloc[:i+1, ], file=f)
-        f.close()
-
-        # リターンを格納するオブジェクトを保存する。
-        joblib.dump(ret_all, path + '/' + file + '_wft.pkl')
 
 if __name__ == '__main__':
-    # 作業ディレクトリのパスを格納する（このファイルは作業ディレクトリ内にある）。
-    wd_path = os.path.dirname(__file__)
-
     # 設定を読み込む。
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode')
@@ -1957,7 +1919,7 @@ if __name__ == '__main__':
         start = datetime.strptime(args.start, '%Y.%m.%d')
         end = datetime.strptime(args.end, '%Y.%m.%d')
         backtest = args.backtest
-        path = wd_path + '/' + args.strategy
+        filename = args.strategy
         optimization = args.optimization
         min_trade = args.min_trade
         in_sample_period = args.in_sample_period
@@ -1969,19 +1931,19 @@ if __name__ == '__main__':
         if backtest == 0:
             fs.backtest(
                 strategy, parameter, symbol, timeframe, position, rranges,
-                spread, optimization, min_trade, start, end, path)
+                spread, optimization, min_trade, start, end, filename)
         # ウォークフォワードテスト（ウィンドウ固定）の場合
         elif backtest == 1:
             fs.walk_forward_test(
                 strategy, parameter, symbol, timeframe, position, rranges,
                 spread, optimization, min_trade, in_sample_period,
-                out_of_sample_period, 1, start, end, path)
+                out_of_sample_period, 1, start, end, filename)
         # ウォークフォワードテスト（ウィンドウ非固定）の場合
         else:  # backtest == 2
             fs.walk_forward_test(
                 strategy, parameter, symbol, timeframe, position, rranges,
                 spread, optimization, min_trade, in_sample_period,
-                out_of_sample_period, 0, start, end, path)
+                out_of_sample_period, 0, start, end, filename)
         backtest_end = time.time()
         # 結果を出力する。
         if backtest_end - backtest_start < 60.0:
@@ -1995,12 +1957,13 @@ if __name__ == '__main__':
 
     # トレードの場合
     elif args.mode == 'trade':
+        path = os.path.dirname(__file__)
         mail = args.mail
         lots = args.lots
         ea = args.ea
 
         config = configparser.ConfigParser()
-        config.read(wd_path + '/settings.ini')
+        config.read(path + '/settings.ini')
         environment = config['DEFAULT']['environment']
         account_id = int(config['DEFAULT']['account_id'])
         access_token = config['DEFAULT']['access_token']
