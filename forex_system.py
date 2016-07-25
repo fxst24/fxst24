@@ -1,5 +1,6 @@
 # coding: utf-8
 
+import argparse
 import configparser
 import importlib
 import matplotlib.pyplot as plt
@@ -41,6 +42,18 @@ class ForexSystem(object):
         self.account_id = account_id
         self.access_token = access_token
         self.strategy_name = None
+
+        # バックテストの場合（バックテストの場合は環境が空）、
+        if environment is None:
+            # 作業ディレクトリのパスを格納する（このファイルは作業ディレクトリ内にある）。
+            wd_path = os.path.dirname(__file__)
+
+            # 一時フォルダが残っていたら削除する。
+            if os.path.exists(wd_path + '/tmp') == True:
+                shutil.rmtree(wd_path + '/tmp')
+    
+            # 一時フォルダを作成する。
+            os.mkdir(wd_path + '/tmp')
 
         # トレードの場合、APIを格納する（トレードの場合は環境が空ではない）。
         if environment is not None:
@@ -354,6 +367,289 @@ class ForexSystem(object):
 
         return trades
 
+    def convert_symbol2instrument(self, symbol):
+        '''symbolをinstrumentに変換する。
+          Args:
+              symbol: 通貨ペア。
+          Returns:
+              instrument。
+        '''
+
+        if symbol == 'AUDCAD':
+            instrument = 'AUD_CAD'
+        elif symbol == 'AUDCHF':
+            instrument = 'AUD_CHF'
+        elif symbol == 'AUDJPY':
+            instrument = 'AUD_JPY'
+        elif symbol == 'AUDNZD':
+            instrument = 'AUD_NZD'
+        elif symbol == 'AUDUSD':
+            instrument = 'AUD_USD'
+        elif symbol == 'CADCHF':
+            instrument = 'CAD_CHF'
+        elif symbol == 'CADJPY':
+            instrument = 'CAD_JPY'
+        elif symbol == 'CHFJPY':
+            instrument = 'CHF_JPY'
+        elif symbol == 'EURAUD':
+            instrument = 'EUR_AUD'
+        elif symbol == 'EURCAD':
+            instrument = 'EUR_CAD'
+        elif symbol == 'EURCHF':
+            instrument = 'EUR_CHF'
+        elif symbol == 'EURGBP':
+            instrument = 'EUR_GBP'
+        elif symbol == 'EURJPY':
+            instrument = 'EUR_JPY'
+        elif symbol == 'EURNZD':
+            instrument = 'EUR_NZD'
+        elif symbol == 'EURUSD':
+            instrument = 'EUR_USD' 
+        elif symbol == 'GBPAUD':
+            instrument = 'GBP_AUD'
+        elif symbol == 'GBPCAD':
+            instrument = 'GBP_CAD'
+        elif symbol == 'GBPCHF':
+            instrument = 'GBP_CHF'
+        elif symbol == 'GBPJPY':
+            instrument = 'GBP_JPY'
+        elif symbol == 'GBPNZD':
+            instrument = 'GBP_NZD'
+        elif symbol == 'GBPUSD':
+            instrument = 'GBP_USD'
+        elif symbol == 'NZDCAD':
+            instrument = 'NZD_CAD'
+        elif symbol == 'NZDCHF':
+            instrument = 'NZD_CHF'
+        elif symbol == 'NZDJPY':
+            instrument = 'NZD_JPY'
+        elif symbol == 'NZDUSD':
+            instrument = 'NZD_USD'
+        elif symbol == 'USDCAD':
+            instrument = 'USD_CAD'
+        elif symbol == 'USDCHF':
+            instrument = 'USD_CHF'
+        else:  # symbol == 'USDJPY'
+            instrument = 'USD_JPY'
+
+        return instrument
+
+    def convert_timeframe2granularity(self, timeframe):
+        '''timeframeをgranularityに変換する。
+          Args:
+              timeframe: タイムフレーム。
+          Returns:
+              granularity。
+        '''
+
+        if timeframe == 1:
+            granularity = 'M1'
+        elif timeframe == 5:
+            granularity = 'M5'
+        elif timeframe == 15:
+            granularity = 'M15'
+        elif timeframe == 30:
+            granularity = 'M30'
+        elif timeframe == 60:
+            granularity = 'H1'
+        elif timeframe == 240:
+            granularity = 'H4'
+        else:  # timeframe == 1440
+            granularity = 'D'
+
+        return granularity
+
+    def divide_symbol(self, symbol):
+        '''通貨ペアをベース通貨とクウォート通貨に分ける。
+          Args:
+              symbol: 通貨ペア。
+          Returns:
+              ベース通貨、クウォート通貨。
+        '''
+
+        if symbol == 'AUDCAD':
+            base = 'aud'
+            quote = 'cad'
+        elif symbol == 'AUDCHF':
+            base = 'aud'
+            quote = 'chf'
+        elif symbol == 'AUDJPY':
+            base = 'aud'
+            quote = 'jpy'
+        elif symbol == 'AUDNZD':
+            base = 'aud'
+            quote = 'nzd'
+        elif symbol == 'AUDUSD':
+            base = 'aud'
+            quote = 'usd'
+        elif symbol == 'CADCHF':
+            base = 'cad'
+            quote = 'chf'
+        elif symbol == 'CADJPY':
+            base = 'cad'
+            quote = 'jpy'
+        elif symbol == 'CHFJPY':
+            base = 'chf'
+            quote = 'jpy'
+        elif symbol == 'EURAUD':
+            base = 'eur'
+            quote = 'aud'
+        elif symbol == 'EURCAD':
+            base = 'eur'
+            quote = 'cad'
+        elif symbol == 'EURCHF':
+            base = 'eur'
+            quote = 'chf'
+        elif symbol == 'EURGBP':
+            base = 'eur'
+            quote = 'gbp'
+        elif symbol == 'EURJPY':
+            base = 'eur'
+            quote = 'jpy'
+        elif symbol == 'EURNZD':
+            base = 'eur'
+            quote = 'nzd'
+        elif symbol == 'EURUSD':
+            base = 'eur'
+            quote = 'usd'
+        elif symbol == 'GBPAUD':
+            base = 'gbp'
+            quote = 'aud'
+        elif symbol == 'GBPCAD':
+            base = 'gbp'
+            quote = 'cad'
+        elif symbol == 'GBPCHF':
+            base = 'gbp'
+            quote = 'chf'
+        elif symbol == 'GBPJPY':
+            base = 'gbp'
+            quote = 'jpy'
+        elif symbol == 'GBPNZD':
+            base = 'gbp'
+            quote = 'nzd'
+        elif symbol == 'GBPUSD':
+            base = 'gbp'
+            quote = 'usd'
+        elif symbol == 'NZDCAD':
+            base = 'nzd'
+            quote = 'cad'
+        elif symbol == 'NZDCHF':
+            base = 'nzd'
+            quote = 'chf'
+        elif symbol == 'NZDJPY':
+            base = 'nzd'
+            quote = 'jpy'
+        elif symbol == 'NZDUSD':
+            base = 'nzd'
+            quote = 'usd'
+        elif symbol == 'USDCAD':
+            base = 'usd'
+            quote = 'cad'
+        elif symbol == 'USDCHF':
+            base = 'usd'
+            quote = 'chf'
+        else:  # symbol == 'USDJPY'
+            base = 'usd'
+            quote = 'jpy'
+
+        return base, quote
+
+    def divide_symbol_time(self, symbol):
+        '''通貨ペアをベース通貨とクウォート通貨それぞれの時間に分ける。
+          Args:
+              symbol: 通貨ペア。
+          Returns:
+              ベース通貨、クウォート通貨それぞれの時間。
+        '''
+
+        # AUD、JPY、NZDは東京時間、CHF、EUR、GBPはロンドン時間、CAD、USDはNY時間とする。
+        if symbol == 'AUDCAD':
+            base_time = 'tokyo'
+            quote_time = 'ny'
+        elif symbol == 'AUDCHF':
+            base_time = 'tokyo'
+            quote_time = 'ldn'
+        elif symbol == 'AUDJPY':
+            base_time = 'tokyo'
+            quote_time = 'tokyo'
+        elif symbol == 'AUDNZD':
+            base_time = 'tokyo'
+            quote_time = 'tokyo'
+        elif symbol == 'AUDUSD':
+            base_time = 'tokyo'
+            quote_time = 'ny'
+        elif symbol == 'CADCHF':
+            base_time = 'ny'
+            quote_time = 'ldn'
+        elif symbol == 'CADJPY':
+            base_time = 'ny'
+            quote_time = 'tokyo'
+        elif symbol == 'CHFJPY':
+            base_time = 'ldn'
+            quote_time = 'tokyo'
+        elif symbol == 'EURAUD':
+            base_time = 'ldn'
+            quote_time = 'tokyo'
+        elif symbol == 'EURCAD':
+            base_time = 'ldn'
+            quote_time = 'ny'
+        elif symbol == 'EURCHF':
+            base_time = 'ldn'
+            quote_time = 'ldn'
+        elif symbol == 'EURGBP':
+            base_time = 'ldn'
+            quote_time = 'ldn'
+        elif symbol == 'EURJPY':
+            base_time = 'ldn'
+            quote_time = 'tokyo'
+        elif symbol == 'EURNZD':
+            base_time = 'ldn'
+            quote_time = 'tokyo'
+        elif symbol == 'EURUSD':
+            base_time = 'ldn'
+            quote_time = 'ny'
+        elif symbol == 'GBPAUD':
+            base_time = 'ldn'
+            quote_time = 'tokyo'
+        elif symbol == 'GBPCAD':
+            base_time = 'ldn'
+            quote_time = 'ny'
+        elif symbol == 'GBPCHF':
+            base_time = 'ldn'
+            quote_time = 'ldn'
+        elif symbol == 'GBPJPY':
+            base_time = 'ldn'
+            quote_time = 'tokyo'
+        elif symbol == 'GBPNZD':
+            base_time = 'ldn'
+            quote_time = 'tokyo'
+        elif symbol == 'GBPUSD':
+            base_time = 'ldn'
+            quote_time = 'ny'
+        elif symbol == 'NZDCAD':
+            base_time = 'tokyo'
+            quote_time = 'ny'
+        elif symbol == 'NZDCHF':
+            base_time = 'tokyo'
+            quote_time = 'ldn'
+        elif symbol == 'NZDJPY':
+            base_time = 'tokyo'
+            quote_time = 'tokyo'
+        elif symbol == 'NZDUSD':
+            base_time = 'tokyo'
+            quote_time = 'ny'
+        elif symbol == 'USDCAD':
+            base_time = 'ny'
+            quote_time = 'ny'
+        elif symbol == 'USDCHF':
+            base_time = 'ny'
+            quote_time = 'ldn'
+        else:  # symbol == 'USDJPY'
+            base_time = 'ny'
+            quote_time = 'tokyo'
+
+        return base_time, quote_time
+
     def i_bandwalk(self, symbol, timeframe, period, shift):
         '''バンドウォークを返す。
           Args:
@@ -459,76 +755,8 @@ class ForexSystem(object):
 
         # トレードのとき、
         else:  # self.environment is not None
-            if symbol == 'AUDCAD':
-                instrument = 'AUD_CAD'
-            elif symbol == 'AUDCHF':
-                instrument = 'AUD_CHF'
-            elif symbol == 'AUDJPY':
-                instrument = 'AUD_JPY'
-            elif symbol == 'AUDNZD':
-                instrument = 'AUD_NZD'
-            elif symbol == 'AUDUSD':
-                instrument = 'AUD_USD'
-            elif symbol == 'CADCHF':
-                instrument = 'CAD_CHF'
-            elif symbol == 'CADJPY':
-                instrument = 'CAD_JPY'
-            elif symbol == 'CHFJPY':
-                instrument = 'CHF_JPY'
-            elif symbol == 'EURAUD':
-                instrument = 'EUR_AUD'
-            elif symbol == 'EURCAD':
-                instrument = 'EUR_CAD'
-            elif symbol == 'EURCHF':
-                instrument = 'EUR_CHF'
-            elif symbol == 'EURGBP':
-                instrument = 'EUR_GBP'
-            elif symbol == 'EURJPY':
-                instrument = 'EUR_JPY'
-            elif symbol == 'EURNZD':
-                instrument = 'EUR_NZD'
-            elif symbol == 'EURUSD':
-                instrument = 'EUR_USD' 
-            elif symbol == 'GBPAUD':
-                instrument = 'GBP_AUD'
-            elif symbol == 'GBPCAD':
-                instrument = 'GBP_CAD'
-            elif symbol == 'GBPCHF':
-                instrument = 'GBP_CHF'
-            elif symbol == 'GBPJPY':
-                instrument = 'GBP_JPY'
-            elif symbol == 'GBPNZD':
-                instrument = 'GBP_NZD'
-            elif symbol == 'GBPUSD':
-                instrument = 'GBP_USD'
-            elif symbol == 'NZDCAD':
-                instrument = 'NZD_CAD'
-            elif symbol == 'NZDCHF':
-                instrument = 'NZD_CHF'
-            elif symbol == 'NZDJPY':
-                instrument = 'NZD_JPY'
-            elif symbol == 'NZDUSD':
-                instrument = 'NZD_USD'
-            elif symbol == 'USDCAD':
-                instrument = 'USD_CAD'
-            elif symbol == 'USDCHF':
-                instrument = 'USD_CHF'
-            else:  # symbol == 'USDJPY'
-                instrument = 'USD_JPY'
-            if timeframe == 1:
-                granularity = 'M1'
-            elif timeframe == 5:
-                granularity = 'M5'
-            elif timeframe == 15:
-                granularity = 'M15'
-            elif timeframe == 30:
-                granularity = 'M30'
-            elif timeframe == 60:
-                granularity = 'H1'
-            elif timeframe == 240:
-                granularity = 'H4'
-            else:  # timeframe == 1440
-                granularity = 'D'
+            instrument = self.convert_symbol2instrument(symbol)
+            granularity = self.convert_timeframe2granularity(timeframe)
             temp = self.oanda.get_history(
                 instrument=instrument, granularity=granularity, count=COUNT)
             self.time = pd.to_datetime(temp['candles'][COUNT-1]['time'])
@@ -576,122 +804,87 @@ class ForexSystem(object):
         return diff
 
     def i_high(self, symbol, timeframe, shift):
-            '''高値を返す。
-              Args:
-                  symbol: 通貨ペア名。
-                  timeframe: タイムフレーム。
-                  shift: シフト。
-              Returns:
-                  高値。
-            '''
+        '''高値を返す。
+          Args:
+              symbol: 通貨ペア名。
+              timeframe: タイムフレーム。
+              shift: シフト。
+          Returns:
+              高値。
+        '''
 
-            # 計算結果の保存先のパスを格納する。
-            wd_path = os.path.dirname(__file__)
-            path = (wd_path + '/tmp/i_high_' + symbol + str(timeframe) +
-                '_' + str(shift) + '.pkl')
-    
-            # バックテストのとき、
-            if self.environment is None:
-                # 計算結果が保存されていれば復元する。
-                if os.path.exists(path) == True:
-                    high = joblib.load(path)
+        # 計算結果の保存先のパスを格納する。
+        wd_path = os.path.dirname(__file__)
+        path = (wd_path + '/tmp/i_high_' + symbol + str(timeframe) +
+            '_' + str(shift) + '.pkl')
 
-                # さもなければ計算する。
-                else:
-                    filename = ('~/historical_data/' + symbol + str(timeframe) +
-                        '.csv')
-                    temp = pd.read_csv( filename, index_col=0, header=0)
-                    index = pd.to_datetime(temp.index)
-                    temp.index = index
-                    high = temp.iloc[:, 1]
-                    high = high.shift(shift)
-                    joblib.dump(high, path)
+        # バックテストのとき、
+        if self.environment is None:
+            # 計算結果が保存されていれば復元する。
+            if os.path.exists(path) == True:
+                high = joblib.load(path)
 
-            # トレードのとき、
-            else:  # self.environment is not None
-                if symbol == 'AUDCAD':
-                    instrument = 'AUD_CAD'
-                elif symbol == 'AUDCHF':
-                    instrument = 'AUD_CHF'
-                elif symbol == 'AUDJPY':
-                    instrument = 'AUD_JPY'
-                elif symbol == 'AUDNZD':
-                    instrument = 'AUD_NZD'
-                elif symbol == 'AUDUSD':
-                    instrument = 'AUD_USD'
-                elif symbol == 'CADCHF':
-                    instrument = 'CAD_CHF'
-                elif symbol == 'CADJPY':
-                    instrument = 'CAD_JPY'
-                elif symbol == 'CHFJPY':
-                    instrument = 'CHF_JPY'
-                elif symbol == 'EURAUD':
-                    instrument = 'EUR_AUD'
-                elif symbol == 'EURCAD':
-                    instrument = 'EUR_CAD'
-                elif symbol == 'EURCHF':
-                    instrument = 'EUR_CHF'
-                elif symbol == 'EURGBP':
-                    instrument = 'EUR_GBP'
-                elif symbol == 'EURJPY':
-                    instrument = 'EUR_JPY'
-                elif symbol == 'EURNZD':
-                    instrument = 'EUR_NZD'
-                elif symbol == 'EURUSD':
-                    instrument = 'EUR_USD' 
-                elif symbol == 'GBPAUD':
-                    instrument = 'GBP_AUD'
-                elif symbol == 'GBPCAD':
-                    instrument = 'GBP_CAD'
-                elif symbol == 'GBPCHF':
-                    instrument = 'GBP_CHF'
-                elif symbol == 'GBPJPY':
-                    instrument = 'GBP_JPY'
-                elif symbol == 'GBPNZD':
-                    instrument = 'GBP_NZD'
-                elif symbol == 'GBPUSD':
-                    instrument = 'GBP_USD'
-                elif symbol == 'NZDCAD':
-                    instrument = 'NZD_CAD'
-                elif symbol == 'NZDCHF':
-                    instrument = 'NZD_CHF'
-                elif symbol == 'NZDJPY':
-                    instrument = 'NZD_JPY'
-                elif symbol == 'NZDUSD':
-                    instrument = 'NZD_USD'
-                elif symbol == 'USDCAD':
-                    instrument = 'USD_CAD'
-                elif symbol == 'USDCHF':
-                    instrument = 'USD_CHF'
-                else:  # symbol == 'USDJPY'
-                    instrument = 'USD_JPY'
-                if timeframe == 1:
-                    granularity = 'M1'
-                elif timeframe == 5:
-                    granularity = 'M5'
-                elif timeframe == 15:
-                    granularity = 'M15'
-                elif timeframe == 30:
-                    granularity = 'M30'
-                elif timeframe == 60:
-                    granularity = 'H1'
-                elif timeframe == 240:
-                    granularity = 'H4'
-                else:  # timeframe == 1440
-                    granularity = 'D'
-                temp = self.oanda.get_history(
-                    instrument=instrument, granularity=granularity, count=COUNT)
-                self.time = pd.to_datetime(temp['candles'][COUNT-1]['time'])
-                index = pd.Series(np.zeros(COUNT))
-                high = pd.Series(np.zeros(COUNT))
-                for i in range(COUNT):
-                    index[i] = temp['candles'][i]['time']
-                    high[i] = temp['candles'][i]['highBid']
-                    index = pd.to_datetime(index)
-                    high.index = index
+            # さもなければ計算する。
+            else:
+                filename = ('~/historical_data/' + symbol + str(timeframe) +
+                    '.csv')
+                temp = pd.read_csv( filename, index_col=0, header=0)
+                index = pd.to_datetime(temp.index)
+                temp.index = index
+                high = temp.iloc[:, 1]
                 high = high.shift(shift)
+                joblib.dump(high, path)
 
-            return high
+        # トレードのとき、
+        else:  # self.environment is not None
+            instrument = self.convert_symbol2instrument(symbol)
+            granularity = self.convert_timeframe2granularity(timeframe)
+            temp = self.oanda.get_history(
+                instrument=instrument, granularity=granularity, count=COUNT)
+            self.time = pd.to_datetime(temp['candles'][COUNT-1]['time'])
+            index = pd.Series(np.zeros(COUNT))
+            high = pd.Series(np.zeros(COUNT))
+            for i in range(COUNT):
+                index[i] = temp['candles'][i]['time']
+                high[i] = temp['candles'][i]['highBid']
+                index = pd.to_datetime(index)
+                high.index = index
+            high = high.shift(shift)
+
+        return high
+
+    def i_hl_band(self, symbol, timeframe, period, shift):
+        '''直近の高値、安値を返す。
+          Args:
+              symbol: 通貨ペア名。
+              timeframe: タイムフレーム。
+              period: 計算期間。
+              shift: シフト。
+          Returns:
+              直近の高値、安値。
+        '''
+
+        # 計算結果の保存先のパスを格納する。
+        wd_path = os.path.dirname(__file__)
+        path = (wd_path + '/tmp/i_hl_band_' + symbol + str(timeframe) + '_' +
+        '.pkl')
+
+        # バックテストのとき、計算結果が保存されていれば復元する。
+        if self.environment is None and os.path.exists(path) == True:
+            hl_band = joblib.load(path)
+
+        # さもなければ計算する。
+        else:
+            close = self.i_close(symbol, timeframe, shift)
+            hl_band = pd.DataFrame()
+            hl_band['high'] = close.rolling(window=period).max()
+            hl_band['low'] = close.rolling(window=period).min()
+
+            # バックテストのとき、保存する。
+            if self.environment is None:
+                joblib.dump(hl_band, path)
+
+        return hl_band
 
     def i_ku_bandwalk(self, timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0,
                       eur=1.0, gbp=0.0, jpy=1.0, nzd=0.0, usd=1.0):
@@ -724,9 +917,6 @@ class ForexSystem(object):
             ku_bandwalk = joblib.load(path)
         # さもなければ計算する。
         else:
-            # 黄金数（目安として使用。数学的根拠は「？」）を計算する。
-            phi = (1.0 + np.sqrt(5.0)) / 2.0
-
             # Ku-Chartによるバンドウォークを計算する関数を定義する。
             @jit(float64[:, :](float64[:, :], float64[:, :], int64),
                  nopython=True, cache=True)   
@@ -761,7 +951,9 @@ class ForexSystem(object):
             ku_bandwalk = pd.DataFrame(
                 ku_bandwalk, index=index, columns=columns)
             ku_bandwalk = ku_bandwalk.fillna(0)
-            ku_bandwalk = ku_bandwalk / float(period) * phi
+            a = 0.903  # 指数（正規化するために経験的に導き出した数値）
+            b = 0.393  # 切片（同上）
+            ku_bandwalk = ku_bandwalk / (float(period) ** a + b)
 
             # バックテストのとき、保存する。
             if self.environment is None:
@@ -789,8 +981,8 @@ class ForexSystem(object):
 
         # 計算結果の保存先のパスを格納する。
         wd_path = os.path.dirname(__file__)
-        path = (wd_path + '/tmp/i_ku_close_' + symbol + str(timeframe) +
-            '_' + str(shift) + '_' + str(aud) + str(cad) + str(chf) + str(eur) +
+        path = (wd_path + '/tmp/i_ku_close_' + str(timeframe) + '_' +
+            str(shift) + '_' + str(aud) + str(cad) + str(chf) + str(eur) +
             str(gbp) + str(jpy) + str(nzd) + str(usd) + '.pkl')
 
         # バックテストのとき、計算結果が保存されていれば復元する。
@@ -1016,358 +1208,154 @@ class ForexSystem(object):
         return ku_z_score
 
     def i_low(self, symbol, timeframe, shift):
-            '''安値を返す。
-              Args:
-                  symbol: 通貨ペア名。
-                  timeframe: タイムフレーム。
-                  shift: シフト。
-              Returns:
-                  安値。
-            '''
+        '''安値を返す。
+          Args:
+              symbol: 通貨ペア名。
+              timeframe: タイムフレーム。
+              shift: シフト。
+          Returns:
+              安値。
+        '''
 
-            # 計算結果の保存先のパスを格納する。
-            wd_path = os.path.dirname(__file__)
-            path = (wd_path + '/tmp/i_low_' + symbol + str(timeframe) +
-                '_' + str(shift) + '.pkl')
-    
-            # バックテストのとき、
-            if self.environment is None:
-                # 計算結果が保存されていれば復元する。
-                if os.path.exists(path) == True:
-                    low = joblib.load(path)
+        # 計算結果の保存先のパスを格納する。
+        wd_path = os.path.dirname(__file__)
+        path = (wd_path + '/tmp/i_low_' + symbol + str(timeframe) +
+            '_' + str(shift) + '.pkl')
 
-                # さもなければ計算する。
-                else:
-                    filename = ('~/historical_data/' + symbol + str(timeframe) +
-                        '.csv')
-                    temp = pd.read_csv( filename, index_col=0, header=0)
-                    index = pd.to_datetime(temp.index)
-                    temp.index = index
-                    low = temp.iloc[:, 2]
-                    low = low.shift(shift)
-                    joblib.dump(low, path)
+        # バックテストのとき、
+        if self.environment is None:
+            # 計算結果が保存されていれば復元する。
+            if os.path.exists(path) == True:
+                low = joblib.load(path)
 
-            # トレードのとき、
-            else:  # self.environment is not None
-                if symbol == 'AUDCAD':
-                    instrument = 'AUD_CAD'
-                elif symbol == 'AUDCHF':
-                    instrument = 'AUD_CHF'
-                elif symbol == 'AUDJPY':
-                    instrument = 'AUD_JPY'
-                elif symbol == 'AUDNZD':
-                    instrument = 'AUD_NZD'
-                elif symbol == 'AUDUSD':
-                    instrument = 'AUD_USD'
-                elif symbol == 'CADCHF':
-                    instrument = 'CAD_CHF'
-                elif symbol == 'CADJPY':
-                    instrument = 'CAD_JPY'
-                elif symbol == 'CHFJPY':
-                    instrument = 'CHF_JPY'
-                elif symbol == 'EURAUD':
-                    instrument = 'EUR_AUD'
-                elif symbol == 'EURCAD':
-                    instrument = 'EUR_CAD'
-                elif symbol == 'EURCHF':
-                    instrument = 'EUR_CHF'
-                elif symbol == 'EURGBP':
-                    instrument = 'EUR_GBP'
-                elif symbol == 'EURJPY':
-                    instrument = 'EUR_JPY'
-                elif symbol == 'EURNZD':
-                    instrument = 'EUR_NZD'
-                elif symbol == 'EURUSD':
-                    instrument = 'EUR_USD' 
-                elif symbol == 'GBPAUD':
-                    instrument = 'GBP_AUD'
-                elif symbol == 'GBPCAD':
-                    instrument = 'GBP_CAD'
-                elif symbol == 'GBPCHF':
-                    instrument = 'GBP_CHF'
-                elif symbol == 'GBPJPY':
-                    instrument = 'GBP_JPY'
-                elif symbol == 'GBPNZD':
-                    instrument = 'GBP_NZD'
-                elif symbol == 'GBPUSD':
-                    instrument = 'GBP_USD'
-                elif symbol == 'NZDCAD':
-                    instrument = 'NZD_CAD'
-                elif symbol == 'NZDCHF':
-                    instrument = 'NZD_CHF'
-                elif symbol == 'NZDJPY':
-                    instrument = 'NZD_JPY'
-                elif symbol == 'NZDUSD':
-                    instrument = 'NZD_USD'
-                elif symbol == 'USDCAD':
-                    instrument = 'USD_CAD'
-                elif symbol == 'USDCHF':
-                    instrument = 'USD_CHF'
-                else:  # symbol == 'USDJPY'
-                    instrument = 'USD_JPY'
-                if timeframe == 1:
-                    granularity = 'M1'
-                elif timeframe == 5:
-                    granularity = 'M5'
-                elif timeframe == 15:
-                    granularity = 'M15'
-                elif timeframe == 30:
-                    granularity = 'M30'
-                elif timeframe == 60:
-                    granularity = 'H1'
-                elif timeframe == 240:
-                    granularity = 'H4'
-                else:  # timeframe == 1440
-                    granularity = 'D'
-                temp = self.oanda.get_history(
-                    instrument=instrument, granularity=granularity, count=COUNT)
-                self.time = pd.to_datetime(temp['candles'][COUNT-1]['time'])
-                index = pd.Series(np.zeros(COUNT))
-                low = pd.Series(np.zeros(COUNT))
-                for i in range(COUNT):
-                    index[i] = temp['candles'][i]['time']
-                    low[i] = temp['candles'][i]['lowBid']
-                    index = pd.to_datetime(index)
-                    low.index = index
+            # さもなければ計算する。
+            else:
+                filename = ('~/historical_data/' + symbol + str(timeframe) +
+                    '.csv')
+                temp = pd.read_csv( filename, index_col=0, header=0)
+                index = pd.to_datetime(temp.index)
+                temp.index = index
+                low = temp.iloc[:, 2]
                 low = low.shift(shift)
+                joblib.dump(low, path)
 
-            return low
+        # トレードのとき、
+        else:  # self.environment is not None
+            instrument = self.convert_symbol2instrument(symbol)
+            granularity = self.convert_timeframe2granularity(timeframe)
+            temp = self.oanda.get_history(
+                instrument=instrument, granularity=granularity, count=COUNT)
+            self.time = pd.to_datetime(temp['candles'][COUNT-1]['time'])
+            index = pd.Series(np.zeros(COUNT))
+            low = pd.Series(np.zeros(COUNT))
+            for i in range(COUNT):
+                index[i] = temp['candles'][i]['time']
+                low[i] = temp['candles'][i]['lowBid']
+                index = pd.to_datetime(index)
+                low.index = index
+            low = low.shift(shift)
+
+        return low
 
     def i_open(self, symbol, timeframe, shift):
-            '''始値を返す。
-              Args:
-                  symbol: 通貨ペア名。
-                  timeframe: タイムフレーム。
-                  shift: シフト。
-              Returns:
-                  始値。
-            '''
+        '''始値を返す。
+          Args:
+              symbol: 通貨ペア名。
+              timeframe: タイムフレーム。
+              shift: シフト。
+          Returns:
+              始値。
+        '''
 
-            # 計算結果の保存先のパスを格納する。
-            wd_path = os.path.dirname(__file__)
-            path = (wd_path + '/tmp/i_open_' + symbol + str(timeframe) +
-                '_' + str(shift) + '.pkl')
-    
-            # バックテストのとき、
-            if self.environment is None:
-                # 計算結果が保存されていれば復元する。
-                if os.path.exists(path) == True:
-                    open = joblib.load(path)
+        # 計算結果の保存先のパスを格納する。
+        wd_path = os.path.dirname(__file__)
+        path = (wd_path + '/tmp/i_open_' + symbol + str(timeframe) +
+            '_' + str(shift) + '.pkl')
 
-                # さもなければ計算する。
-                else:
-                    filename = ('~/historical_data/' + symbol + str(timeframe) +
-                        '.csv')
-                    temp = pd.read_csv( filename, index_col=0, header=0)
-                    index = pd.to_datetime(temp.index)
-                    temp.index = index
-                    open = temp.iloc[:, 0]
-                    open = open.shift(shift)
-                    joblib.dump(open, path)
+        # バックテストのとき、
+        if self.environment is None:
+            # 計算結果が保存されていれば復元する。
+            if os.path.exists(path) == True:
+                op = joblib.load(path)
 
-            # トレードのとき、
-            else:  # self.environment is not None
-                if symbol == 'AUDCAD':
-                    instrument = 'AUD_CAD'
-                elif symbol == 'AUDCHF':
-                    instrument = 'AUD_CHF'
-                elif symbol == 'AUDJPY':
-                    instrument = 'AUD_JPY'
-                elif symbol == 'AUDNZD':
-                    instrument = 'AUD_NZD'
-                elif symbol == 'AUDUSD':
-                    instrument = 'AUD_USD'
-                elif symbol == 'CADCHF':
-                    instrument = 'CAD_CHF'
-                elif symbol == 'CADJPY':
-                    instrument = 'CAD_JPY'
-                elif symbol == 'CHFJPY':
-                    instrument = 'CHF_JPY'
-                elif symbol == 'EURAUD':
-                    instrument = 'EUR_AUD'
-                elif symbol == 'EURCAD':
-                    instrument = 'EUR_CAD'
-                elif symbol == 'EURCHF':
-                    instrument = 'EUR_CHF'
-                elif symbol == 'EURGBP':
-                    instrument = 'EUR_GBP'
-                elif symbol == 'EURJPY':
-                    instrument = 'EUR_JPY'
-                elif symbol == 'EURNZD':
-                    instrument = 'EUR_NZD'
-                elif symbol == 'EURUSD':
-                    instrument = 'EUR_USD' 
-                elif symbol == 'GBPAUD':
-                    instrument = 'GBP_AUD'
-                elif symbol == 'GBPCAD':
-                    instrument = 'GBP_CAD'
-                elif symbol == 'GBPCHF':
-                    instrument = 'GBP_CHF'
-                elif symbol == 'GBPJPY':
-                    instrument = 'GBP_JPY'
-                elif symbol == 'GBPNZD':
-                    instrument = 'GBP_NZD'
-                elif symbol == 'GBPUSD':
-                    instrument = 'GBP_USD'
-                elif symbol == 'NZDCAD':
-                    instrument = 'NZD_CAD'
-                elif symbol == 'NZDCHF':
-                    instrument = 'NZD_CHF'
-                elif symbol == 'NZDJPY':
-                    instrument = 'NZD_JPY'
-                elif symbol == 'NZDUSD':
-                    instrument = 'NZD_USD'
-                elif symbol == 'USDCAD':
-                    instrument = 'USD_CAD'
-                elif symbol == 'USDCHF':
-                    instrument = 'USD_CHF'
-                else:  # symbol == 'USDJPY'
-                    instrument = 'USD_JPY'
-                if timeframe == 1:
-                    granularity = 'M1'
-                elif timeframe == 5:
-                    granularity = 'M5'
-                elif timeframe == 15:
-                    granularity = 'M15'
-                elif timeframe == 30:
-                    granularity = 'M30'
-                elif timeframe == 60:
-                    granularity = 'H1'
-                elif timeframe == 240:
-                    granularity = 'H4'
-                else:  # timeframe == 1440
-                    granularity = 'D'
-                temp = self.oanda.get_history(
-                    instrument=instrument, granularity=granularity, count=COUNT)
-                self.time = pd.to_datetime(temp['candles'][COUNT-1]['time'])
-                index = pd.Series(np.zeros(COUNT))
-                open = pd.Series(np.zeros(COUNT))
-                for i in range(COUNT):
-                    index[i] = temp['candles'][i]['time']
-                    open[i] = temp['candles'][i]['openBid']
-                    index = pd.to_datetime(index)
-                    open.index = index
-                open = open.shift(shift)
+            # さもなければ計算する。
+            else:
+                filename = ('~/historical_data/' + symbol + str(timeframe) +
+                    '.csv')
+                temp = pd.read_csv( filename, index_col=0, header=0)
+                index = pd.to_datetime(temp.index)
+                temp.index = index
+                op = temp.iloc[:, 0]
+                op = op.shift(shift)
+                joblib.dump(op, path)
 
-            return open
+        # トレードのとき、
+        else:  # self.environment is not None
+            instrument = self.convert_symbol2instrument(symbol)
+            granularity = self.convert_timeframe2granularity(timeframe)
+            temp = self.oanda.get_history(
+                instrument=instrument, granularity=granularity, count=COUNT)
+            self.time = pd.to_datetime(temp['candles'][COUNT-1]['time'])
+            index = pd.Series(np.zeros(COUNT))
+            op = pd.Series(np.zeros(COUNT))
+            for i in range(COUNT):
+                index[i] = temp['candles'][i]['time']
+                op[i] = temp['candles'][i]['openBid']
+                index = pd.to_datetime(index)
+                op.index = index
+            op = op.shift(shift)
+
+        return op
 
     def i_volume(self, symbol, timeframe, shift):
-            '''出来高を返す。
-              Args:
-                  symbol: 通貨ペア名。
-                  timeframe: タイムフレーム。
-                  shift: シフト。
-              Returns:
-                  出来高。
-            '''
+        '''出来高を返す。
+          Args:
+              symbol: 通貨ペア名。
+              timeframe: タイムフレーム。
+              shift: シフト。
+          Returns:
+              出来高。
+        '''
 
-            # 計算結果の保存先のパスを格納する。
-            wd_path = os.path.dirname(__file__)
-            path = (wd_path + '/tmp/i_volume_' + symbol + str(timeframe) +
-                '_' + shift + '.pkl')
-    
-            # バックテストのとき、
-            if self.environment is None:
-                # 計算結果が保存されていれば復元する。
-                if os.path.exists(path) == True:
-                    volume = joblib.load(path)
+        # 計算結果の保存先のパスを格納する。
+        wd_path = os.path.dirname(__file__)
+        path = (wd_path + '/tmp/i_volume_' + symbol + str(timeframe) +
+            '_' + shift + '.pkl')
 
-                # さもなければ計算する。
-                else:
-                    filename = ('~/historical_data/' + symbol + str(timeframe) +
-                        '.csv')
-                    temp = pd.read_csv( filename, index_col=0, header=0)
-                    index = pd.to_datetime(temp.index)
-                    temp.index = index
-                    volume = temp.iloc[:, 4]
-                    volume = volume.shift(shift)
-                    joblib.dump(volume, path)
+        # バックテストのとき、
+        if self.environment is None:
+            # 計算結果が保存されていれば復元する。
+            if os.path.exists(path) == True:
+                volume = joblib.load(path)
 
-            # トレードのとき、
-            else:  # self.environment is not None
-                if symbol == 'AUDCAD':
-                    instrument = 'AUD_CAD'
-                elif symbol == 'AUDCHF':
-                    instrument = 'AUD_CHF'
-                elif symbol == 'AUDJPY':
-                    instrument = 'AUD_JPY'
-                elif symbol == 'AUDNZD':
-                    instrument = 'AUD_NZD'
-                elif symbol == 'AUDUSD':
-                    instrument = 'AUD_USD'
-                elif symbol == 'CADCHF':
-                    instrument = 'CAD_CHF'
-                elif symbol == 'CADJPY':
-                    instrument = 'CAD_JPY'
-                elif symbol == 'CHFJPY':
-                    instrument = 'CHF_JPY'
-                elif symbol == 'EURAUD':
-                    instrument = 'EUR_AUD'
-                elif symbol == 'EURCAD':
-                    instrument = 'EUR_CAD'
-                elif symbol == 'EURCHF':
-                    instrument = 'EUR_CHF'
-                elif symbol == 'EURGBP':
-                    instrument = 'EUR_GBP'
-                elif symbol == 'EURJPY':
-                    instrument = 'EUR_JPY'
-                elif symbol == 'EURNZD':
-                    instrument = 'EUR_NZD'
-                elif symbol == 'EURUSD':
-                    instrument = 'EUR_USD' 
-                elif symbol == 'GBPAUD':
-                    instrument = 'GBP_AUD'
-                elif symbol == 'GBPCAD':
-                    instrument = 'GBP_CAD'
-                elif symbol == 'GBPCHF':
-                    instrument = 'GBP_CHF'
-                elif symbol == 'GBPJPY':
-                    instrument = 'GBP_JPY'
-                elif symbol == 'GBPNZD':
-                    instrument = 'GBP_NZD'
-                elif symbol == 'GBPUSD':
-                    instrument = 'GBP_USD'
-                elif symbol == 'NZDCAD':
-                    instrument = 'NZD_CAD'
-                elif symbol == 'NZDCHF':
-                    instrument = 'NZD_CHF'
-                elif symbol == 'NZDJPY':
-                    instrument = 'NZD_JPY'
-                elif symbol == 'NZDUSD':
-                    instrument = 'NZD_USD'
-                elif symbol == 'USDCAD':
-                    instrument = 'USD_CAD'
-                elif symbol == 'USDCHF':
-                    instrument = 'USD_CHF'
-                else:  # symbol == 'USDJPY'
-                    instrument = 'USD_JPY'
-                if timeframe == 1:
-                    granularity = 'M1'
-                elif timeframe == 5:
-                    granularity = 'M5'
-                elif timeframe == 15:
-                    granularity = 'M15'
-                elif timeframe == 30:
-                    granularity = 'M30'
-                elif timeframe == 60:
-                    granularity = 'H1'
-                elif timeframe == 240:
-                    granularity = 'H4'
-                else:  # timeframe == 1440
-                    granularity = 'D'
-                temp = self.oanda.get_history(
-                    instrument=instrument, granularity=granularity, count=COUNT)
-                self.time = pd.to_datetime(temp['candles'][COUNT-1]['time'])
-                index = pd.Series(np.zeros(COUNT))
-                volume = pd.Series(np.zeros(COUNT))
-                for i in range(COUNT):
-                    index[i] = temp['candles'][i]['time']
-                    volume[i] = temp['candles'][i]['volumeBid']
-                    index = pd.to_datetime(index)
-                    volume.index = index
+            # さもなければ計算する。
+            else:
+                filename = ('~/historical_data/' + symbol + str(timeframe) +
+                    '.csv')
+                temp = pd.read_csv( filename, index_col=0, header=0)
+                index = pd.to_datetime(temp.index)
+                temp.index = index
+                volume = temp.iloc[:, 4]
                 volume = volume.shift(shift)
+                joblib.dump(volume, path)
 
-            return volume
+        # トレードのとき、
+        else:  # self.environment is not None
+            instrument = self.convert_symbol2instrument(symbol)
+            granularity = self.convert_timeframe2granularity(timeframe)
+            temp = self.oanda.get_history(
+                instrument=instrument, granularity=granularity, count=COUNT)
+            self.time = pd.to_datetime(temp['candles'][COUNT-1]['time'])
+            index = pd.Series(np.zeros(COUNT))
+            volume = pd.Series(np.zeros(COUNT))
+            for i in range(COUNT):
+                index[i] = temp['candles'][i]['time']
+                volume[i] = temp['candles'][i]['volumeBid']
+                index = pd.to_datetime(index)
+                volume.index = index
+            volume = volume.shift(shift)
+
+        return volume
 
     def i_z_score(self, symbol, timeframe, period, shift):
         '''実測値とその予測値との誤差のzスコアを返す。
@@ -1494,62 +1482,7 @@ class ForexSystem(object):
         '''
 
         # 通貨ペアの名称を変換する。
-        if symbol == 'AUDCAD':
-            instrument = 'AUD_CAD'
-        elif symbol == 'AUDCHF':
-            instrument = 'AUD_CHF'
-        elif symbol == 'AUDJPY':
-            instrument = 'AUD_JPY'
-        elif symbol == 'AUDNZD':
-            instrument = 'AUD_NZD'
-        elif symbol == 'AUDUSD':
-            instrument = 'AUD_USD'
-        elif symbol == 'CADCHF':
-            instrument = 'CAD_CHF'
-        elif symbol == 'CADJPY':
-            instrument = 'CAD_JPY'
-        elif symbol == 'CHFJPY':
-            instrument = 'CHF_JPY'
-        elif symbol == 'EURAUD':
-            instrument = 'EUR_AUD'
-        elif symbol == 'EURCAD':
-            instrument = 'EUR_CAD'
-        elif symbol == 'EURCHF':
-            instrument = 'EUR_CHF'
-        elif symbol == 'EURGBP':
-            instrument = 'EUR_GBP'
-        elif symbol == 'EURJPY':
-            instrument = 'EUR_JPY'
-        elif symbol == 'EURNZD':
-            instrument = 'EUR_NZD'
-        elif symbol == 'EURUSD':
-            instrument = 'EUR_USD' 
-        elif symbol == 'GBPAUD':
-            instrument = 'GBP_AUD'
-        elif symbol == 'GBPCAD':
-            instrument = 'GBP_CAD'
-        elif symbol == 'GBPCHF':
-            instrument = 'GBP_CHF'
-        elif symbol == 'GBPJPY':
-            instrument = 'GBP_JPY'
-        elif symbol == 'GBPNZD':
-            instrument = 'GBP_NZD'
-        elif symbol == 'GBPUSD':
-            instrument = 'GBP_USD'
-        elif symbol == 'NZDCAD':
-            instrument = 'NZD_CAD'
-        elif symbol == 'NZDCHF':
-            instrument = 'NZD_CHF'
-        elif symbol == 'NZDJPY':
-            instrument = 'NZD_JPY'
-        elif symbol == 'NZDUSD':
-            instrument = 'NZD_USD'
-        elif symbol == 'USDCAD':
-            instrument = 'USD_CAD'
-        elif symbol == 'USDCHF':
-            instrument = 'USD_CHF'
-        else:  # symbol == 'USDJPY'
-            instrument = 'USD_JPY'
+        instrument = self.convert_symbol2instrument(symbol)
         response = self.oanda.create_order(account_id=self.account_id,
             instrument=instrument, units=int(lots*10000), side=side,
             type='market')
@@ -1625,78 +1558,10 @@ class ForexSystem(object):
         '''
 
         # 通貨ペアの名称を変換する。
-        if symbol == 'AUDCAD':
-            instrument = 'AUD_CAD'
-        elif symbol == 'AUDCHF':
-            instrument = 'AUD_CHF'
-        elif symbol == 'AUDJPY':
-            instrument = 'AUD_JPY'
-        elif symbol == 'AUDNZD':
-            instrument = 'AUD_NZD'
-        elif symbol == 'AUDUSD':
-            instrument = 'AUD_USD'
-        elif symbol == 'CADCHF':
-            instrument = 'CAD_CHF'
-        elif symbol == 'CADJPY':
-            instrument = 'CAD_JPY'
-        elif symbol == 'CHFJPY':
-            instrument = 'CHF_JPY'
-        elif symbol == 'EURAUD':
-            instrument = 'EUR_AUD'
-        elif symbol == 'EURCAD':
-            instrument = 'EUR_CAD'
-        elif symbol == 'EURCHF':
-            instrument = 'EUR_CHF'
-        elif symbol == 'EURGBP':
-            instrument = 'EUR_GBP'
-        elif symbol == 'EURJPY':
-            instrument = 'EUR_JPY'
-        elif symbol == 'EURNZD':
-            instrument = 'EUR_NZD'
-        elif symbol == 'EURUSD':
-            instrument = 'EUR_USD' 
-        elif symbol == 'GBPAUD':
-            instrument = 'GBP_AUD'
-        elif symbol == 'GBPCAD':
-            instrument = 'GBP_CAD'
-        elif symbol == 'GBPCHF':
-            instrument = 'GBP_CHF'
-        elif symbol == 'GBPJPY':
-            instrument = 'GBP_JPY'
-        elif symbol == 'GBPNZD':
-            instrument = 'GBP_NZD'
-        elif symbol == 'GBPUSD':
-            instrument = 'GBP_USD'
-        elif symbol == 'NZDCAD':
-            instrument = 'NZD_CAD'
-        elif symbol == 'NZDCHF':
-            instrument = 'NZD_CHF'
-        elif symbol == 'NZDJPY':
-            instrument = 'NZD_JPY'
-        elif symbol == 'NZDUSD':
-            instrument = 'NZD_USD'
-        elif symbol == 'USDCAD':
-            instrument = 'USD_CAD'
-        elif symbol == 'USDCHF':
-            instrument = 'USD_CHF'
-        else:  # symbol == 'USDJPY'
-            instrument = 'USD_JPY'
+        instrument = self.convert_symbol2instrument(symbol)
 
         # 足の名称を変換する。
-        if timeframe == 1:
-            granularity = 'M1'
-        elif timeframe == 5:
-            granularity = 'M5'
-        elif timeframe == 15:
-            granularity = 'M15'
-        elif timeframe == 30:
-            granularity = 'M30'
-        elif timeframe == 60:
-            granularity = 'H1'
-        elif timeframe == 240:
-            granularity = 'H4'
-        else:  # timeframe == 1440
-            granularity = 'D'
+        granularity = self.convert_timeframe2granularity(timeframe)
 
         # 単位調整のための乗数と桁数を設定する。
         if (symbol == 'AUDJPY' or symbol == 'CADJPY' or symbol == 'CHFJPY' or
@@ -2021,24 +1886,40 @@ if __name__ == '__main__':
     wd_path = os.path.dirname(__file__)
 
     # 設定を読み込む。
-    argvs = sys.argv
-    mod = importlib.import_module(argvs[1])
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--mode')
+    parser.add_argument('--strategy')
+    parser.add_argument('--symbol')
+    parser.add_argument('--timeframe', type=int)
+    parser.add_argument('--start')
+    parser.add_argument('--end')
+    parser.add_argument('--backtest', type=int, default=0)
+    parser.add_argument('--position', type=int, default=2)
+    parser.add_argument('--spread', type=int)
+    parser.add_argument('--optimization', type=int, default=0)
+    parser.add_argument('--min_trade', type=int, default=260)
+    parser.add_argument('--in_sample_period', type=int, default=360)
+    parser.add_argument('--out_of_sample_period', type=int, default=30)
+    parser.add_argument('--lots', type=float, default=0.1)
+    parser.add_argument('--mail', type=int, default=0)
+    parser.add_argument('--ea', type=int, default=0)
+    args = parser.parse_args()
+
+    mod = importlib.import_module(args.strategy)
     strategy = mod.strategy
-    symbol = mod.SYMBOL
-    timeframe = mod.TIMEFRAME
-    start = mod.START
-    end = mod.END
-    wft = mod.WFT
-    position = mod.POSITION
-    path = wd_path + '/' + argvs[1]
-    spread = mod.SPREAD
-    optimization = mod.OPTIMIZATION
-    min_trade = mod.MIN_TRADE
-    in_sample_period = mod.IN_SAMPLE_PERIOD
-    out_of_sample_period = mod.OUT_OF_SAMPLE_PERIOD
-    mail = mod.MAIL
-    lots = mod.LOTS
-    ea = mod.EA
+    symbol = args.symbol
+    timeframe = args.timeframe
+    position = args.position
+    spread = args.spread
+
+    if hasattr(mod, "PARAMETER") == False:
+        parameter = None
+    else:
+        parameter = mod.PARAMETER
+    if hasattr(mod, "RRANGES") == False:
+        rranges = None
+    else:
+        rranges = mod.RRANGES
 
     # 設定に間違いがあった場合、メッセージを出力して終了する。
     if (symbol != 'AUDCAD' and symbol != 'AUDCHF' and symbol != 'AUDJPY' and
@@ -2057,15 +1938,6 @@ if __name__ == '__main__':
         timeframe != 1440):
         sys.exit('足の種類が間違っています。設定しなおして下さい。')
 
-    if hasattr(mod, "PARAMETER") == False:
-        parameter = None
-    else:
-        parameter = mod.PARAMETER
-    if hasattr(mod, "RRANGES") == False:
-        rranges = None
-    else:
-        rranges = mod.RRANGES
-
     # スプレッドの単位の調整
     if (symbol == 'AUDJPY' or symbol == 'CADJPY' or symbol == 'CHFJPY' or
         symbol == 'EURJPY' or symbol == 'GBPJPY' or symbol == 'NZDJPY' or
@@ -2079,30 +1951,33 @@ if __name__ == '__main__':
         spread = spread / 100000.0
 
     # バックテスト（ウォークフォワードテストを含む）の場合
-    if argvs[2] == 'backtest':
+    if args.mode == 'backtest':
         backtest_start = time.time()
+
+        start = datetime.strptime(args.start, '%Y.%m.%d')
+        end = datetime.strptime(args.end, '%Y.%m.%d')
+        backtest = args.backtest
+        path = wd_path + '/' + args.strategy
+        optimization = args.optimization
+        min_trade = args.min_trade
+        in_sample_period = args.in_sample_period
+        out_of_sample_period = args.out_of_sample_period
+
         fs = ForexSystem()
 
-        # もしバックテスト開始時に一時フォルダが残っていたら削除する。
-        if os.path.exists(wd_path + '/tmp') == True:
-            shutil.rmtree(wd_path + '/tmp')
-
-        # 一時フォルダを作成する。
-        os.mkdir(wd_path + '/tmp')
-
         # バックテストの場合
-        if wft == 0:
+        if backtest == 0:
             fs.backtest(
                 strategy, parameter, symbol, timeframe, position, rranges,
                 spread, optimization, min_trade, start, end, path)
         # ウォークフォワードテスト（ウィンドウ固定）の場合
-        elif wft == 1:
+        elif backtest == 1:
             fs.walk_forward_test(
                 strategy, parameter, symbol, timeframe, position, rranges,
                 spread, optimization, min_trade, in_sample_period,
                 out_of_sample_period, 1, start, end, path)
         # ウォークフォワードテスト（ウィンドウ非固定）の場合
-        else:  # WFT == 2
+        else:  # backtest == 2
             fs.walk_forward_test(
                 strategy, parameter, symbol, timeframe, position, rranges,
                 spread, optimization, min_trade, in_sample_period,
@@ -2118,11 +1993,12 @@ if __name__ == '__main__':
                 'バックテストの所要時間は',
                 int(round((backtest_end - backtest_start) / 60.0)), '分です。')
 
-        # 一時フォルダを削除する。
-        shutil.rmtree(wd_path + '/tmp')
-
     # トレードの場合
-    elif argvs[2] == 'trade':
+    elif args.mode == 'trade':
+        mail = args.mail
+        lots = args.lots
+        ea = args.ea
+
         config = configparser.ConfigParser()
         config.read(wd_path + '/settings.ini')
         environment = config['DEFAULT']['environment']
@@ -2132,9 +2008,8 @@ if __name__ == '__main__':
         password = config['DEFAULT']['password']
         toaddr = config['DEFAULT']['toaddr']
         folder_ea = config['DEFAULT']['folder_ea']
-        file_ea = argvs[1] + '.csv'
+        file_ea = args.strategy + '.csv'
         fs = ForexSystem(environment, account_id, access_token)
-        fs_model = ForexSystem()
-        fs.strategy_name = argvs[1]
+        fs.strategy_name = args.strategy
         fs.trade(strategy, parameter, symbol, timeframe, position, spread, lots,
                  ea, folder_ea, file_ea, mail, fromaddr, password, toaddr)

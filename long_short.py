@@ -1,39 +1,13 @@
 # coding: utf-8
 
 import numpy as np
-import os
-from datetime import datetime
 
-# 一般設定（ファイル名は31文字以内にすること）
-STRATEGY, ext = os.path.splitext(os.path.basename(__file__))  # extは使用しない。
-SYMBOL = 'USDJPY'
-BASE = 'usd'
-QUOTE = 'jpy'
-TIMEFRAME = 5
-SPREAD = 4  # 1 = 0.1pips
+# パラメータの設定
 PERIOD = 20
 ENTRY_THRESHOLD = 1.0
 FILTER_THRESHOLD = 1.0
-POSITION = 2  # 0：買いのみ 1：売りのみ 2：売買両方
 
-# ウェイトの設定
-AUD = 0.0
-CAD = 0.0
-CHF = 0.0
-EUR = 1.0
-GBP = 0.0
-JPY = 1.0
-NZD = 0.0
-USD = 1.0
-
-# バックテスト設定
-START = datetime.strptime('2012.01.01', '%Y.%m.%d')
-END = datetime.strptime('2015.12.31', '%Y.%m.%d')
-
-# 最適化設定
-WFT = 1  # 0: バックテスト 1: ウォークフォワードテスト（固定） 2: 同（非固定）
-OPTIMIZATION = 1 # 0: 最適化なし 1: 最適化あり
-MIN_TRADE = 260
+# 最適化の設定
 START_PERIOD = 10
 END_PERIOD = 50
 STEP_PERIOD = 10
@@ -49,19 +23,6 @@ RRANGES = (
     slice(START_ENTRY_THRESHOLD, END_ENTRY_THRESHOLD, STEP_ENTRY_THRESHOLD),
     slice(START_FILTER_THRESHOLD, END_FILTER_THRESHOLD, STEP_FILTER_THRESHOLD),
 )
-
-# ウォークフォワードテスト設定
-IN_SAMPLE_PERIOD = 360 * 1
-OUT_OF_SAMPLE_PERIOD = 30 * 1
-
-# トレード設定
-LOTS = 0.1  # 1ロット=1万通貨単位
-
-# EA設定
-EA = 0  # 0: EAにシグナル送信なし 1: EAにシグナル送信あり
-
-# メール設定
-MAIL = 0  # 0: メールにシグナル送信なし 1: メールにシグナル送信あり
 
 def strategy(parameter, fs, symbol, timeframe, position, start=None, end=None,
              spread=0, optimization=0, min_trade=0):
@@ -85,24 +46,50 @@ def strategy(parameter, fs, symbol, timeframe, position, start=None, end=None,
     entry_threshold = float(parameter[1])
     filter_threshold = float(parameter[2])
 
+    # Ku-Chartのモデルを設定する。
+    base, quote = fs.divide_symbol(symbol)
+    eur = 1.0  # デフォルトでモデルに組み込む。
+    jpy = 1.0  # 同上。
+    usd = 1.0  # 同上。
+    if base == 'aud' or quote == 'aud':
+        aud = 1.0  # ベース通貨、またはクウォート通貨に含まれる場合のみ組み込む。
+    else:
+        aud = 0.0
+    if base == 'cad' or quote == 'cad':
+        cad = 1.0  # 同上。
+    else:
+        cad = 0.0
+    if base == 'chf' or quote == 'chf':
+        chf = 1.0  # 同上。
+    else:
+        chf = 0.0
+    if base == 'gbp' or quote == 'gbp':
+        gbp = 1.0  # 同上。
+    else:
+        gbp = 0.0
+    if base == 'nzd' or quote == 'nzd':
+        nzd = 1.0  # 同上。
+    else:
+        nzd = 0.0
+
     # シグナルを計算する。
     z_score1 = fs.i_z_score(symbol, timeframe, period, 1)[start:end]
     bandwalk1 = fs.i_bandwalk(symbol, timeframe, period, 1)[start:end]
-    ku_z_score1 = (fs.i_ku_z_score(timeframe, period, 1, aud=AUD, cad=CAD,
-        chf=CHF, eur=EUR, gbp=GBP, jpy=JPY, nzd=NZD, usd=USD)[start:end])
-    ku_bandwalk1 = (fs.i_ku_bandwalk(timeframe, period, 1, aud=AUD, cad=CAD,
-        chf=CHF, eur=EUR, gbp=GBP, jpy=JPY, nzd=NZD, usd=USD)[start:end])
-    can_buy = ((ku_z_score1[BASE] <= -entry_threshold) &
-        (ku_z_score1[QUOTE] >= entry_threshold) &
-        (ku_bandwalk1[BASE] <= -filter_threshold) &
-        (ku_bandwalk1[QUOTE] >= filter_threshold))
+    ku_z_score1 = (fs.i_ku_z_score(timeframe, period, 1, aud=aud, cad=cad,
+        chf=chf, eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)[start:end])
+    ku_bandwalk1 = (fs.i_ku_bandwalk(timeframe, period, 1, aud=aud, cad=cad,
+        chf=chf, eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)[start:end])
+    can_buy = ((ku_z_score1[base] <= -entry_threshold) &
+        (ku_z_score1[quote] >= entry_threshold) &
+        (ku_bandwalk1[base] <= -filter_threshold) &
+        (ku_bandwalk1[quote] >= filter_threshold))
     longs_entry = (((z_score1 <= -entry_threshold) &
         (bandwalk1 <= -filter_threshold) & (can_buy == True)) * 1)
     longs_exit = (z_score1 >= 0.0) * 1
-    can_sell = ((ku_z_score1[BASE] >= entry_threshold) &
-        (ku_z_score1[QUOTE] <= -entry_threshold) &
-        (ku_bandwalk1[BASE] >= filter_threshold) &
-        (ku_bandwalk1[QUOTE] <= -filter_threshold))
+    can_sell = ((ku_z_score1[base] >= entry_threshold) &
+        (ku_z_score1[quote] <= -entry_threshold) &
+        (ku_bandwalk1[base] >= filter_threshold) &
+        (ku_bandwalk1[quote] <= -filter_threshold))
     shorts_entry = (((z_score1 >= entry_threshold)
         & (bandwalk1 >= filter_threshold) & (can_sell == True)) * 1)
     shorts_exit = (z_score1 <= 0.0) * 1

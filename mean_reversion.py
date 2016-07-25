@@ -1,27 +1,14 @@
 # coding: utf-8
  
 import numpy as np
-import os
-from datetime import datetime
- 
-# 一般設定（ファイル名は31文字以内にすること）
-STRATEGY, ext = os.path.splitext(os.path.basename(__file__))  # extは使用しない。
-SYMBOL = 'EURJPY'
-TIMEFRAME = 5
-SPREAD = 7  # 1 = 0.1pips
+
+# パラメータの設定
 PERIOD = 20
 ENTRY_THRESHOLD = 1.0
 FILTER_THRESHOLD = 1.0
-POSITION = 2  # 0：買いのみ 1：売りのみ 2：売買両方
+PARAMETER = [PERIOD, ENTRY_THRESHOLD, FILTER_THRESHOLD]
 
-# バックテスト設定
-START = datetime.strptime('2012.01.01', '%Y.%m.%d')
-END = datetime.strptime('2015.12.31', '%Y.%m.%d')
-
-# 最適化設定
-WFT = 1  # 0: バックテスト 1: ウォークフォワードテスト（固定） 2: 同（非固定）
-OPTIMIZATION = 1  # 0: 最適化なし 1: 最適化あり
-MIN_TRADE = 260
+# 最適化の設定
 START_PERIOD = 10
 END_PERIOD = 50
 STEP_PERIOD = 10
@@ -31,25 +18,11 @@ STEP_ENTRY_THRESHOLD = 0.5
 START_FILTER_THRESHOLD = 0.5
 END_FILTER_THRESHOLD = 2.5
 STEP_FILTER_THRESHOLD = 0.5
-PARAMETER = [PERIOD, ENTRY_THRESHOLD, FILTER_THRESHOLD]
 RRANGES = (
     slice(START_PERIOD, END_PERIOD, STEP_PERIOD),
     slice(START_ENTRY_THRESHOLD, END_ENTRY_THRESHOLD, STEP_ENTRY_THRESHOLD),
     slice(START_FILTER_THRESHOLD, END_FILTER_THRESHOLD, STEP_FILTER_THRESHOLD),
 )
-
-# ウォークフォワードテスト設定
-IN_SAMPLE_PERIOD = 360 * 1
-OUT_OF_SAMPLE_PERIOD = 30 * 1
-
-# トレード設定
-LOTS = 0.1  # 1ロット=1万通貨単位
-
-# EA設定
-EA = 0  # 0: EAにシグナル送信なし 1: EAにシグナル送信あり
-
-# メール設定
-MAIL = 0  # 0: メールにシグナル送信なし 1: メールにシグナル送信あり
  
 def strategy(parameter, fs, symbol, timeframe, position, start=None, end=None,
              spread=0, optimization=0, min_trade=0):
