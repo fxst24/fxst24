@@ -24,9 +24,9 @@ RRANGES = (
     slice(START_FILTER_THRESHOLD, END_FILTER_THRESHOLD, STEP_FILTER_THRESHOLD),
 )
 
-def strategy(parameter, fs, symbol, timeframe, position, start=None, end=None,
-             spread=0, optimization=0, min_trade=0):
-    '''戦略を記述する。
+def calc_signal(parameter, fs, symbol, timeframe, position, start=None,
+                end=None, spread=0, optimization=0, min_trade=0):
+    '''シグナルを計算する。
       Args:
           parameter: 最適化したパラメータ。
           fs: ForexSystemクラスのインスタンス。
@@ -39,7 +39,7 @@ def strategy(parameter, fs, symbol, timeframe, position, start=None, end=None,
           optimization: 最適化の設定。
           min_trade: 最低トレード数。
       Returns:
-          トレードの場合はシグナル、バックテストの場合はパフォーマンス。
+          シグナル。
     '''
 
     period = int(parameter[0])
@@ -110,24 +110,4 @@ def strategy(parameter, fs, symbol, timeframe, position, start=None, end=None,
     signal = signal.fillna(0)
     signal = signal.astype(int)
 
-    # トレードである場合（トレードの場合は環境を指定している）はシグナルを返して終了する。
-    if fs.environment is not None: return signal
-
-    # パフォーマンスを計算する。
-    ret = fs.calc_ret(symbol, timeframe, signal, spread, start, end)
-    trades = fs.calc_trades(signal, start, end)
-    sharpe = fs.calc_sharpe(ret, start, end)
-    years = (end - start).total_seconds() / 60 / 60 / 24 / 365
-
-    # 1年当たりのトレード数が最低トレード数に満たない場合、適応度を0にする。
-    if trades / years >= min_trade:
-        fitness = sharpe
-    else:
-        fitness = 0.0
-
-    # 最適化しない場合、各パフォーマンスを返す。
-    if optimization == 0:
-        return ret, trades, sharpe
-    # 最適化する場合、適応度の符号を逆にして返す（最適化関数が最小値のみ求めるため）。
-    else:
-        return -fitness
+    return signal

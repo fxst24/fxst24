@@ -41,7 +41,6 @@ class ForexSystem(object):
         self.environment = environment
         self.account_id = account_id
         self.access_token = access_token
-        self.strategy_name = None
         self.path = os.path.dirname(__file__)
 
         # バックテストの場合（バックテストの場合は環境が空）、
@@ -71,13 +70,13 @@ class ForexSystem(object):
 
         return ask
 
-    def backtest(self, strategy, parameter, symbol, timeframe, position,
+    def backtest(self, parameter, calc_signal, symbol, timeframe, position,
                  rranges, spread, optimization, min_trade, start, end,
-                 filename):
+                 strategy):
         '''バックテストを行う。
           Args:
-              strategy: 戦略関数。
               parameter: 最適化するパラメータ。
+              calc_signal: シグナルを計算する関数。
               symbol: 通貨ペア名。
               timeframe: タイムフレーム。
               position: ポジションの設定。
@@ -87,28 +86,74 @@ class ForexSystem(object):
               min_trade: 最低トレード数。
               start: 開始日。
               end: 終了日。
-              filename: 戦略プログラムのファイル名。
+              strategy: 戦略名。
         '''
+
+        def calc_performance(parameter, fs, calc_signal, symbol, timeframe,
+                             position, start, end, spread, optimization,
+                             min_trade):
+            '''パフォーマンスを計算する。
+              Args:
+                  parameter: 最適化するパラメータ。
+                  fs: forex_systemクラスのインスタンス。
+                  calc_signal: シグナルを計算する関数。
+                  symbol: 通貨ペア名。
+                  timeframe: タイムフレーム。
+                  position: ポジションの設定。
+                  start: 開始日。
+                  end: 終了日。
+                  spread: スプレッド。
+                  optimization: 最適化の設定。
+                  min_trade: 最低トレード数。
+              Returns:
+                  最適化の場合は適応度、そうでない場合はリターン, トレード数, 年率,
+                  シャープレシオ, 最適レバレッジ, ドローダウン, ドローダウン期間。
+            '''
+
+            # パフォーマンスを計算する。
+            signal = calc_signal(parameter, fs, symbol, timeframe, position,
+                                 start, end, spread, optimization, min_trade)
+            ret = fs.calc_ret(symbol, timeframe, signal, spread, start, end)
+            trades = fs.calc_trades(signal, start, end)
+            sharpe = fs.calc_sharpe(ret, start, end)
+
+            # 最適化する場合、適応度の符号を逆にして返す（最適値=最小値のため）。
+            if optimization == 1:
+                years = (end - start).total_seconds() / 60 / 60 / 24 / 365
+                # 1年当たりのトレード数が最低トレード数に満たない場合、
+                # 適応度を0にする。
+                if trades / years >= min_trade:
+                    fitness = sharpe
+                else:
+                    fitness = 0.0
+
+                return -fitness
+        
+            # 最適化しない場合、各パフォーマンスを返す。
+            else:  #  optimization == 0
+                apr = fs.calc_apr(ret, start, end)
+                kelly = fs.calc_kelly(ret)
+                drawdowns = fs.calc_drawdowns(ret)
+                durations = fs.calc_durations(ret, timeframe)
+
+                return ret, trades, apr, sharpe, kelly, drawdowns, durations
 
         # バックテストを行う。
         if optimization == 1:
             result = optimize.brute(
-                strategy, rranges, args=(self, symbol, timeframe, position,
-                start, end, spread, 1, min_trade), finish=None)
+                calc_performance, rranges, args=(self, calc_signal, symbol,
+                timeframe, position, start, end, spread, 1, min_trade),
+                finish=None)
             parameter = result
-        ret, trades, sharpe = strategy(
-            parameter, self, symbol, timeframe, position, start, end,
-            spread=spread, optimization=0, min_trade=min_trade)
-        apr = self.calc_apr(ret, start, end)
-        sharpe = self.calc_sharpe(ret, start, end)
-        kelly = self.calc_kelly(ret)
-        drawdowns = self.calc_drawdowns(ret)
-        durations = self.calc_durations(ret, timeframe)
+
+        ret, trades, apr, sharpe, kelly, drawdowns, durations = (
+            calc_performance(parameter, self, calc_signal, symbol, timeframe,
+            position, start, end, spread, 0, min_trade))
 
         # グラフを作成する。
         cum_ret = ret.cumsum()
         graph = cum_ret.plot()
-        graph.set_title(filename + '(' + symbol + str(timeframe) + ')')
+        graph.set_title(strategy + '(' + symbol + str(timeframe) + ')')
         graph.set_xlabel('date')
         graph.set_ylabel('cumulative return')
 
@@ -132,7 +177,7 @@ class ForexSystem(object):
 
         # レポートを出力する。
         pd.set_option('line_width', 1000)
-        print('strategy = ', filename)
+        print('strategy = ', strategy)
         print('symbol = ', symbol)
         print('timeframe = ', str(timeframe))
         print(report)
@@ -1512,13 +1557,13 @@ class ForexSystem(object):
         time_minute = pd.Series(index.minute, index=index)
 
         return time_minute
- 
-    def trade(self, strategy, parameter, symbol, timeframe, position, spread,
+
+    def trade(self, parameter, calc_signal, symbol, timeframe, position, spread,
               lots, ea, folder_ea, file_ea, mail, fromaddr, password, toaddr):
         '''トレードを行う。
           Args:
-              strategy: 戦略関数。
               parameter: デフォルトのパラメータ。
+              calc_signal: シグナルを計算する関数。
               symbol: 通貨ペア名。
               timeframe: タイムフレーム。
               position: ポジションの設定。
@@ -1593,7 +1638,7 @@ class ForexSystem(object):
                     # 更新が完了してから実行しないと計算がおかしくなる。
                     if history_time != pre_history_time:
                         pre_history_time = history_time
-                        signal = strategy(
+                        signal = calc_signal(
                             parameter, self, symbol, timeframe, position)
                         end_row = len(signal) - 1
                         # 決済注文を送信する。
@@ -1726,14 +1771,14 @@ class ForexSystem(object):
                 print('回線不通')
                 time.sleep(1)  # 1秒おきに表示させる。
  
-    def walk_forward_test(self, strategy, parameter, symbol, timeframe,
+    def walk_forward_test(self, parameter, calc_signal, symbol, timeframe,
                           position, rranges, spread, optimization, min_trade,
                           in_sample_period, out_of_sample_period, fixed_window,
-                          start, end, filename):
+                          start, end, strategy):
         '''ウォークフォワードテストを行う。
           Args:
-              strategy: 戦略関数。
               parameter: 最適化するパラメータ。
+              calc_signal: シグナルを計算する関数。
               symbol: 通貨ペア名。
               timeframe: タイムフレーム。
               position: ポジションの設定。
@@ -1746,7 +1791,7 @@ class ForexSystem(object):
               fixed_window: ウィンドウ固定の設定。
               start: 開始日。
               end: 終了日。
-              filename: 戦略プログラムのファイル名。
+              strategy: 戦略名。
         '''
 
         end_test = start
@@ -1755,6 +1800,57 @@ class ForexSystem(object):
             columns=['start_train','end_train', 'start_test', 'end_test',
                      'trades', 'apr', 'sharpe', 'kelly', 'drawdowns',
                      'durations', 'parameter'])
+
+        def calc_performance(parameter, fs, calc_signal, symbol, timeframe,
+                             position, start, end, spread, optimization,
+                             min_trade):
+            '''パフォーマンスを計算する。
+              Args:
+                  parameter: 最適化するパラメータ。
+                  fs: forex_systemクラスのインスタンス。
+                  calc_signal: シグナルを計算する関数。
+                  symbol: 通貨ペア名。
+                  timeframe: タイムフレーム。
+                  position: ポジションの設定。
+                  start: 開始日。
+                  end: 終了日。
+                  spread: スプレッド。
+                  optimization: 最適化の設定。
+                  min_trade: 最低トレード数。
+              Returns:
+                  最適化の場合は適応度、そうでない場合はリターン, トレード数, 年率,
+                  シャープレシオ, 最適レバレッジ, ドローダウン, ドローダウン期間、
+                  シグナル。
+            '''
+
+            # パフォーマンスを計算する。
+            signal = calc_signal(parameter, fs, symbol, timeframe, position,
+                                 start, end, spread, optimization, min_trade)
+            ret = fs.calc_ret(symbol, timeframe, signal, spread, start, end)
+            trades = fs.calc_trades(signal, start, end)
+            sharpe = fs.calc_sharpe(ret, start, end)
+
+            # 最適化する場合、適応度の符号を逆にして返す（最適値=最小値のため）。
+            if optimization == 1:
+                years = (end - start).total_seconds() / 60 / 60 / 24 / 365
+                # 1年当たりのトレード数が最低トレード数に満たない場合、
+                # 適応度を0にする。
+                if trades / years >= min_trade:
+                    fitness = sharpe
+                else:
+                    fitness = 0.0
+
+                return -fitness
+        
+            # 最適化しない場合、各パフォーマンスを返す。
+            else:  #  optimization == 0
+                apr = fs.calc_apr(ret, start, end)
+                kelly = fs.calc_kelly(ret)
+                drawdowns = fs.calc_drawdowns(ret)
+                durations = fs.calc_durations(ret, timeframe)
+
+                return (ret, trades, apr, sharpe, kelly, drawdowns, durations,
+                        signal)
 
         # ウォークフォワードテストを行う。
         i = 0
@@ -1780,22 +1876,15 @@ class ForexSystem(object):
                 break
             if optimization == 1:
                 result = optimize.brute(
-                    strategy, rranges, args=(self, symbol, timeframe,
-                    position, start_train, end_train, spread, 1, min_trade),
-                    finish=None)
+                    calc_performance, rranges, args=(self, calc_signal, symbol,
+                    timeframe, position, start_train, end_train, spread, 1,
+                    min_trade), finish=None)
                 parameter = result
-            ret, trades, sharpe = strategy(
-                parameter, self, symbol, timeframe, position, start_test,
-                end_test, spread=spread, optimization=0, min_trade=min_trade)
-            apr = self.calc_apr(ret, start_test, end_test)
-            sharpe = self.calc_sharpe(ret, start_test, end_test)
-            kelly = self.calc_kelly(ret)
-            drawdowns = self.calc_drawdowns(ret)
-            durations = self.calc_durations(ret, timeframe)
-            if i == 0:
-                ret_all = ret
-            else:
-                ret_all = ret_all.append(ret)
+            ret, trades, apr, sharpe, kelly, drawdowns, durations, signal = (
+                calc_performance(parameter, self, calc_signal, symbol,
+                timeframe, position, start_test, end_test, spread, 0,
+                min_trade))
+
             report.iloc[i][0] = start_train.strftime('%Y.%m.%d')
             report.iloc[i][1] = end_train.strftime('%Y.%m.%d')
             report.iloc[i][2] = start_test.strftime('%Y.%m.%d')
@@ -1807,32 +1896,44 @@ class ForexSystem(object):
             report.iloc[i][8] = drawdowns
             report.iloc[i][9] = durations
             report.iloc[i][10] = str(parameter)
+
+            if i == 0:
+                signal_all = signal[start_test:end_test]
+                start_all = start_test
+            else:
+                signal_all = signal_all.append(signal[start_test:end_test])
+                end_all = end_test
+
             i = i + 1
 
+        # 全体のパフォーマンスを計算する。
+        ret_all = self.calc_ret(symbol, timeframe, signal_all, spread,
+                                start_all, end_all)
+        trades_all = self.calc_trades(signal_all, start_all, end_all)
+        apr_all = self.calc_apr(ret_all, start_all, end_all)
+        sharpe_all = self.calc_sharpe(ret_all, start_all, end_all)
+        kelly_all = self.calc_kelly(ret_all)
+        drawdowns_all = self.calc_drawdowns(ret_all)
+        durations_all = self.calc_durations(ret_all, timeframe)
+
         # グラフを作成する。
-        cum_ret = ret.cumsum()
+        cum_ret = ret_all.cumsum()
         graph = cum_ret.plot()
-        graph.set_title(filename + '(' + symbol + str(timeframe) + ')')
+        graph.set_title(strategy + '(' + symbol + str(timeframe) + ')')
         graph.set_xlabel('date')
         graph.set_ylabel('cumulative return')
 
         # レポートを作成する。
-        trades = report.iloc[0:i, 4]
-        apr = report.iloc[0:i, 5]
-        sharpe = report.iloc[0:i, 6]
-        kelly = report.iloc[0:i, 7]
-        drawdowns = report.iloc[0:i, 8]
-        durations = report.iloc[0:i, 9]
         report.iloc[i][0] = ''
         report.iloc[i][1] = ''
-        report.iloc[i][2] = report.iloc[0][2]
-        report.iloc[i][3] = report.iloc[i-1][3]
-        report.iloc[i][4] = int(trades.sum() / i)
-        report.iloc[i][5] = apr.sum() / i
-        report.iloc[i][6] = sharpe.sum() / i
-        report.iloc[i][7] = kelly.sum() / i
-        report.iloc[i][8] = drawdowns.sum() / i
-        report.iloc[i][9] = int(durations.sum() / i)
+        report.iloc[i][2] = start_all.strftime('%Y.%m.%d')
+        report.iloc[i][3] = end_all.strftime('%Y.%m.%d')
+        report.iloc[i][4] = trades_all
+        report.iloc[i][5] = apr_all
+        report.iloc[i][6] = sharpe_all
+        report.iloc[i][7] = kelly_all
+        report.iloc[i][8] = drawdowns_all
+        report.iloc[i][9] = int(durations_all)
         report.iloc[i][10] = ''
 
         # グラフを出力する。
@@ -1841,7 +1942,7 @@ class ForexSystem(object):
 
         # レポートを出力する。
         pd.set_option('line_width', 1000)
-        print('strategy = ', filename)
+        print('strategy = ', strategy)
         print('symbol = ', symbol)
         print('timeframe = ', str(timeframe))
         print(report.iloc[:i+1, ])
@@ -1868,7 +1969,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     mod = importlib.import_module(args.strategy)
-    strategy = mod.strategy
+    calc_signal = mod.calc_signal
     symbol = args.symbol
     timeframe = args.timeframe
     position = args.position
@@ -1919,7 +2020,7 @@ if __name__ == '__main__':
         start = datetime.strptime(args.start, '%Y.%m.%d')
         end = datetime.strptime(args.end, '%Y.%m.%d')
         backtest = args.backtest
-        filename = args.strategy
+        strategy = args.strategy
         optimization = args.optimization
         min_trade = args.min_trade
         in_sample_period = args.in_sample_period
@@ -1930,20 +2031,20 @@ if __name__ == '__main__':
         # バックテストの場合
         if backtest == 0:
             fs.backtest(
-                strategy, parameter, symbol, timeframe, position, rranges,
-                spread, optimization, min_trade, start, end, filename)
+                parameter, calc_signal, symbol, timeframe, position, rranges,
+                spread, optimization, min_trade, start, end, strategy)
         # ウォークフォワードテスト（ウィンドウ固定）の場合
         elif backtest == 1:
             fs.walk_forward_test(
-                strategy, parameter, symbol, timeframe, position, rranges,
+                parameter, calc_signal, symbol, timeframe, position, rranges,
                 spread, optimization, min_trade, in_sample_period,
-                out_of_sample_period, 1, start, end, filename)
+                out_of_sample_period, 1, start, end, strategy)
         # ウォークフォワードテスト（ウィンドウ非固定）の場合
         else:  # backtest == 2
             fs.walk_forward_test(
-                strategy, parameter, symbol, timeframe, position, rranges,
+                parameter, calc_signal, symbol, timeframe, position, rranges,
                 spread, optimization, min_trade, in_sample_period,
-                out_of_sample_period, 0, start, end, filename)
+                out_of_sample_period, 0, start, end, strategy)
         backtest_end = time.time()
         # 結果を出力する。
         if backtest_end - backtest_start < 60.0:
@@ -1973,6 +2074,5 @@ if __name__ == '__main__':
         folder_ea = config['DEFAULT']['folder_ea']
         file_ea = args.strategy + '.csv'
         fs = ForexSystem(environment, account_id, access_token)
-        fs.strategy_name = args.strategy
-        fs.trade(strategy, parameter, symbol, timeframe, position, spread, lots,
-                 ea, folder_ea, file_ea, mail, fromaddr, password, toaddr)
+        fs.trade(parameter, calc_signal, symbol, timeframe, position, spread,
+                 lots, ea, folder_ea, file_ea, mail, fromaddr, password, toaddr)
