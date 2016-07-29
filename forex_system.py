@@ -1559,7 +1559,7 @@ class ForexSystem(object):
         return time_minute
 
     def trade(self, parameter, calc_signal, symbol, timeframe, position, spread,
-              lots, ea, folder_ea, file_ea, mail, fromaddr, password, toaddr):
+              lots, ea, folder_ea, mail, fromaddr, password, toaddr, strategy):
         '''トレードを行う。
           Args:
               parameter: デフォルトのパラメータ。
@@ -1571,11 +1571,11 @@ class ForexSystem(object):
               lots: ロット数。
               ea: EAの設定。
               folder_ea: EAがアクセスするフォルダー名。
-              file_ea: EAがアクセスするファイル名。
               mail: メールの設定。
               fromaddr: 送信元のメールアドレス。
               password: 送信元のメールアドレスのパスワード。
               toaddr: 送信先のメールアドレス。
+              strategy: 戦略名。
         '''
 
         # 通貨ペアの名称を変換する。
@@ -1604,7 +1604,7 @@ class ForexSystem(object):
         pre_history_time = None
         ticket = 0
         pos = 0
-        filename = folder_ea + '/' + file_ea
+        filename = folder_ea + '/' + strategy + '.csv'
 
         # EA用ファイルを初期化する。
         if ea == 1:
@@ -1641,6 +1641,9 @@ class ForexSystem(object):
                         signal = calc_signal(
                             parameter, self, symbol, timeframe, position)
                         end_row = len(signal) - 1
+                        print(signal.tail())
+                        print(end_row)
+                        print(pos)
                         # 決済注文を送信する。
                         # 決済注文を新規注文の前に置かないとドテンができなくなる。
                         if pos == 1 and signal[end_row] != 1:
@@ -1657,7 +1660,7 @@ class ForexSystem(object):
                                 msg = MIMEText(
                                     symbol + 'を' +  str(bid)
                                     + 'で買いエグジットです。')
-                                msg['Subject'] = self.strategy_name
+                                msg['Subject'] = strategy
                                 msg['From'] = fromaddr
                                 msg['To'] = toaddr
                                 s = smtplib.SMTP_SSL(host, port)
@@ -1680,7 +1683,7 @@ class ForexSystem(object):
                                 msg = MIMEText(
                                     symbol + 'を' + str(ask)
                                     + 'で売りエグジットです。')
-                                msg['Subject'] = self.strategy_name
+                                msg['Subject'] = strategy
                                 msg['From'] = fromaddr
                                 msg['To'] = toaddr
                                 s = smtplib.SMTP_SSL(host, port)
@@ -1694,6 +1697,7 @@ class ForexSystem(object):
                         if (pos == 0 and ask - bid <= spread):
                             if (signal[end_row] == 1):
                                 ticket = self.order_send(symbol, lots, 'buy')
+                                pos = 1
 
                                 # EAにシグナルを送信する場合
                                 if ea == 1:
@@ -1706,16 +1710,17 @@ class ForexSystem(object):
                                     msg = MIMEText(
                                         symbol + 'を' + str(ask)
                                         + 'で買いエントリーです。')
-                                    msg['Subject'] = self.strategy_name
+                                    msg['Subject'] = strategy
                                     msg['From'] = fromaddr
                                     msg['To'] = toaddr
                                     s = smtplib.SMTP_SSL(host, port)
                                     s.login(fromaddr, password)
                                     s.send_message(msg)
                                     s.quit()
-                                pos = 1
+
                             elif (signal[end_row] == -1):
                                 ticket = self.order_send(symbol, lots, 'sell')
+                                pos = -1
 
                                 # EAにシグナルを送信する場合
                                 if ea == 1:
@@ -1728,14 +1733,13 @@ class ForexSystem(object):
                                     msg = MIMEText(
                                         symbol + 'を' + str(bid)
                                         + 'で売りエントリーです。')
-                                    msg['Subject'] = self.strategy_name
+                                    msg['Subject'] = strategy
                                     msg['From'] = fromaddr
                                     msg['To'] = toaddr
                                     s = smtplib.SMTP_SSL(host, port)
                                     s.login(fromaddr, password)
                                     s.send_message(msg)
                                     s.quit()
-                                pos = -1
 
                     # ポジション情報を出力
                     now = datetime.now()
@@ -1970,6 +1974,7 @@ if __name__ == '__main__':
 
     mod = importlib.import_module(args.strategy)
     calc_signal = mod.calc_signal
+    strategy = args.strategy
     symbol = args.symbol
     timeframe = args.timeframe
     position = args.position
@@ -2020,7 +2025,6 @@ if __name__ == '__main__':
         start = datetime.strptime(args.start, '%Y.%m.%d')
         end = datetime.strptime(args.end, '%Y.%m.%d')
         backtest = args.backtest
-        strategy = args.strategy
         optimization = args.optimization
         min_trade = args.min_trade
         in_sample_period = args.in_sample_period
@@ -2072,7 +2076,7 @@ if __name__ == '__main__':
         password = config['DEFAULT']['password']
         toaddr = config['DEFAULT']['toaddr']
         folder_ea = config['DEFAULT']['folder_ea']
-        file_ea = args.strategy + '.csv'
         fs = ForexSystem(environment, account_id, access_token)
         fs.trade(parameter, calc_signal, symbol, timeframe, position, spread,
-                 lots, ea, folder_ea, file_ea, mail, fromaddr, password, toaddr)
+                 lots, ea, folder_ea, mail, fromaddr, password, toaddr,
+                 strategy)
