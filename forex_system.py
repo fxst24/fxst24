@@ -1641,9 +1641,6 @@ class ForexSystem(object):
                         signal = calc_signal(
                             parameter, self, symbol, timeframe, position)
                         end_row = len(signal) - 1
-                        print(signal.tail())
-                        print(end_row)
-                        print(pos)
                         # 決済注文を送信する。
                         # 決済注文を新規注文の前に置かないとドテンができなくなる。
                         if pos == 1 and signal[end_row] != 1:
