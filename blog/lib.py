@@ -826,6 +826,133 @@ def entry272(*args):
     p_value = "{0:%}".format(p_value)
     print('単位根検定のp値 = ', p_value)
 
+# http://fxst24.blog.fc2.com/blog-entry-276.html
+def entry276(*args):
+    '''需給均衡とランダムウォークの関係を調べる。
+      Args:
+          *args: 可変長引数。
+    '''
+
+    # 初期設定
+    N = 10000  # 試行回数
+    PRICE = 100  # 価格
+    EQUILIBRIUM_PRICE = 0  # 均衡価格
+    
+    # シミュレーション①
+    price = PRICE
+    equilibrium_price = EQUILIBRIUM_PRICE
+    data = np.empty(N)  # 価格
+    for i in range(N):
+        data[i] = price
+    
+        if price > equilibrium_price:
+            price = price - 1
+        elif price < equilibrium_price:
+            price = price + 1
+        else:
+            pass
+    
+    # 単位根検定のp値を計算する。
+    p_value = ts.adfuller(data)[1]
+    p_value = "{0:%}".format(p_value)
+    
+    data = pd.Series(data)
+    graph = data.plot()
+    graph.set_title('simulation1' + '(p_value = ' + p_value + ')')
+    graph.set_xlabel('time')
+    graph.set_ylabel('price')
+    plt.show()
+    
+    # シミュレーション②
+    price = PRICE
+    equilibrium_price = EQUILIBRIUM_PRICE
+    data = np.empty(N)
+    for i in range(N):
+        data[i] = price
+    
+        if price > equilibrium_price:
+            price = price - 1
+        elif price < equilibrium_price:
+            price = price + 1
+        else:
+            pass
+    
+        price = price + np.random.choice([1, -1])
+    
+    p_value = ts.adfuller(data)[1]
+    p_value = "{0:%}".format(p_value)
+    
+    data = pd.Series(data)
+    graph = data.plot()
+    graph.set_title('simulation2' + '(p_value = ' + p_value + ')')
+    graph.set_xlabel('time')
+    graph.set_ylabel('price')
+    plt.show()
+    
+    # シミュレーション③
+    price = PRICE
+    equilibrium_price = EQUILIBRIUM_PRICE
+    data = np.empty(N)
+    for i in range(N):
+        data[i] = price
+
+        if price > equilibrium_price:
+            price = price - 1
+        elif price < equilibrium_price:
+            price = price + 1
+        else:
+            pass
+
+        if price > equilibrium_price:
+            equilibrium_price = equilibrium_price + 1
+        elif price < equilibrium_price:
+            equilibrium_price = equilibrium_price - 1
+        else:
+            pass
+    
+    p_value = ts.adfuller(data)[1]
+    p_value = "{0:%}".format(p_value)
+    
+    data = pd.Series(data)
+    graph = data.plot()
+    graph.set_title('simulation3' + '(p_value = ' + p_value + ')')
+    graph.set_xlabel('time')
+    graph.set_ylabel('price')
+    plt.show()
+    
+    # シミュレーション④
+    price = PRICE
+    equilibrium_price = EQUILIBRIUM_PRICE
+    data = np.empty(N)
+    for i in range(N):
+        data[i] = price
+
+        if price > equilibrium_price:
+            price = price - 1
+        elif price < equilibrium_price:
+            price = price + 1
+        else:
+            pass
+    
+        price = price + np.random.choice([1, -1])
+
+        if price > equilibrium_price:
+            equilibrium_price = equilibrium_price + 1
+        elif price < equilibrium_price:
+            equilibrium_price = equilibrium_price - 1
+        else:
+            pass
+    
+    p_value = ts.adfuller(data)[1]
+    p_value = "{0:%}".format(p_value)
+    
+    data = pd.Series(data)
+    graph = data.plot()
+    graph.set_title('simulation4' + '(p_value = ' + p_value + ')')
+    graph.set_xlabel('time')
+    graph.set_ylabel('price')
+    plt.show()
+
 # http://fxst24.blog.fc2.com/blog-entry-279.html
 def entry279(*args):
     '''勝つための的中率を計算する。
