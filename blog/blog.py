@@ -10,7 +10,7 @@ def func(*args):
       Args:
           *args: 可変長引数。
     '''
-    exec('import mylib')
+    exec('from lib import *')
     exec(args[0][1])
 
 if __name__ == '__main__':

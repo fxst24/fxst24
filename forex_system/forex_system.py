@@ -10,8 +10,11 @@ import os
 import pandas as pd
 import shutil
 import smtplib
+import struct
 import sys
 import time
+
+from collections import OrderedDict
 from datetime import datetime
 from datetime import timedelta
 from email.mime.text import MIMEText
@@ -1948,18 +1951,308 @@ class ForexSystem(object):
         print('timeframe = ', str(timeframe))
         print(report.iloc[:i+1, ])
 
+def convert_hst2csv():
+    '''hstファイルをcsvファイルに変換する。
+    '''
+
+    for i in range(28):
+        if i == 0:
+            symbol = 'AUDCAD'
+        elif i == 1:
+            symbol = 'AUDCHF'
+        elif i == 2:
+            symbol = 'AUDJPY'
+        elif i == 3:
+            symbol = 'AUDNZD'
+        elif i == 4:
+            symbol = 'AUDUSD'
+        elif i == 5:
+            symbol = 'CADCHF'
+        elif i == 6:
+            symbol = 'CADJPY'
+        elif i == 7:
+            symbol = 'CHFJPY'
+        elif i == 8:
+            symbol = 'EURAUD'
+        elif i == 9:
+            symbol = 'EURCAD'
+        elif i == 10:
+            symbol = 'EURCHF'
+        elif i == 11:
+            symbol = 'EURGBP'
+        elif i == 12:
+            symbol = 'EURJPY'
+        elif i == 13:
+            symbol = 'EURNZD'
+        elif i == 14:
+            symbol = 'EURUSD'
+        elif i == 15:
+            symbol = 'GBPAUD'
+        elif i == 16:
+            symbol = 'GBPCAD'
+        elif i == 17:
+            symbol = 'GBPCHF'
+        elif i == 18:
+            symbol = 'GBPJPY'
+        elif i == 19:
+            symbol = 'GBPNZD'
+        elif i == 20:
+            symbol = 'GBPUSD'
+        elif i == 21:
+            symbol = 'NZDCAD'
+        elif i == 22:
+            symbol = 'NZDCHF'
+        elif i == 23:
+            symbol = 'NZDJPY'
+        elif i == 24:
+            symbol = 'NZDUSD'
+        elif i == 25:
+            symbol = 'USDCAD'
+        elif i == 26:
+            symbol = 'USDCHF'
+        else:
+            symbol = 'USDJPY'
+
+        # 端末のカレントディレクトリが「~」で、そこからの相対パスであることに注意する。
+        filename_hst = '../historical_data/' + symbol + '.hst'
+        # 同上
+        filename_csv = '../historical_data/' + symbol + '.csv'
+        read = 0
+        datetime = []
+        open_price = []
+        low_price = []
+        high_price = []
+        close_price = []
+        volume = []
+        with open(filename_hst, 'rb') as f:
+            while True:
+                if read >= 148:
+                    buf = f.read(44)
+                    read += 44
+                    if not buf:
+                        break
+                    bar = struct.unpack('< iddddd', buf)
+                    datetime.append(
+                        time.strftime('%Y-%m-%d %H:%M:%S',
+                        time.gmtime(bar[0])))
+                    open_price.append(bar[1])
+                    high_price.append(bar[3])  # 高値と安値の順序が違うようだ
+                    low_price.append(bar[2])  # 同上
+                    close_price.append(bar[4])
+                    volume.append(bar[5])
+                else:
+                    buf = f.read(148)
+                    read += 148
+        data = {'0_datetime':datetime, '1_open_price':open_price,
+            '2_high_price':high_price, '3_low_price':low_price,
+            '4_close_price':close_price, '5_volume':volume}
+        result = pd.DataFrame.from_dict(data)
+        result = result.set_index('0_datetime')
+        result.to_csv(filename_csv, header = False)
+
+def make_historical_data():
+    '''ヒストリカルデータを作成する。
+    '''
+
+    # csvファイルを読み込む。
+    for i in range(28):
+        if i == 0:
+            symbol = 'AUDCAD'
+        elif i == 1:
+            symbol = 'AUDCHF'
+        elif i == 2:
+            symbol = 'AUDJPY'
+        elif i == 3:
+            symbol = 'AUDNZD'
+        elif i == 4:
+            symbol = 'AUDUSD'
+        elif i == 5:
+            symbol = 'CADCHF'
+        elif i == 6:
+            symbol = 'CADJPY'
+        elif i == 7:
+            symbol = 'CHFJPY'
+        elif i == 8:
+            symbol = 'EURAUD'
+        elif i == 9:
+            symbol = 'EURCAD'
+        elif i == 10:
+            symbol = 'EURCHF'
+        elif i == 11:
+            symbol = 'EURGBP'
+        elif i == 12:
+            symbol = 'EURJPY'
+        elif i == 13:
+            symbol = 'EURNZD'
+        elif i == 14:
+            symbol = 'EURUSD'
+        elif i == 15:
+            symbol = 'GBPAUD'
+        elif i == 16:
+            symbol = 'GBPCAD'
+        elif i == 17:
+            symbol = 'GBPCHF'
+        elif i == 18:
+            symbol = 'GBPJPY'
+        elif i == 19:
+            symbol = 'GBPNZD'
+        elif i == 20:
+            symbol = 'GBPUSD'
+        elif i == 21:
+            symbol = 'NZDCAD'
+        elif i == 22:
+            symbol = 'NZDCHF'
+        elif i == 23:
+            symbol = 'NZDJPY'
+        elif i == 24:
+            symbol = 'NZDUSD'
+        elif i == 25:
+            symbol = 'USDCAD'
+        elif i == 26:
+            symbol = 'USDCHF'
+        else:
+            symbol = 'USDJPY'
+
+        # 1分足の作成
+        filename = '~/historical_data/' + symbol + '.csv'
+        if i == 0:
+            data = pd.read_csv(filename, header=None, index_col=0)
+            data.index = pd.to_datetime(data.index)
+        else:
+            temp = pd.read_csv(filename, header=None, index_col=0)
+            temp.index = pd.to_datetime(temp.index)
+            data = pd.merge(
+                data, temp, left_index=True, right_index=True, how='outer')
+
+    # 列名を変更する。
+    label = ['open', 'high', 'low', 'close', 'volume']
+    data.columns = label * 28
+
+    # リサンプリングの方法を設定する。
+    ohlc_dict = OrderedDict()
+    ohlc_dict['open'] = 'first'
+    ohlc_dict['high'] = 'max'
+    ohlc_dict['low'] = 'min'
+    ohlc_dict['close'] = 'last'
+    ohlc_dict['volume'] = 'sum'
+
+    # 各足を作成する。
+    for i in range(28):
+        if i == 0:
+            symbol = 'AUDCAD'
+        elif i == 1:
+            symbol = 'AUDCHF'
+        elif i == 2:
+            symbol = 'AUDJPY'
+        elif i == 3:
+            symbol = 'AUDNZD'
+        elif i == 4:
+            symbol = 'AUDUSD'
+        elif i == 5:
+            symbol = 'CADCHF'
+        elif i == 6:
+            symbol = 'CADJPY'
+        elif i == 7:
+            symbol = 'CHFJPY'
+        elif i == 8:
+            symbol = 'EURAUD'
+        elif i == 9:
+            symbol = 'EURCAD'
+        elif i == 10:
+            symbol = 'EURCHF'
+        elif i == 11:
+            symbol = 'EURGBP'
+        elif i == 12:
+            symbol = 'EURJPY'
+        elif i == 13:
+            symbol = 'EURNZD'
+        elif i == 14:
+            symbol = 'EURUSD'
+        elif i == 15:
+            symbol = 'GBPAUD'
+        elif i == 16:
+            symbol = 'GBPCAD'
+        elif i == 17:
+            symbol = 'GBPCHF'
+        elif i == 18:
+            symbol = 'GBPJPY'
+        elif i == 19:
+            symbol = 'GBPNZD'
+        elif i == 20:
+            symbol = 'GBPUSD'
+        elif i == 21:
+            symbol = 'NZDCAD'
+        elif i == 22:
+            symbol = 'NZDCHF'
+        elif i == 23:
+            symbol = 'NZDJPY'
+        elif i == 24:
+            symbol = 'NZDUSD'
+        elif i == 25:
+            symbol = 'USDCAD'
+        elif i == 26:
+            symbol = 'USDCHF'
+        else:
+            symbol = 'USDJPY'
+ 
+        data1 = data.iloc[:, 0+(5*i): 5+(5*i)]
+
+        # 欠損値を補間する。
+        data1 = data1.fillna(method='ffill')
+        data1 = data1.fillna(method='bfill')
+
+        # 重複行を削除する。
+        data1 = data1[~data1.index.duplicated()] 
+ 
+        data5 = data1.resample(
+            '5Min', label='left', closed='left').apply(ohlc_dict)
+        data15 = data1.resample(
+            '15Min', label='left', closed='left').apply(ohlc_dict)
+        data30 = data1.resample(
+            '30Min', label='left', closed='left').apply(ohlc_dict)
+        data60 = data1.resample(
+            '60Min', label='left', closed='left').apply(ohlc_dict)
+        data240 = data1.resample(
+            '240Min', label='left', closed='left').apply(ohlc_dict)
+        data1440 = data1.resample(
+            '1440Min', label='left', closed='left').apply(ohlc_dict)
+
+        # 欠損値を削除する。
+        data5 = data5.dropna()
+        data15 = data15.dropna()
+        data30 = data30.dropna()
+        data60 = data60.dropna()
+        data240 = data240.dropna()
+        data1440 = data1440.dropna()
+
+        # ファイルを出力する。
+        filename1 =  '~/historical_data/' + symbol + '1.csv'
+        filename5 =  '~/historical_data/' + symbol + '5.csv'
+        filename15 =  '~/historical_data/' + symbol + '15.csv'
+        filename30 =  '~/historical_data/' + symbol + '30.csv'
+        filename60 =  '~/historical_data/' + symbol + '60.csv'
+        filename240 =  '~/historical_data/' + symbol + '240.csv'
+        filename1440 =  '~/historical_data/' + symbol + '1440.csv'
+        data1.to_csv(filename1)
+        data5.to_csv(filename5)
+        data15.to_csv(filename15)
+        data30.to_csv(filename30)
+        data60.to_csv(filename60)
+        data240.to_csv(filename240)
+        data1440.to_csv(filename1440)
+
 if __name__ == '__main__':
     # 設定を読み込む。
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mode')
-    parser.add_argument('--strategy')
-    parser.add_argument('--symbol')
+    parser.add_argument('--mode', type=str, default=None)
+    parser.add_argument('--strategy', type=str, default=None)
+    parser.add_argument('--symbol', type=str, default=None)
     parser.add_argument('--timeframe', type=int)
-    parser.add_argument('--start')
-    parser.add_argument('--end')
+    parser.add_argument('--start', type=str, default=None)
+    parser.add_argument('--end', type=str, default=None)
     parser.add_argument('--backtest', type=int, default=0)
     parser.add_argument('--position', type=int, default=2)
-    parser.add_argument('--spread', type=int)
+    parser.add_argument('--spread', type=int, default=0)
     parser.add_argument('--optimization', type=int, default=0)
     parser.add_argument('--min_trade', type=int, default=260)
     parser.add_argument('--in_sample_period', type=int, default=360)
@@ -1967,41 +2260,14 @@ if __name__ == '__main__':
     parser.add_argument('--lots', type=float, default=0.1)
     parser.add_argument('--mail', type=int, default=0)
     parser.add_argument('--ea', type=int, default=0)
+    parser.add_argument('--func', type=str, default=None)
     args = parser.parse_args()
 
-    mod = importlib.import_module(args.strategy)
-    calc_signal = mod.calc_signal
     strategy = args.strategy
     symbol = args.symbol
     timeframe = args.timeframe
     position = args.position
     spread = args.spread
-
-    if hasattr(mod, "PARAMETER") == False:
-        parameter = None
-    else:
-        parameter = mod.PARAMETER
-    if hasattr(mod, "RRANGES") == False:
-        rranges = None
-    else:
-        rranges = mod.RRANGES
-
-    # 設定に間違いがあった場合、メッセージを出力して終了する。
-    if (symbol != 'AUDCAD' and symbol != 'AUDCHF' and symbol != 'AUDJPY' and
-        symbol != 'AUDNZD' and symbol != 'AUDUSD' and symbol != 'CADCHF' and
-        symbol != 'CADJPY' and symbol != 'CHFJPY' and symbol != 'EURAUD' and
-        symbol != 'EURCAD' and symbol != 'EURCHF' and symbol != 'EURGBP' and
-        symbol != 'EURJPY' and symbol != 'EURNZD' and symbol != 'EURUSD' and
-        symbol != 'GBPAUD' and symbol != 'GBPCAD' and symbol != 'GBPCHF' and
-        symbol != 'GBPJPY' and symbol != 'GBPNZD' and symbol != 'GBPUSD' and
-        symbol != 'NZDCAD' and symbol != 'NZDCHF' and symbol != 'NZDJPY' and
-        symbol != 'NZDUSD' and symbol != 'USDCAD' and symbol != 'USDCHF' and
-        symbol != 'USDJPY'):
-        sys.exit('通貨ペア名が間違っています。設定しなおして下さい。')
-    if (timeframe != 1  and timeframe != 5  and timeframe != 15  and
-        timeframe != 30 and timeframe != 60 and timeframe != 240 and
-        timeframe != 1440):
-        sys.exit('足の種類が間違っています。設定しなおして下さい。')
 
     # スプレッドの単位の調整
     if (symbol == 'AUDJPY' or symbol == 'CADJPY' or symbol == 'CHFJPY' or
@@ -2018,6 +2284,18 @@ if __name__ == '__main__':
     # バックテスト（ウォークフォワードテストを含む）の場合
     if args.mode == 'backtest':
         backtest_start = time.time()
+
+        mod = importlib.import_module(args.strategy)
+        calc_signal = mod.calc_signal
+
+        if hasattr(mod, "PARAMETER") == False:
+            parameter = None
+        else:
+            parameter = mod.PARAMETER
+        if hasattr(mod, "RRANGES") == False:
+            rranges = None
+        else:
+            rranges = mod.RRANGES
 
         start = datetime.strptime(args.start, '%Y.%m.%d')
         end = datetime.strptime(args.end, '%Y.%m.%d')
@@ -2059,6 +2337,14 @@ if __name__ == '__main__':
 
     # トレードの場合
     elif args.mode == 'trade':
+        mod = importlib.import_module(args.strategy)
+        calc_signal = mod.calc_signal
+
+        if hasattr(mod, "PARAMETER") == False:
+            parameter = None
+        else:
+            parameter = mod.PARAMETER
+
         path = os.path.dirname(__file__)
         mail = args.mail
         lots = args.lots
@@ -2077,3 +2363,47 @@ if __name__ == '__main__':
         fs.trade(parameter, calc_signal, symbol, timeframe, position, spread,
                  lots, ea, folder_ea, mail, fromaddr, password, toaddr,
                  strategy)
+
+    # その他の場合
+    else:
+        def func(*args):
+            '''入力した文字列を関数として実行する。
+              Args:
+                  *args: 可変長引数。
+            '''
+            exec(args[0])
+
+    # 開始時間を格納する。
+    start_time = time.time()
+
+    # 作業ディレクトリのパスを格納する（このファイルは作業ディレクトリ内にある）。
+    wd_path = os.path.dirname(__file__)
+
+    # もし実行開始時に一時フォルダが残っていたら削除する。
+    if os.path.exists(wd_path + '/tmp') == True:
+        shutil.rmtree(wd_path + '/tmp')
+
+    # 一時フォルダを作成する。
+    os.mkdir(wd_path + '/tmp')
+
+    # 引数を格納する。
+    args = args.func
+
+    # 実行する。
+    func(args)
+
+    # 一時フォルダを削除する。
+    shutil.rmtree(wd_path + '/tmp')
+
+    # 終了時間を格納する。
+    end_time = time.time()
+
+    # 実行時間を出力する。
+    if end_time - start_time < 60.0:
+        print(
+            '実行時間は',
+            int(round(end_time - start_time)), '秒です。')
+    else:
+        print(
+            '実行時間は',
+            int(round((end_time - start_time) / 60.0)), '分です。')
