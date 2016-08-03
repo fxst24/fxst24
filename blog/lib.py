@@ -69,112 +69,6 @@ def create_time_series_data(*args):
 
     return y
 
-# http://fxst24.blog.fc2.com/blog-entry-206.html
-def entry206(*args):
-    '''勝つための的中率を計算する。
-      Args:
-          *args: 可変長引数。
-    '''
-
-    width = float(args[0])  # 値幅
-    cost = float(args[1])  # コスト
-    profit = width - cost  # 的中した場合の利益
-    loss = width + cost  # 的中しなかった場合の損失
-    n = 100  # 試行回数
-    a = 0.0  # 下限（初期値）
-    b = 1.0  # 上限（初期値）
-    prob = (a + b) / 2 # 的中率
-
-    # 勝つための的中率を二分法で計算する。
-    for i in (range(n)):
-        if (profit * prob >= loss * (1 - prob)):
-            b = prob
-            prob = (a + b) / 2
-        else:
-            a = prob
-            prob = (a + b) / 2
-
-    print("勝つための的中率 = ", prob)
-
-# http://fxst24.blog.fc2.com/blog-entry-208.html
-def entry208(*args):
-    '''勝つためのボラティリティを計算する。
-      Args:
-          *args: 可変長引数。
-    '''
-
-    prob = float(args[0])  # 的中率
-    cost = float(args[1])  # コスト
-    n = 100 # 試行回数
-    a = 0.0 # 下限（初期値）
-    b = 100.0 # 上限（初期値）
-    width = (a + b) / 2 # ボラティリティ
-    profit = width - cost # 的中した場合の利益
-    loss = width + cost # 的中しなかった場合の損失
-
-    # 勝つためのボラティリティを二分法で計算する。
-    for i in range(n):
-        if (profit * prob >= loss * (1 - prob)):
-            b = width
-            width = (a + b) / 2
-            profit = width - cost
-            loss = width + cost
-        else:
-            a = width
-            width = (a + b) / 2
-            profit = width - cost
-            loss = width + cost
-
-    print("勝つためのボラティリティ = ", width)
-
-# http://fxst24.blog.fc2.com/blog-entry-210.html
-def entry210(*args):
-    '''各足のボラティリティを計算する。
-      Args:
-          *args: 可変長引数。
-    '''
-
-    symbol = args[0]  # 通貨ペア
-    start_year = int(args[1])  # 開始年
-    start_month = int(args[2])  # 開始月
-    start_day = int(args[3])  # 開始日
-    end_year = int(args[4])  # 終了年
-    end_month = int(args[5])  # 終了月
-    end_day = int(args[6])  # 終了日
-
-    start = datetime(start_year, start_month, start_day, 0, 0)
-    end = datetime(end_year, end_month, end_day, 23, 59)
- 
-    # ボラティリティを計算する。
-    fs = forex_system.ForexSystem()
-    if (symbol == 'AUDJPY' or symbol == 'CADJPY' or symbol == 'CHFJPY' or
-        symbol == 'EURJPY' or symbol == 'GBPJPY' or symbol == 'NZDJPY' or
-        symbol == 'USDJPY'):
-        values2pips = 100.0
-    else:
-    # symbol == 'AUDCAD', 'AUDCHF', 'AUDNZD', 'AUDUSD', 'CADCHF', 'EURAUD',
-    #           'EURCAD', 'EURCHF', 'EURGBP', 'EURNZD', 'EURUSD', 'GBPAUD',
-    #           'GBPCAD', 'GBPCHF', 'GBPNZD', 'GBPUSD', 'NZDCAD', 'NZDCHF',
-    #           'NZDUSD', 'USDCAD', 'USDCHF'
-        values2pips = 10000.0
-    vola1 = fs.i_diff(symbol, 1, 0)[start:end].std() * values2pips
-    vola5 = fs.i_diff(symbol, 5, 0)[start:end].std() * values2pips
-    vola15 = fs.i_diff(symbol, 15, 0)[start:end].std() * values2pips
-    vola30 = fs.i_diff(symbol, 30, 0)[start:end].std() * values2pips
-    vola60 = fs.i_diff(symbol, 60, 0)[start:end].std() * values2pips
-    vola240 = fs.i_diff(symbol, 240, 0)[start:end].std() * values2pips
-    vola1440 = fs.i_diff(symbol, 1440, 0)[start:end].std() * values2pips
- 
-    # ボラティリティを出力する。
-    print("通貨ペア = ", symbol)
-    print("1分足のボラティリティ = ", vola1)
-    print("5分足のボラティリティ = ", vola5)
-    print("15分足のボラティリティ = ", vola15)
-    print("30分足のボラティリティ = ", vola30)
-    print("1時間足のボラティリティ = ", vola60)
-    print("4時間足のボラティリティ = ", vola240)
-    print("日足のボラティリティ = ", vola1440)
-
 # http://fxst24.blog.fc2.com/blog-entry-248.html
 def entry248(*args):
     '''バンドウォークの標準偏差を出力する。
@@ -931,3 +825,109 @@ def entry272(*args):
     p_value = ts.adfuller(close)[1]
     p_value = "{0:%}".format(p_value)
     print('単位根検定のp値 = ', p_value)
+
+# http://fxst24.blog.fc2.com/blog-entry-279.html
+def entry279(*args):
+    '''勝つための的中率を計算する。
+      Args:
+          *args: 可変長引数。
+    '''
+
+    width = float(args[0])  # 値幅
+    cost = float(args[1])  # コスト
+    profit = width - cost  # 的中した場合の利益
+    loss = width + cost  # 的中しなかった場合の損失
+    n = 100  # 試行回数
+    a = 0.0  # 下限（初期値）
+    b = 1.0  # 上限（初期値）
+    prob = (a + b) / 2 # 的中率
+
+    # 勝つための的中率を二分法で計算する。
+    for i in (range(n)):
+        if (profit * prob >= loss * (1 - prob)):
+            b = prob
+            prob = (a + b) / 2
+        else:
+            a = prob
+            prob = (a + b) / 2
+
+    print("勝つための的中率 = ", prob)
+
+# http://fxst24.blog.fc2.com/blog-entry-280.html
+def entry280(*args):
+    '''勝つためのボラティリティを計算する。
+      Args:
+          *args: 可変長引数。
+    '''
+
+    prob = float(args[0])  # 的中率
+    cost = float(args[1])  # コスト
+    n = 100 # 試行回数
+    a = 0.0 # 下限（初期値）
+    b = 100.0 # 上限（初期値）
+    width = (a + b) / 2 # ボラティリティ
+    profit = width - cost # 的中した場合の利益
+    loss = width + cost # 的中しなかった場合の損失
+
+    # 勝つためのボラティリティを二分法で計算する。
+    for i in range(n):
+        if (profit * prob >= loss * (1 - prob)):
+            b = width
+            width = (a + b) / 2
+            profit = width - cost
+            loss = width + cost
+        else:
+            a = width
+            width = (a + b) / 2
+            profit = width - cost
+            loss = width + cost
+
+    print("勝つためのボラティリティ = ", width)
+
+# http://fxst24.blog.fc2.com/blog-entry-281.html
+def entry281(*args):
+    '''各足のボラティリティを計算する。
+      Args:
+          *args: 可変長引数。
+    '''
+
+    symbol = args[0]  # 通貨ペア
+    start_year = int(args[1])  # 開始年
+    start_month = int(args[2])  # 開始月
+    start_day = int(args[3])  # 開始日
+    end_year = int(args[4])  # 終了年
+    end_month = int(args[5])  # 終了月
+    end_day = int(args[6])  # 終了日
+
+    start = datetime(start_year, start_month, start_day, 0, 0)
+    end = datetime(end_year, end_month, end_day, 23, 59)
+ 
+    # ボラティリティを計算する。
+    fs = forex_system.ForexSystem()
+    if (symbol == 'AUDJPY' or symbol == 'CADJPY' or symbol == 'CHFJPY' or
+        symbol == 'EURJPY' or symbol == 'GBPJPY' or symbol == 'NZDJPY' or
+        symbol == 'USDJPY'):
+        values2pips = 100.0
+    else:
+    # symbol == 'AUDCAD', 'AUDCHF', 'AUDNZD', 'AUDUSD', 'CADCHF', 'EURAUD',
+    #           'EURCAD', 'EURCHF', 'EURGBP', 'EURNZD', 'EURUSD', 'GBPAUD',
+    #           'GBPCAD', 'GBPCHF', 'GBPNZD', 'GBPUSD', 'NZDCAD', 'NZDCHF',
+    #           'NZDUSD', 'USDCAD', 'USDCHF'
+        values2pips = 10000.0
+    vola1 = fs.i_diff(symbol, 1, 0)[start:end].std() * values2pips
+    vola5 = fs.i_diff(symbol, 5, 0)[start:end].std() * values2pips
+    vola15 = fs.i_diff(symbol, 15, 0)[start:end].std() * values2pips
+    vola30 = fs.i_diff(symbol, 30, 0)[start:end].std() * values2pips
+    vola60 = fs.i_diff(symbol, 60, 0)[start:end].std() * values2pips
+    vola240 = fs.i_diff(symbol, 240, 0)[start:end].std() * values2pips
+    vola1440 = fs.i_diff(symbol, 1440, 0)[start:end].std() * values2pips
+ 
+    # ボラティリティを出力する。
+    print("通貨ペア = ", symbol)
+    print("1分足のボラティリティ = ", vola1)
+    print("5分足のボラティリティ = ", vola5)
+    print("15分足のボラティリティ = ", vola15)
+    print("30分足のボラティリティ = ", vola30)
+    print("1時間足のボラティリティ = ", vola60)
+    print("4時間足のボラティリティ = ", vola240)
+    print("日足のボラティリティ = ", vola1440)
