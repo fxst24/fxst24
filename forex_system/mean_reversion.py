@@ -51,14 +51,20 @@ def calc_signal(parameter, fs, symbol, timeframe, position, start=None,
     close1 = fs.i_close(symbol, timeframe, 1)[start:end]
     temp_no_buy_zone = pd.Series(index=close1.index)
     temp_no_sell_zone = pd.Series(index=close1.index)
+    if (symbol == 'AUDJPY' or symbol == 'CADJPY' or symbol == 'CHFJPY' or
+        symbol == 'EURJPY' or symbol == 'GBPJPY' or symbol == 'NZDJPY' or
+        symbol == 'USDJPY'):
+        width = 0.1
+    else:
+        width = 0.001
     for i in range(4):
         shift = int(2 + (1440 / timeframe * i))
         hl_band2 = fs.i_hl_band(symbol, timeframe, int(1440 / timeframe),
                                 shift)[start:end]
         temp_no_buy_zone[((close1>= hl_band2['low']) &
-            (close1 <= hl_band2['low'] + 0.1))] = 1
+            (close1 <= hl_band2['low'] + width))] = 1
         temp_no_sell_zone[(close1 <= hl_band2['high']) &
-            (close1 >= hl_band2['high'] - 0.1)] = 1
+            (close1 >= hl_band2['high'] - width)] = 1
         temp_no_buy_zone = temp_no_buy_zone.fillna(0)
         temp_no_sell_zone = temp_no_sell_zone.fillna(0)
         if i == 0:
