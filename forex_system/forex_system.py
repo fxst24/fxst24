@@ -11,7 +11,6 @@ import pandas as pd
 import shutil
 import smtplib
 import struct
-import sys
 import time
 
 from collections import OrderedDict
@@ -817,7 +816,7 @@ class ForexSystem(object):
 
         # 計算結果の保存先のパスを格納する。
         file_path = (self.path + '/tmp/i_diff_' + symbol + str(timeframe) + 
-            '_' + '.pkl')
+            '_' + str(shift) + '.pkl')
 
         # バックテストのとき、計算結果が保存されていれば復元する。
         if self.environment is None and os.path.exists(file_path) == True:
@@ -898,7 +897,7 @@ class ForexSystem(object):
 
         # 計算結果の保存先のパスを格納する。
         file_path = (self.path + '/tmp/i_hl_band_' + symbol + str(timeframe) +
-        '_' + '.pkl')
+        '_' + str(shift) + '.pkl')
 
         # バックテストのとき、計算結果が保存されていれば復元する。
         if self.environment is None and os.path.exists(file_path) == True:
@@ -1345,7 +1344,7 @@ class ForexSystem(object):
 
         # 計算結果の保存先のパスを格納する。
         file_path = (self.path + '/tmp/i_volume_' + symbol + str(timeframe) +
-            '_' + shift + '.pkl')
+            '_' + str(shift) + '.pkl')
 
         # バックテストのとき、
         if self.environment is None:
@@ -2599,37 +2598,37 @@ if __name__ == '__main__':
             '''
             exec(args[0])
 
-    # 開始時間を格納する。
-    start_time = time.time()
-
-    # 作業ディレクトリのパスを格納する（このファイルは作業ディレクトリ内にある）。
-    wd_path = os.path.dirname(__file__)
-
-    # もし実行開始時に一時フォルダが残っていたら削除する。
-    if os.path.exists(wd_path + '/tmp') == True:
+        # 開始時間を格納する。
+        start_time = time.time()
+    
+        # 作業ディレクトリのパスを格納する（このファイルは作業ディレクトリ内にある）。
+        wd_path = os.path.dirname(__file__)
+    
+        # もし実行開始時に一時フォルダが残っていたら削除する。
+        if os.path.exists(wd_path + '/tmp') == True:
+            shutil.rmtree(wd_path + '/tmp')
+    
+        # 一時フォルダを作成する。
+        os.mkdir(wd_path + '/tmp')
+    
+        # 引数を格納する。
+        args = args.func
+    
+        # 実行する。
+        func(args)
+    
+        # 一時フォルダを削除する。
         shutil.rmtree(wd_path + '/tmp')
-
-    # 一時フォルダを作成する。
-    os.mkdir(wd_path + '/tmp')
-
-    # 引数を格納する。
-    args = args.func
-
-    # 実行する。
-    func(args)
-
-    # 一時フォルダを削除する。
-    shutil.rmtree(wd_path + '/tmp')
-
-    # 終了時間を格納する。
-    end_time = time.time()
-
-    # 実行時間を出力する。
-    if end_time - start_time < 60.0:
-        print(
-            '実行時間は',
-            int(round(end_time - start_time)), '秒です。')
-    else:
-        print(
-            '実行時間は',
-            int(round((end_time - start_time) / 60.0)), '分です。')
+    
+        # 終了時間を格納する。
+        end_time = time.time()
+    
+        # 実行時間を出力する。
+        if end_time - start_time < 60.0:
+            print(
+                '実行時間は',
+                int(round(end_time - start_time)), '秒です。')
+        else:
+            print(
+                '実行時間は',
+                int(round((end_time - start_time) / 60.0)), '分です。')
