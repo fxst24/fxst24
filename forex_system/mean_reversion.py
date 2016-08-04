@@ -1,10 +1,11 @@
 # coding: utf-8
  
 import numpy as np
+import pandas as pd
 
 # パラメータの設定
-PERIOD = 20
-ENTRY_THRESHOLD = 1.0
+PERIOD = 10
+ENTRY_THRESHOLD = 1.5
 FILTER_THRESHOLD = 1.0
 PARAMETER = [PERIOD, ENTRY_THRESHOLD, FILTER_THRESHOLD]
 
@@ -46,14 +47,37 @@ def calc_signal(parameter, fs, symbol, timeframe, position, start=None,
     entry_threshold = float(parameter[1])
     filter_threshold = float(parameter[2])
 
+    # 買わない、または売らないゾーンを設ける。
+    close1 = fs.i_close(symbol, timeframe, 1)[start:end]
+    temp_no_buy_zone = pd.Series(index=close1.index)
+    temp_no_sell_zone = pd.Series(index=close1.index)
+    for i in range(4):
+        shift = int(2 + (1440 / timeframe * i))
+        hl_band2 = fs.i_hl_band(symbol, timeframe, int(1440 / timeframe),
+                                shift)[start:end]
+        temp_no_buy_zone[((close1>= hl_band2['low']) &
+            (close1 <= hl_band2['low'] + 0.1))] = 1
+        temp_no_sell_zone[(close1 <= hl_band2['high']) &
+            (close1 >= hl_band2['high'] - 0.1)] = 1
+        temp_no_buy_zone = temp_no_buy_zone.fillna(0)
+        temp_no_sell_zone = temp_no_sell_zone.fillna(0)
+        if i == 0:
+            no_buy_zone = temp_no_buy_zone
+            no_sell_zone = temp_no_sell_zone
+        else:
+            no_buy_zone = no_buy_zone + temp_no_buy_zone
+            no_sell_zone = no_sell_zone + temp_no_sell_zone
+    no_buy_zone = no_buy_zone.astype(int)
+    no_sell_zone = no_sell_zone.astype(int)
+
     # シグナルを計算する。
     z_score1 = fs.i_z_score(symbol, timeframe, period, 1)[start:end]
     bandwalk1 = fs.i_bandwalk(symbol, timeframe, period, 1)[start:end]
     longs_entry = (((z_score1 <= -entry_threshold) &
-        (bandwalk1 <= -filter_threshold)) * 1)
+        (bandwalk1 <= -filter_threshold) & (no_buy_zone == 0)) * 1)
     longs_exit = (z_score1 >= 0.0) * 1
     shorts_entry = (((z_score1 >= entry_threshold)
-        & (bandwalk1 >= filter_threshold)) * 1)
+        & (bandwalk1 >= filter_threshold) & (no_sell_zone == 0)) * 1)
     shorts_exit = (z_score1 <= 0.0) * 1
     longs = longs_entry.copy()
     longs[longs==0] = np.nan
@@ -67,8 +91,11 @@ def calc_signal(parameter, fs, symbol, timeframe, position, start=None,
         signal = longs
     elif position == 1:
         signal = shorts
-    else:  # position == 2
+    elif position == 2:
         signal = longs + shorts
+    else:
+        pass
+
     signal = signal.fillna(0)
     signal = signal.astype(int)
 
