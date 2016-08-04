@@ -1951,67 +1951,132 @@ class ForexSystem(object):
         print('timeframe = ', str(timeframe))
         print(report.iloc[:i+1, ])
 
-def convert_hst2csv():
+def convert_hst2csv(audcad=0, audchf=0, audjpy=0, audnzd=0, audusd=0, cadchf=0, 
+                    cadjpy=0, chfjpy=0, euraud=0, eurcad=0, eurchf=0, eurgbp=0,
+                    eurjpy=0, eurnzd=0, eurusd=0, gbpaud=0, gbpcad=0, gbpchf=0,
+                    gbpjpy=0, gbpnzd=0, gbpusd=0, nzdcad=0, nzdchf=0, nzdjpy=0,
+                    nzdusd=0, usdcad=0, usdchf=0, usdjpy=0):
     '''hstファイルをcsvファイルに変換する。
+          Args:
+              audcad: AUD/CAD。
+              以下略。
     '''
 
     for i in range(28):
         if i == 0:
+            if audcad == 0:
+                continue
             symbol = 'AUDCAD'
         elif i == 1:
+            if audchf == 0:
+                continue
             symbol = 'AUDCHF'
         elif i == 2:
+            if audjpy == 0:
+                continue
             symbol = 'AUDJPY'
         elif i == 3:
+            if audnzd == 0:
+                continue
             symbol = 'AUDNZD'
         elif i == 4:
+            if audusd == 0:
+                continue
             symbol = 'AUDUSD'
         elif i == 5:
+            if cadchf == 0:
+                continue
             symbol = 'CADCHF'
         elif i == 6:
+            if cadjpy == 0:
+                continue
             symbol = 'CADJPY'
         elif i == 7:
+            if chfjpy == 0:
+                continue
             symbol = 'CHFJPY'
         elif i == 8:
+            if euraud == 0:
+                continue
             symbol = 'EURAUD'
         elif i == 9:
+            if eurcad == 0:
+                continue
             symbol = 'EURCAD'
         elif i == 10:
+            if eurchf == 0:
+                continue
             symbol = 'EURCHF'
         elif i == 11:
+            if eurgbp == 0:
+                continue
             symbol = 'EURGBP'
         elif i == 12:
+            if eurjpy == 0:
+                continue
             symbol = 'EURJPY'
         elif i == 13:
+            if eurnzd == 0:
+                continue
             symbol = 'EURNZD'
         elif i == 14:
+            if eurusd == 0:
+                continue 
             symbol = 'EURUSD'
         elif i == 15:
+            if gbpaud == 0:
+                continue
             symbol = 'GBPAUD'
         elif i == 16:
+            if gbpcad == 0:
+                continue
             symbol = 'GBPCAD'
         elif i == 17:
+            if gbpchf == 0:
+                continue
             symbol = 'GBPCHF'
         elif i == 18:
+            if gbpjpy == 0:
+                continue
             symbol = 'GBPJPY'
         elif i == 19:
+            if gbpnzd == 0:
+                continue
             symbol = 'GBPNZD'
         elif i == 20:
+            if gbpusd == 0:
+                continue
             symbol = 'GBPUSD'
         elif i == 21:
+            if nzdcad == 0:
+                continue
             symbol = 'NZDCAD'
         elif i == 22:
+            if nzdchf == 0:
+                continue
             symbol = 'NZDCHF'
         elif i == 23:
+            if nzdjpy == 0:
+                continue
             symbol = 'NZDJPY'
         elif i == 24:
+            if nzdusd == 0:
+                continue
             symbol = 'NZDUSD'
         elif i == 25:
+            if usdcad == 0:
+                continue
             symbol = 'USDCAD'
         elif i == 26:
+            if usdchf == 0:
+                continue
             symbol = 'USDCHF'
-        else:
+        elif i == 27:
+            if usdjpy == 0:
+                continue
             symbol = 'USDJPY'
+        else:
+            pass
 
         # 端末のカレントディレクトリが「~」で、そこからの相対パスであることに注意する。
         filename_hst = '../historical_data/' + symbol + '.hst'
@@ -2050,68 +2115,142 @@ def convert_hst2csv():
         result = result.set_index('0_datetime')
         result.to_csv(filename_csv, header = False)
 
-def make_historical_data():
+def make_historical_data(audcad=0, audchf=0, audjpy=0, audnzd=0, audusd=0,
+                         cadchf=0, cadjpy=0, chfjpy=0, euraud=0, eurcad=0,
+                         eurchf=0, eurgbp=0, eurjpy=0, eurnzd=0, eurusd=0,
+                         gbpaud=0, gbpcad=0, gbpchf=0, gbpjpy=0, gbpnzd=0,
+                         gbpusd=0, nzdcad=0, nzdchf=0, nzdjpy=0, nzdusd=0,
+                         usdcad=0, usdchf=0, usdjpy=0):
     '''ヒストリカルデータを作成する。
+          Args:
+              audcad: AUD/CAD。
+              以下略。
     '''
+
+    data = pd.DataFrame()
 
     # csvファイルを読み込む。
     for i in range(28):
         if i == 0:
+            if audcad == 0:
+                continue
             symbol = 'AUDCAD'
         elif i == 1:
+            if audchf == 0:
+                continue
             symbol = 'AUDCHF'
         elif i == 2:
+            if audjpy == 0:
+                continue
             symbol = 'AUDJPY'
         elif i == 3:
+            if audnzd == 0:
+                continue
             symbol = 'AUDNZD'
         elif i == 4:
+            if audusd == 0:
+                continue
             symbol = 'AUDUSD'
         elif i == 5:
+            if cadchf == 0:
+                continue
             symbol = 'CADCHF'
         elif i == 6:
+            if cadjpy == 0:
+                continue
             symbol = 'CADJPY'
         elif i == 7:
+            if chfjpy == 0:
+                continue
             symbol = 'CHFJPY'
         elif i == 8:
+            if euraud == 0:
+                continue
             symbol = 'EURAUD'
         elif i == 9:
+            if eurcad == 0:
+                continue
             symbol = 'EURCAD'
         elif i == 10:
+            if eurchf == 0:
+                continue
             symbol = 'EURCHF'
         elif i == 11:
+            if eurgbp == 0:
+                continue
             symbol = 'EURGBP'
         elif i == 12:
+            if eurjpy == 0:
+                continue
             symbol = 'EURJPY'
         elif i == 13:
+            if eurnzd == 0:
+                continue
             symbol = 'EURNZD'
         elif i == 14:
+            if eurusd == 0:
+                continue 
             symbol = 'EURUSD'
         elif i == 15:
+            if gbpaud == 0:
+                continue
             symbol = 'GBPAUD'
         elif i == 16:
+            if gbpcad == 0:
+                continue
             symbol = 'GBPCAD'
         elif i == 17:
+            if gbpchf == 0:
+                continue
             symbol = 'GBPCHF'
         elif i == 18:
+            if gbpjpy == 0:
+                continue
             symbol = 'GBPJPY'
         elif i == 19:
+            if gbpnzd == 0:
+                continue
             symbol = 'GBPNZD'
         elif i == 20:
+            if gbpusd == 0:
+                continue
             symbol = 'GBPUSD'
         elif i == 21:
+            if nzdcad == 0:
+                continue
             symbol = 'NZDCAD'
         elif i == 22:
+            if nzdchf == 0:
+                continue
             symbol = 'NZDCHF'
         elif i == 23:
+            if nzdjpy == 0:
+                continue
             symbol = 'NZDJPY'
         elif i == 24:
+            if nzdusd == 0:
+                continue
             symbol = 'NZDUSD'
         elif i == 25:
+            if usdcad == 0:
+                continue
             symbol = 'USDCAD'
         elif i == 26:
+            if usdchf == 0:
+                continue
             symbol = 'USDCHF'
-        else:
+        elif i == 27:
+            if usdjpy == 0:
+                continue
             symbol = 'USDJPY'
+        else:
+            pass
+
+        # 選択した通貨ペアの数を数える。
+        n = (audcad + audchf + audjpy + audnzd + audusd + cadchf + cadjpy +
+             chfjpy + euraud + eurcad + eurchf + eurgbp + eurjpy + eurnzd +
+             eurusd + gbpaud + gbpcad + gbpchf + gbpjpy + gbpnzd + gbpusd +
+             nzdcad + nzdchf + nzdjpy + nzdusd + usdcad + usdchf + usdjpy)
 
         # 1分足の作成
         filename = '~/historical_data/' + symbol + '.csv'
@@ -2126,7 +2265,7 @@ def make_historical_data():
 
     # 列名を変更する。
     label = ['open', 'high', 'low', 'close', 'volume']
-    data.columns = label * 28
+    data.columns = label * n
 
     # リサンプリングの方法を設定する。
     ohlc_dict = OrderedDict()
@@ -2137,65 +2276,152 @@ def make_historical_data():
     ohlc_dict['volume'] = 'sum'
 
     # 各足を作成する。
+    count = 0
     for i in range(28):
         if i == 0:
+            if audcad == 0:
+                continue
             symbol = 'AUDCAD'
+            count = count + 1
         elif i == 1:
+            if audchf == 0:
+                continue
             symbol = 'AUDCHF'
+            count = count + 1
         elif i == 2:
+            if audjpy == 0:
+                continue
             symbol = 'AUDJPY'
+            count = count + 1
         elif i == 3:
+            if audnzd == 0:
+                continue
             symbol = 'AUDNZD'
+            count = count + 1
         elif i == 4:
+            if audusd == 0:
+                continue
             symbol = 'AUDUSD'
+            count = count + 1
         elif i == 5:
+            if cadchf == 0:
+                continue
             symbol = 'CADCHF'
+            count = count + 1
         elif i == 6:
+            if cadjpy == 0:
+                continue
             symbol = 'CADJPY'
+            count = count + 1
         elif i == 7:
+            if chfjpy == 0:
+                continue
             symbol = 'CHFJPY'
+            count = count + 1
         elif i == 8:
+            if euraud == 0:
+                continue
             symbol = 'EURAUD'
+            count = count + 1
         elif i == 9:
+            if eurcad == 0:
+                continue
             symbol = 'EURCAD'
+            count = count + 1
         elif i == 10:
+            if eurchf == 0:
+                continue
             symbol = 'EURCHF'
+            count = count + 1
         elif i == 11:
+            if eurgbp == 0:
+                continue
             symbol = 'EURGBP'
+            count = count + 1
         elif i == 12:
+            if eurjpy == 0:
+                continue
             symbol = 'EURJPY'
+            count = count + 1
         elif i == 13:
+            if eurnzd == 0:
+                continue
             symbol = 'EURNZD'
+            count = count + 1
         elif i == 14:
+            if eurusd == 0:
+                continue 
             symbol = 'EURUSD'
+            count = count + 1
         elif i == 15:
+            if gbpaud == 0:
+                continue
             symbol = 'GBPAUD'
+            count = count + 1
         elif i == 16:
+            if gbpcad == 0:
+                continue
             symbol = 'GBPCAD'
+            count = count + 1
         elif i == 17:
+            if gbpchf == 0:
+                continue
             symbol = 'GBPCHF'
+            count = count + 1
         elif i == 18:
+            if gbpjpy == 0:
+                continue
             symbol = 'GBPJPY'
+            count = count + 1
         elif i == 19:
+            if gbpnzd == 0:
+                continue
             symbol = 'GBPNZD'
+            count = count + 1
         elif i == 20:
+            if gbpusd == 0:
+                continue
             symbol = 'GBPUSD'
+            count = count + 1
         elif i == 21:
+            if nzdcad == 0:
+                continue
             symbol = 'NZDCAD'
+            count = count + 1
         elif i == 22:
+            if nzdchf == 0:
+                continue
             symbol = 'NZDCHF'
+            count = count + 1
         elif i == 23:
+            if nzdjpy == 0:
+                continue
             symbol = 'NZDJPY'
+            count = count + 1
         elif i == 24:
+            if nzdusd == 0:
+                continue
             symbol = 'NZDUSD'
+            count = count + 1
         elif i == 25:
+            if usdcad == 0:
+                continue
             symbol = 'USDCAD'
+            count = count + 1
         elif i == 26:
+            if usdchf == 0:
+                continue
             symbol = 'USDCHF'
-        else:
+            count = count + 1
+        elif i == 27:
+            if usdjpy == 0:
+                continue
             symbol = 'USDJPY'
+            count = count + 1
+        else:
+            pass
  
-        data1 = data.iloc[:, 0+(5*i): 5+(5*i)]
+        data1 = data.iloc[:, 0+(5*(count-1)): 5+(5*(count-1))]
 
         # 欠損値を補間する。
         data1 = data1.fillna(method='ffill')
