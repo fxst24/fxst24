@@ -1,12 +1,11 @@
 # coding: utf-8
 
 import numpy as np
-import pandas as pd
 
 # パラメータの設定
 PERIOD = 10
 ENTRY_THRESHOLD = 0.5
-FILTER_THRESHOLD = 0.5
+FILTER_THRESHOLD = 1.0
 
 # 最適化の設定
 START_PERIOD = 10
@@ -73,35 +72,6 @@ def calc_signal(parameter, fs, symbol, timeframe, position, start=None,
     else:
         nzd = 0.0
 
-    # 買わない、または売らないゾーンを設ける。
-    close1 = fs.i_close(symbol, timeframe, 1)[start:end]
-    temp_no_buy_zone = pd.Series(index=close1.index)
-    temp_no_sell_zone = pd.Series(index=close1.index)
-    if (symbol == 'AUDJPY' or symbol == 'CADJPY' or symbol == 'CHFJPY' or
-        symbol == 'EURJPY' or symbol == 'GBPJPY' or symbol == 'NZDJPY' or
-        symbol == 'USDJPY'):
-        width = 0.1
-    else:
-        width = 0.001
-    for i in range(4):
-        shift = int(2 + (1440 / timeframe * i))
-        hl_band2 = fs.i_hl_band(symbol, timeframe, int(1440 / timeframe),
-                                shift)[start:end]
-        temp_no_buy_zone[((close1>= hl_band2['low']) &
-            (close1 <= hl_band2['low'] + width))] = 1
-        temp_no_sell_zone[(close1 <= hl_band2['high']) &
-            (close1 >= hl_band2['high'] - width)] = 1
-        temp_no_buy_zone = temp_no_buy_zone.fillna(0)
-        temp_no_sell_zone = temp_no_sell_zone.fillna(0)
-        if i == 0:
-            no_buy_zone = temp_no_buy_zone
-            no_sell_zone = temp_no_sell_zone
-        else:
-            no_buy_zone = no_buy_zone + temp_no_buy_zone
-            no_sell_zone = no_sell_zone + temp_no_sell_zone
-    no_buy_zone = no_buy_zone.astype(int)
-    no_sell_zone = no_sell_zone.astype(int)
-
     # シグナルを計算する。
     z_score1 = fs.i_z_score(symbol, timeframe, period, 1)[start:end]
     bandwalk1 = fs.i_bandwalk(symbol, timeframe, period, 1)[start:end]
@@ -109,19 +79,23 @@ def calc_signal(parameter, fs, symbol, timeframe, position, start=None,
         chf=chf, eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)[start:end])
     ku_bandwalk1 = (fs.i_ku_bandwalk(timeframe, period, 1, aud=aud, cad=cad,
         chf=chf, eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)[start:end])
+    stop_hunting_zone = fs.i_stop_hunting_zone(symbol, timeframe,
+        int(1440 / timeframe), 0.05, 1, 1)[start:end]
     can_buy = ((ku_z_score1[base] <= -entry_threshold) &
         (ku_z_score1[quote] >= entry_threshold) &
         (ku_bandwalk1[base] <= -filter_threshold) &
-        (ku_bandwalk1[quote] >= filter_threshold))
+        (ku_bandwalk1[quote] >= filter_threshold) &
+        (stop_hunting_zone['lower'] == False))
     longs_entry = (((z_score1 <= -entry_threshold) &
-        (bandwalk1 <= -filter_threshold) & (can_buy == True) & (no_buy_zone == 0)) * 1)
+        (bandwalk1 <= -filter_threshold) & (can_buy == True)) * 1)
     longs_exit = (z_score1 >= 0.0) * 1
     can_sell = ((ku_z_score1[base] >= entry_threshold) &
         (ku_z_score1[quote] <= -entry_threshold) &
         (ku_bandwalk1[base] >= filter_threshold) &
-        (ku_bandwalk1[quote] <= -filter_threshold))
+        (ku_bandwalk1[quote] <= -filter_threshold) &
+        (stop_hunting_zone['upper'] == False))
     shorts_entry = (((z_score1 >= entry_threshold)
-        & (bandwalk1 >= filter_threshold) & (can_sell == True) & (no_sell_zone == 0)) * 1)
+        & (bandwalk1 >= filter_threshold) & (can_sell == True)) * 1)
     shorts_exit = (z_score1 <= 0.0) * 1
     longs = longs_entry.copy()
     longs[longs==0] = np.nan

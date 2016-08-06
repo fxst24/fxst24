@@ -174,7 +174,7 @@ class ForexSystem(object):
         report['parameter'] = str(parameter)
 
         # グラフを出力する。
-        plt.show()
+        plt.show(graph)
         plt.close()
 
         # レポートを出力する。
@@ -779,7 +779,7 @@ class ForexSystem(object):
             else:
                 filename = ('~/historical_data/' + symbol + str(timeframe) +
                     '.csv')
-                temp = pd.read_csv( filename, index_col=0, header=0)
+                temp = pd.read_csv(filename, index_col=0, header=0)
                 index = pd.to_datetime(temp.index)
                 temp.index = index
                 close = temp.iloc[:, 3]
@@ -859,7 +859,7 @@ class ForexSystem(object):
             else:
                 filename = ('~/historical_data/' + symbol + str(timeframe) +
                     '.csv')
-                temp = pd.read_csv( filename, index_col=0, header=0)
+                temp = pd.read_csv(filename, index_col=0, header=0)
                 index = pd.to_datetime(temp.index)
                 temp.index = index
                 high = temp.iloc[:, 1]
@@ -1258,7 +1258,7 @@ class ForexSystem(object):
             else:
                 filename = ('~/historical_data/' + symbol + str(timeframe) +
                     '.csv')
-                temp = pd.read_csv( filename, index_col=0, header=0)
+                temp = pd.read_csv(filename, index_col=0, header=0)
                 index = pd.to_datetime(temp.index)
                 temp.index = index
                 low = temp.iloc[:, 2]
@@ -1307,7 +1307,7 @@ class ForexSystem(object):
             else:
                 filename = ('~/historical_data/' + symbol + str(timeframe) +
                     '.csv')
-                temp = pd.read_csv( filename, index_col=0, header=0)
+                temp = pd.read_csv(filename, index_col=0, header=0)
                 index = pd.to_datetime(temp.index)
                 temp.index = index
                 op = temp.iloc[:, 0]
@@ -1331,6 +1331,68 @@ class ForexSystem(object):
             op = op.shift(shift)
 
         return op
+
+    def i_stop_hunting_zone(self, symbol, timeframe, period, percent, n,
+                            shift):
+        '''ストップ狩りのゾーンにあるか否かを返す。
+          Args:
+              symbol: 通貨ペア名。
+              timeframe: タイムフレーム。
+              period: 計算期間。
+              percent: 終値に対するパーセント。
+              n: 直近n回分。
+              shift: シフト。
+          Returns:
+              ストップ狩りのゾーンにあるか否か。
+        '''
+
+        # 計算結果の保存先のパスを格納する。
+        file_path = (self.path + '/tmp/i_stop_hunting_zone_' + symbol +
+            str(timeframe) + '_' + str(period) + '_' + str(percent) + '_'
+            + str(n) + '_' + str(shift) + '.pkl')
+
+        # バックテストのとき、計算結果が保存されていれば復元する。
+        if self.environment is None and os.path.exists(file_path) == True:
+            stop_hunting_zone = joblib.load(file_path)
+
+        # さもなければ計算する。
+        else:
+            # 割合を値幅に変換する。
+            close0 = self.i_close(symbol, timeframe, shift)
+            width = close0 * (percent / 100)
+        
+            # 上側、下側ゾーンを設ける。
+            temp_upper_zone = pd.Series(index=close0.index)
+            temp_lower_zone = pd.Series(index=close0.index)
+    
+            for i in range(n):
+                shift_n = int(shift + 1 + period * i)
+                hl_band1 = fs.i_hl_band(symbol, timeframe, period, shift_n)
+                temp_upper_zone[(close0 <= hl_band1['high']) &
+                    (close0 >= hl_band1['high'] - width)] = 1
+                temp_lower_zone[((close0>= hl_band1['low']) &
+                    (close0 <= hl_band1['low'] + width))] = 1
+                temp_upper_zone = temp_upper_zone.fillna(0)
+                temp_lower_zone = temp_lower_zone.fillna(0)
+                if i == 0:
+                    upper_zone = temp_upper_zone
+                    lower_zone = temp_lower_zone
+                else:
+                    upper_zone = upper_zone + temp_upper_zone
+                    lower_zone = lower_zone + temp_lower_zone
+     
+            upper_zone = upper_zone.astype(bool)
+            lower_zone = lower_zone.astype(bool)
+    
+            stop_hunting_zone = pd.DataFrame()
+            stop_hunting_zone['upper'] = upper_zone
+            stop_hunting_zone['lower'] = lower_zone
+
+            # バックテストのとき、計算結果を保存する。
+            if self.environment is None:
+                joblib.dump(stop_hunting_zone, file_path)
+
+        return stop_hunting_zone
 
     def i_volume(self, symbol, timeframe, shift):
         '''出来高を返す。
@@ -1940,7 +2002,7 @@ class ForexSystem(object):
         report.iloc[i][10] = ''
 
         # グラフを出力する。
-        plt.show()
+        plt.show(graph)
         plt.close()
 
         # レポートを出力する。
