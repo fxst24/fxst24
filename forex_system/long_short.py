@@ -4,8 +4,8 @@ import numpy as np
 
 # パラメータの設定
 PERIOD = 10
-ENTRY_THRESHOLD = 0.5
-FILTER_THRESHOLD = 1.0
+ENTRY_THRESHOLD = 1.0
+FILTER_THRESHOLD = 0.5
 
 # 最適化の設定
 START_PERIOD = 10
@@ -77,22 +77,16 @@ def calc_signal(parameter, fs, symbol, timeframe, position, start=None,
     bandwalk1 = fs.i_bandwalk(symbol, timeframe, period, 1)[start:end]
     ku_z_score1 = (fs.i_ku_z_score(timeframe, period, 1, aud=aud, cad=cad,
         chf=chf, eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)[start:end])
-    ku_bandwalk1 = (fs.i_ku_bandwalk(timeframe, period, 1, aud=aud, cad=cad,
-        chf=chf, eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)[start:end])
     stop_hunting_zone = fs.i_stop_hunting_zone(symbol, timeframe,
-        int(1440 / timeframe), 0.05, 1, 1)[start:end]
+        int(1440 / timeframe), 1)[start:end]
     can_buy = ((ku_z_score1[base] <= -entry_threshold) &
         (ku_z_score1[quote] >= entry_threshold) &
-        (ku_bandwalk1[base] <= -filter_threshold) &
-        (ku_bandwalk1[quote] >= filter_threshold) &
         (stop_hunting_zone['lower'] == False))
     longs_entry = (((z_score1 <= -entry_threshold) &
         (bandwalk1 <= -filter_threshold) & (can_buy == True)) * 1)
     longs_exit = (z_score1 >= 0.0) * 1
     can_sell = ((ku_z_score1[base] >= entry_threshold) &
         (ku_z_score1[quote] <= -entry_threshold) &
-        (ku_bandwalk1[base] >= filter_threshold) &
-        (ku_bandwalk1[quote] <= -filter_threshold) &
         (stop_hunting_zone['upper'] == False))
     shorts_entry = (((z_score1 >= entry_threshold)
         & (bandwalk1 >= filter_threshold) & (can_sell == True)) * 1)

@@ -49,7 +49,7 @@ def calc_signal(parameter, fs, symbol, timeframe, position, start=None,
     z_score1 = fs.i_z_score(symbol, timeframe, period, 1)[start:end]
     bandwalk1 = fs.i_bandwalk(symbol, timeframe, period, 1)[start:end]
     stop_hunting_zone = fs.i_stop_hunting_zone(symbol, timeframe,
-        int(1440 / timeframe), 0.05, 1, 1)[start:end]
+        int(1440 / timeframe), 1)[start:end]
     longs_entry = (((z_score1 <= -entry_threshold) &
         (bandwalk1 <= -filter_threshold) &
         (stop_hunting_zone['lower'] == False)) * 1)

@@ -1332,15 +1332,12 @@ class ForexSystem(object):
 
         return op
 
-    def i_stop_hunting_zone(self, symbol, timeframe, period, percent, n,
-                            shift):
+    def i_stop_hunting_zone(self, symbol, timeframe, period, shift):
         '''ストップ狩りのゾーンにあるか否かを返す。
           Args:
               symbol: 通貨ペア名。
               timeframe: タイムフレーム。
               period: 計算期間。
-              percent: 終値に対するパーセント。
-              n: 直近n回分。
               shift: シフト。
           Returns:
               ストップ狩りのゾーンにあるか否か。
@@ -1348,8 +1345,7 @@ class ForexSystem(object):
 
         # 計算結果の保存先のパスを格納する。
         file_path = (self.path + '/tmp/i_stop_hunting_zone_' + symbol +
-            str(timeframe) + '_' + str(period) + '_' + str(percent) + '_'
-            + str(n) + '_' + str(shift) + '.pkl')
+            str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
 
         # バックテストのとき、計算結果が保存されていれば復元する。
         if self.environment is None and os.path.exists(file_path) == True:
@@ -1357,42 +1353,73 @@ class ForexSystem(object):
 
         # さもなければ計算する。
         else:
-            # 割合を値幅に変換する。
+            if (symbol == 'AUDJPY' or symbol == 'CADJPY' or
+                symbol == 'CHFJPY' or symbol == 'EURJPY' or
+                symbol == 'GBPJPY' or symbol == 'NZDJPY' or
+                symbol == 'USDJPY'):
+                n = 10
+            else:
+                n = 1000
+                
             close0 = self.i_close(symbol, timeframe, shift)
-            width = close0 * (percent / 100)
-        
-            # 上側、下側ゾーンを設ける。
-            temp_upper_zone = pd.Series(index=close0.index)
-            temp_lower_zone = pd.Series(index=close0.index)
-    
-            for i in range(n):
-                shift_n = int(shift + 1 + period * i)
-                hl_band1 = fs.i_hl_band(symbol, timeframe, period, shift_n)
-                temp_upper_zone[(close0 <= hl_band1['high']) &
-                    (close0 >= hl_band1['high'] - width)] = 1
-                temp_lower_zone[((close0>= hl_band1['low']) &
-                    (close0 <= hl_band1['low'] + width))] = 1
-                temp_upper_zone = temp_upper_zone.fillna(0)
-                temp_lower_zone = temp_lower_zone.fillna(0)
-                if i == 0:
-                    upper_zone = temp_upper_zone
-                    lower_zone = temp_lower_zone
-                else:
-                    upper_zone = upper_zone + temp_upper_zone
-                    lower_zone = lower_zone + temp_lower_zone
-     
-            upper_zone = upper_zone.astype(bool)
-            lower_zone = lower_zone.astype(bool)
-    
-            stop_hunting_zone = pd.DataFrame()
-            stop_hunting_zone['upper'] = upper_zone
-            stop_hunting_zone['lower'] = lower_zone
+            hl_band1 = self.i_hl_band(symbol, timeframe, period, shift + 1)
 
+            high_ceil = np.ceil(hl_band1['high'] * n) / n
+            high_floor = np.floor(hl_band1['high'] * n) / n
+            low_ceil = np.ceil(hl_band1['low'] * n) / n
+            low_floor = np.floor(hl_band1['low'] * n) / n
+
+            upper = pd.Series(index=close0.index)
+            lower = pd.Series(index=close0.index)
+            upper[(close0 >= high_floor) & (close0 <= high_ceil)] = 1
+            lower[(close0 >= low_floor) & (close0 <= low_ceil)] = 1
+
+            stop_hunting_zone = pd.DataFrame(index=close0.index)
+            stop_hunting_zone['upper'] = upper
+            stop_hunting_zone['lower'] = lower
+
+            stop_hunting_zone = stop_hunting_zone.fillna(0)
+            stop_hunting_zone = stop_hunting_zone.astype(bool)
+    
             # バックテストのとき、計算結果を保存する。
             if self.environment is None:
                 joblib.dump(stop_hunting_zone, file_path)
 
         return stop_hunting_zone
+
+    def i_vix4fx(self, symbol, timeframe, shift):
+        '''1ヶ月当たりのボラティリティの予測値を返す。
+          Args:
+              symbol: 通貨ペア名。
+              timeframe: タイムフレーム。
+              shift: シフト。
+          Returns:
+              1ヶ月当たりのボラティリティの予測値。
+        '''
+
+        # 計算結果の保存先のパスを格納する。
+        file_path = (self.path + '/tmp/i_vix4fx_' + symbol +
+            str(timeframe) + '_' + str(shift) + '.pkl')
+
+        # バックテストのとき、計算結果が保存されていれば復元する。
+        if self.environment is None and os.path.exists(file_path) == True:
+            vix4fx = joblib.load(file_path)
+
+        # さもなければ計算する。
+        else:
+            period = int(31307.142857143 / timeframe)
+            close = self.i_close(symbol, timeframe, shift)
+            close = np.log(close)
+            change = close - close.shift(1)
+            std = change.rolling(window=period).std()
+            std_std = std.rolling(window=period).std()
+            vix4fx = np.sqrt(period) * (std+std_std) * 100
+
+            # バックテストのとき、計算結果を保存する。
+            if self.environment is None:
+                joblib.dump(vix4fx, file_path)
+
+        return vix4fx
 
     def i_volume(self, symbol, timeframe, shift):
         '''出来高を返す。
