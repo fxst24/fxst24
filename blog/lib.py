@@ -1058,3 +1058,31 @@ def entry281(*args):
     print("1時間足のボラティリティ = ", vola60)
     print("4時間足のボラティリティ = ", vola240)
     print("日足のボラティリティ = ", vola1440)
+
+# http://fxst24.blog.fc2.com/blog-entry-281.html
+def entry285(*args):
+    '''VIX（FX版）を計算する。
+      Args:
+          *args: 可変長引数。
+    '''
+
+    symbol = args[0]  # 通貨ペア
+    timeframe = args[1]  # タイムフレーム。
+    start_year = int(args[2])  # 開始年
+    start_month = int(args[3])  # 開始月
+    start_day = int(args[4])  # 開始日
+    end_year = int(args[5])  # 終了年
+    end_month = int(args[6])  # 終了月
+    end_day = int(args[7])  # 終了日
+
+    start = datetime(start_year, start_month, start_day, 0, 0)
+    end = datetime(end_year, end_month, end_day, 23, 59)
+ 
+    # VIX（FX版）を計算する。
+    fs = forex_system.ForexSystem()
+    vix4fx = fs.i_vix4fx(symbol, timeframe, 1)[start:end]
+
+    # グラフを表示する。
+    graph = vix4fx.plot()
+    plt.show(graph)
+    plt.close()

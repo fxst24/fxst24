@@ -1407,7 +1407,8 @@ class ForexSystem(object):
 
         # さもなければ計算する。
         else:
-            period = int(31307.142857143 / timeframe)
+            # 365.25 / 12 * 5 / 7 * 1440 = 31307.142857142855
+            period = int(31307.142857142855 / timeframe)
             close = self.i_close(symbol, timeframe, shift)
             close = np.log(close)
             change = close - close.shift(1)
