@@ -1080,9 +1080,12 @@ def entry285(*args):
  
     # VIX（FX版）を計算する。
     fs = forex_system.ForexSystem()
-    vix4fx = fs.i_vix4fx(symbol, timeframe, 1)[start:end]
+    vix4fx = fs.i_vix4fx(symbol, timeframe, 0)[start:end]
 
     # グラフを表示する。
     graph = vix4fx.plot()
+    graph.set_title('VIX ' + '(data: ' + symbol + str(timeframe) + ')')
+    graph.set_xlabel('date')
+    graph.set_ylabel('vix')
     plt.show(graph)
     plt.close()
