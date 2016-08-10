@@ -11,6 +11,7 @@ from datetime import datetime
 from numba import float64, jit
 from pandas_datareader import data as web
 from scipy.optimize import curve_fit
+from scipy.integrate import quad
 
 # 複数の記事で使われる関数
 def calc_bandwalk_std(period, n):
@@ -153,7 +154,6 @@ def entry251():
     # ヒストリカルデータの開始日と終了日を設定する。
     start = datetime(2010, 1, 1)
     end = datetime(2015, 10, 1)
-     
     # ヒストリカルデータをダウンロードする。
     snp = web.DataReader('^GSPC', 'yahoo', start, end)
     nyse = web.DataReader('^NYA', 'yahoo', start, end)
@@ -1059,8 +1059,8 @@ def entry281(*args):
     print("4時間足のボラティリティ = ", vola240)
     print("日足のボラティリティ = ", vola1440)
 
-# http://fxst24.blog.fc2.com/blog-entry-281.html
-def entry285(*args):
+# http://fxst24.blog.fc2.com/blog-entry-285.html
+def entry285a(*args):
     '''VIX（FX版）を計算する。
       Args:
           *args: 可変長引数。
@@ -1089,3 +1089,109 @@ def entry285(*args):
     graph.set_ylabel('vix')
     plt.show(graph)
     plt.close()
+
+# http://fxst24.blog.fc2.com/blog-entry-285.html
+def entry285b(*args):
+    '''モデル・フリー・インプライド・ボラティリティについて検証する。
+      Args:
+          *args: 可変長引数。
+    '''
+
+    def calc_mfiv(s, t, r, q, sigma):
+        '''モデル・フリー・インプライド・ボラティリティを計算する。
+            Args:
+                s: 現在価格。
+                t: 満期までの時間（年単位）。
+                r: 無リスク利子率。
+                q: 配当利回り。
+                sigma: ボラティリティ。
+            Returns:
+                  モデル・フリー・インプライド・ボラティリティ。
+        '''
+    
+        def calc_call(s, k, t, r, q, sigma):
+            '''ブラックショールズ方程式を使ってコールオプション価格を計算する。
+                Args:
+                    s: 現在価格。
+                    k: 行使価格。
+                    t: 満期までの時間（年単位）。
+                    r: 無リスク利子率。
+                    q: 配当利回り。
+                    sigma: ボラティリティ。
+                Returns:
+                      コールオプション価格。
+            '''
+        
+            def calc_n(x):
+                integral, abserr = quad(lambda y:np.exp(-y**2/2), -np.inf, x)
+                n = 1 / np.sqrt(2 * np.pi) * integral
+                return n
+            
+            def calc_d1(s, k, t, r, q, sigma):
+                d1 = ((np.log(s / k) + (r - q + sigma**2 / 2) * t) /
+                    (sigma * np.sqrt(t)))
+                return d1
+            
+            def calc_d2(s, k, t, r, q, sigma):
+                d2 = ((np.log(s / k) + (r - q - sigma**2 / 2) * t) /
+                    (sigma * np.sqrt(t)))
+                return d2
+        
+            d1 = calc_d1(s, k, t, r, q, sigma)
+            d2 = calc_d2(s, k, t, r, q, sigma)
+        
+            call = (np.exp(-q*t) * s * calc_n(d1) - k * np.exp(-r*t) *
+                calc_n(d2))
+        
+            return call
+    
+        def calc_put(s, k, t, r, q, sigma):
+            '''ブラックショールズ方程式を使ってプットオプション価格を計算する。
+                Args:
+                    s: 現在価格。
+                    k: 行使価格。
+                    t: 満期までの時間（年単位）。
+                    r: 無リスク利子率。
+                    q: 配当利回り。
+                    sigma: ボラティリティ。
+                Returns:
+                      プットオプション価格。
+            '''
+        
+            def calc_n(x):
+                integral, abserr = quad(lambda y:np.exp(-y**2/2), -np.inf, x)
+                n = 1 / np.sqrt(2 * np.pi) * integral
+                return n
+            
+            def calc_d1(s, k, t, r, q, sigma):
+                d1 = ((np.log(s / k) + (r - q + sigma**2 / 2) * t) /
+                    (sigma * np.sqrt(t)))
+                return d1
+            
+            def calc_d2(s, k, t, r, q, sigma):
+                d2 = ((np.log(s / k) + (r - q - sigma**2 / 2) * t) /
+                    (sigma * np.sqrt(t)))
+                return d2
+        
+            d1 = calc_d1(s, k, t, r, q, sigma)
+            d2 = calc_d2(s, k, t, r, q, sigma)
+        
+            put = (np.exp(-q*t) * (-s) * calc_n(-d1) + k * np.exp(-r*t) *
+                calc_n(-d2))
+        
+            return put
+    
+        f = s * (1 + r * t)
+        integral1, abserr = quad(lambda k:calc_put(s, k, t, r, q, sigma) / (k**2), 0, f)
+        integral2, abserr = quad(lambda k:calc_call(s, k, t, r, q, sigma) / (k**2), f, np.inf)
+        mfiv = 2 * np.exp(r * t) * (integral1 + integral2)
+        mfiv = np.sqrt(mfiv)
+        return mfiv
+
+    s = float(args[0])
+    t = float(args[1])
+    r = float(args[2])
+    q = float(args[3])
+    sigma = float(args[4])
+    mfiv = calc_mfiv(s, t, r, q, sigma)
+    print('mfiv = ', mfiv)

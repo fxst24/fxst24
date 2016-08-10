@@ -20,6 +20,7 @@ from email.mime.text import MIMEText
 from numba import float64, int64, jit
 from scipy import optimize
 from sklearn.externals import joblib
+from sympy import integrate
 
 # Spyderのバグ（？）で警告が出るので無視する。
 import warnings
@@ -1407,14 +1408,12 @@ class ForexSystem(object):
 
         # さもなければ計算する。
         else:
-            # 365.25 / 12 * 5 / 7 * 1440 = 31307.142857142855
-            period = int(31307.142857142855 / timeframe)
+            # 365 / 12 * 5 / 7 * 1440 = 31285.71428571429
+            maturity = int(31285.71428571429 / timeframe)
             close = self.i_close(symbol, timeframe, shift)
-            close = np.log(close)
-            change = close - close.shift(1)
-            std = change.rolling(window=period).std()
-            std_std = std.rolling(window=period).std()
-            vix4fx = np.sqrt(period) * (std+std_std) * 100
+            change = np.log(close / close.shift(1))
+            vix4fx = (change.rolling(window=maturity).std() *
+                np.sqrt(maturity) * 100.0)
 
             # バックテストのとき、計算結果を保存する。
             if self.environment is None:
