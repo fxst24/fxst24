@@ -160,7 +160,7 @@ def entry251():
     djia = web.DataReader('^DJI', 'yahoo', start, end)
     nikkei = web.DataReader('^N225', 'yahoo', start, end)
     hangseng = web.DataReader('000001.SS', 'yahoo', start, end)
-    ftse = web.DataReader('^FTSE', 'yahoo', start, end)
+    ftse = web.DataReader('ISF.L', 'yahoo', start, end)  # ETFで代用。
     dax = web.DataReader('^GDAXI', 'yahoo', start, end)
     aord = web.DataReader('^AORD', 'yahoo', start, end)
      
@@ -523,7 +523,7 @@ def entry255():
       
     # ヒストリカルデータをダウンロードする。
     snp = web.DataReader('^GSPC', 'yahoo', start, end)
-    ftse = web.DataReader('^FTSE', 'yahoo', start, end)
+    ftse = web.DataReader('ISF.L', 'yahoo', start, end)  # ETFで代用。
 
     # 終値を格納する。
     closing_data = pd.DataFrame()
@@ -1182,8 +1182,10 @@ def entry285b(*args):
             return put
     
         f = s * (1 + r * t)
-        integral1, abserr = quad(lambda k:calc_put(s, k, t, r, q, sigma) / (k**2), 0, f)
-        integral2, abserr = quad(lambda k:calc_call(s, k, t, r, q, sigma) / (k**2), f, np.inf)
+        integral1, abserr = quad(lambda k:calc_put(s, k, t, r, q, sigma) /
+            (k**2), 0, f)
+        integral2, abserr = quad(lambda k:calc_call(s, k, t, r, q, sigma) /
+            (k**2), f, np.inf)
         mfiv = 2 * np.exp(r * t) * (integral1 + integral2)
         mfiv = np.sqrt(mfiv)
         return mfiv
