@@ -1,5 +1,7 @@
 # coding: utf-8
- 
+
+import argparse
+import forex_system as fs
 import numpy as np
 
 # パラメータの設定
@@ -24,22 +26,21 @@ RRANGES = (
     slice(START_FILTER_THRESHOLD, END_FILTER_THRESHOLD, STEP_FILTER_THRESHOLD),
 )
  
-def calc_signal(parameter, fs, symbol, timeframe, position, start=None,
-                end=None, spread=0, optimization=0, min_trade=0):
+def calc_signal(parameter, symbol, timeframe, start, end, spread, optimization,
+                position, min_trade):
     '''シグナルを計算する。
-      Args:
-          parameter: 最適化したパラメータ。
-          fs: ForexSystemクラスのインスタンス。
-          symbol: 通貨ペア名。
-          timeframe: タイムフレーム。
-          position: ポジションの設定。
-          start: 開始年月日。
-          end: 終了年月日。
-          spread: スプレッド。
-          optimization: 最適化の設定。
-          min_trade: 最低トレード数。
-      Returns:
-          シグナル。
+    Args:
+        parameter: 最適化したパラメータ。
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        start: 開始年月日。
+        end: 終了年月日。
+        spread: スプレッド。
+        optimization: 最適化の設定。
+        position: ポジションの設定。
+        min_trade: 最低トレード数。
+    Returns:
+        シグナル。
     '''
     period = int(parameter[0])
     entry_threshold = float(parameter[1])
@@ -79,3 +80,7 @@ def calc_signal(parameter, fs, symbol, timeframe, position, start=None,
     signal = signal.astype(int)
 
     return signal
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    fs.forex_system(calc_signal, parser, PARAMETER, RRANGES)
