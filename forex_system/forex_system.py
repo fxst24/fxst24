@@ -26,10 +26,11 @@ warnings.simplefilter(action = 'ignore', category = RuntimeWarning)
 MODE = None
 
 # OANDA API用に設定する。
+OANDA = None
 ENVIRONMENT = None
 ACCESS_TOKEN = None
+ACCOUNT_ID = None
 COUNT = 500
-OANDA = None
 
 # 許容誤差を設定する。
 EPS = 1.0e-5
@@ -682,7 +683,9 @@ def forex_system(calc_signal, parser, parameter, rranges):
     parser.add_argument('--min_trade', type=int, default=260)
     parser.add_argument('--in_sample_period', type=int, default=360)
     parser.add_argument('--out_of_sample_period', type=int, default=30)
+    parser.add_argument('--lots', type=float, default=0.1)
     parser.add_argument('--mail', type=int, default=0)
+    parser.add_argument('--mt4', type=int, default=0)
 
     args = parser.parse_args()
 
@@ -1621,6 +1624,40 @@ def minute():
 
     return minute
 
+def order_close(ticket):
+    '''決済注文を送信する。
+    Args:
+        ticket: チケット番号。
+    '''
+    OANDA.close_trade(ACCOUNT_ID, ticket)
+ 
+def order_send(symbol, lots, side):
+    '''新規注文を送信する。
+    Args:
+        symbol: 通貨ペア名。
+        lots: ロット数。
+        side: 売買の種別
+    Returns:
+        チケット番号。
+    '''
+    # 通貨ペアの名称を変換する。
+    instrument = convert_symbol2instrument(symbol)
+    response = OANDA.create_order(account_id=ACCOUNT_ID, instrument=instrument,
+        units=int(lots*10000), side=side, type='market')
+    ticket = response['tradeOpened']['id']
+
+    return ticket
+
+def orders_total():
+    '''オーダー総数を計算する。
+    Returns:
+        オーダー総数。
+    '''
+    positions = OANDA.get_positions(ACCOUNT_ID)
+    total = len(positions['positions'])
+
+    return total
+
 def seconds():
     '''現在の秒を返す。
     Returns:
@@ -1671,10 +1708,11 @@ def trade(calc_signal, args, parameter, strategy):
         parameter: デフォルトのパラメータ。
         strategy: 戦略名。
     '''
-
+    # グローバル変数を設定する。
+    global OANDA
     global ENVIRONMENT
     global ACCESS_TOKEN
-    global OANDA
+    global ACCOUNT_ID
 
     symbol = args.symbol
     timeframe = args.timeframe
@@ -1684,7 +1722,9 @@ def trade(calc_signal, args, parameter, strategy):
     optimization = args.optimization
     position = args.position
     min_trade = args.min_trade
+    lots = args.lots
     mail = args.mail
+    mt4 = args.mt4
 
     path = os.path.dirname(__file__)
     config = configparser.ConfigParser()
@@ -1701,6 +1741,7 @@ def trade(calc_signal, args, parameter, strategy):
     # OANDA API用に設定する。
     ENVIRONMENT = config['DEFAULT']['environment']
     ACCESS_TOKEN = config['DEFAULT']['access_token']
+    ACCOUNT_ID = config['DEFAULT']['account_id']
     OANDA = oandapy.API(environment=ENVIRONMENT, access_token=ACCESS_TOKEN)
     pre_bid = 0.0
     pre_ask = 0.0
@@ -1709,7 +1750,16 @@ def trade(calc_signal, args, parameter, strategy):
     instrument = convert_symbol2instrument(symbol)
     granularity = convert_timeframe2granularity(timeframe)
 
+    # MT4用に設定する。
+    if mt4 == 1:
+        folder_ea = config['DEFAULT']['folder_ea']
+        filename = folder_ea + '/' + strategy + '.csv'
+        f = open(filename, 'w')
+        f.write(str(2))  # EA側で-2とするので2で初期化する。
+        f.close()
+
     pos = 0
+    ticket = 0
 
     while True:
         # 回線接続を確認してから実行する。
@@ -1732,9 +1782,13 @@ def trade(calc_signal, args, parameter, strategy):
                     pre_history_time = history_time
                     signal = calc_signal(parameter, symbol, timeframe, start,
                         end, spread, optimization, position, min_trade)
-                    # エグジットを知らせる。
-                    if (pos == 1 and signal.iloc[len(signal)-1] != 1):
+                    end_row = len(signal) - 1
+                    # エグジット→エントリーの順に設定しないとドテンができない。
+                    # 買いエグジット。
+                    if (pos == 1 and signal.iloc[end_row] != 1):
                         pos = 0
+                        order_close(ticket)
+                        ticket = 0
                         # メールにシグナルを送信する場合
                         if mail == 1:
                             msg = MIMEText(
@@ -1747,10 +1801,16 @@ def trade(calc_signal, args, parameter, strategy):
                             s.login(fromaddr, password)
                             s.send_message(msg)
                             s.quit()
-
-                    elif (pos == -1 and signal[len(signal)-1] != -1):
+                       # EAにシグナルを送信する場合
+                        if mt4 == 1:
+                            f = open(filename, 'w')
+                            f.write(str(int(signal[end_row] + 2)))
+                            f.close()
+                    # 売りエグジット
+                    elif (pos == -1 and signal[end_row] != -1):
                         pos = 0
-                    # エントリーを知らせる。
+                        order_close(ticket)
+                        ticket = 0
                         # メールにシグナルを送信する場合
                         if mail == 1:
                             msg = MIMEText(
@@ -1763,9 +1823,16 @@ def trade(calc_signal, args, parameter, strategy):
                             s.login(fromaddr, password)
                             s.send_message(msg)
                             s.quit()
+                       # EAにシグナルを送信する場合
+                        if mt4 == 1:
+                            f = open(filename, 'w')
+                            f.write(str(int(signal[end_row] + 2)))
+                            f.close()
 
-                    if (pos == 0 and signal[len(signal)-1] == 1):
+                    # 買いエントリー
+                    if (pos == 0 and signal[end_row] == 1):
                         pos = 1
+                        ticket = order_send(symbol, lots, 'buy')
                         # メールにシグナルを送信する場合
                         if mail == 1:
                             msg = MIMEText(
@@ -1778,9 +1845,15 @@ def trade(calc_signal, args, parameter, strategy):
                             s.login(fromaddr, password)
                             s.send_message(msg)
                             s.quit()
-        
-                    elif (pos == 0 and signal[len(signal)-1] == -1):
+                       # EAにシグナルを送信する場合
+                        if mt4 == 1:
+                            f = open(filename, 'w')
+                            f.write(str(int(signal[end_row] + 2)))
+                            f.close()
+                    # 売りエントリー
+                    elif (pos == 0 and signal[end_row] == -1):
                         pos = -1
+                        ticket = order_send(symbol, lots, 'sell')
                         # メールにシグナルを送信する場合
                         if mail == 1:
                             msg = MIMEText(
@@ -1793,11 +1866,17 @@ def trade(calc_signal, args, parameter, strategy):
                             s.login(fromaddr, password)
                             s.send_message(msg)
                             s.quit()
+                       # EAにシグナルを送信する場合
+                        if mt4 == 1:
+                            f = open(filename, 'w')
+                            f.write(str(int(signal[end_row] + 2)))
+                            f.close()
 
                 # シグナルを出力する。
                 now = datetime.now()
                 print(now.strftime('%Y.%m.%d %H:%M:%S'), strategy, symbol,
-                      timeframe, signal.iloc[len(signal)-1])
+                      timeframe, signal.iloc[end_row])
+
         except Exception as e:
             print('エラーが発生しました。')
             print(e)
