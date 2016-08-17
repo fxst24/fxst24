@@ -16,6 +16,7 @@ from datetime import timedelta
 from email.mime.text import MIMEText
 from numba import float64, int64, jit
 from scipy import optimize
+from sklearn import linear_model
 from sklearn.externals import joblib
 
 # Spyderのバグ（？）で警告が出るので無視する。
@@ -728,19 +729,21 @@ def hour():
 
     return hour
 
-def i_bandwalk(symbol, timeframe, period, shift):
+def i_bandwalk(symbol, timeframe, period, method, shift):
     '''バンドウォークを返す。
     Args:
         symbol: 通貨ペア名。
         timeframe: タイムフレーム。
         period: 期間。
+        method: メソッド。
         shift: シフト。
     Returns:
         バンドウォーク。
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/tmp/i_bandwalk_' + symbol +
-        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+        str(timeframe) + '_' + str(period) + '_' + method + '_' + str(shift) +
+        '.pkl')
 
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
@@ -752,39 +755,38 @@ def i_bandwalk(symbol, timeframe, period, shift):
         # バンドウォークを計算する関数を定義する。
         @jit(float64[:](float64[:], float64[:], float64[:]),
             nopython=True, cache=True)
-        def calc_bandwalk(high, low, median):
+        def calc_bandwalk(high, low, pred):
             up = 0
             down = 0
-            length = len(median)
+            length = len(pred)
             bandwalk = np.empty(length)
             for i in range(length):
-                if (low[i] > median[i]):
+                if (low[i] > pred[i]):
                     up = up + 1
                 else:
                     up = 0
-                if (high[i] < median[i]):
+                if (high[i] < pred[i]):
                     down = down + 1
                 else:
                     down = 0
                 bandwalk[i] = up - down
             return bandwalk
 
-        # 高値、安値、終値を格納する。
+        # 高値、安値を格納する。
         high = i_high(symbol, timeframe, shift)
         low = i_low(symbol, timeframe, shift)
-        close = i_close(symbol, timeframe, shift)
 
-        # 中央値を計算する。
-        median = close.rolling(window=period).median()
-        index = median.index
+        # 予測値を計算する。
+        pred, se = i_pred(symbol, timeframe, period, method, shift)
+        index = pred.index
 
-        # 高値、安値、中央値をnumpy配列に変換する。
+        # 高値、安値、予測値をnumpy配列に変換する。
         high = np.array(high)
         low = np.array(low)
-        median = np.array(median)
+        pred = np.array(pred)
 
         # バンドウォークを計算する。
-        bandwalk = calc_bandwalk(high, low, median)
+        bandwalk = calc_bandwalk(high, low, pred)
         a = 0.903  # 指数（正規化するために経験的に導き出した数値）
         b = 0.393  # 切片（同上）
         bandwalk = bandwalk / (float(period) ** a + b)
@@ -1219,9 +1221,9 @@ def i_ku_close(timeframe, shift, aud=0.0, cad=0.0, chf=0.0, eur=1.0, gbp=0.0,
 
     return ku_close
 
-def i_ku_z_score(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=1.0,
+def i_ku_zresid(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=1.0,
                  gbp=0.0, jpy=1.0, nzd=0.0, usd=1.0):
-    '''Ku-Chartによるzスコアを返す。
+    '''Ku-Chartによる終値とその予測値との標準化残差を返す。
     Args:
         timeframe: タイムフレーム。
         period: 期間。
@@ -1235,10 +1237,10 @@ def i_ku_z_score(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=1.0,
         nzd: NZドル（デフォルト：不使用）。
         usd: 米ドル（デフォルト：使用）。
     Returns:
-        Ku-Chartによるzスコア。
+        Ku-Chartによる終値とその予測値との標準化残差を返す。
     '''
     # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/tmp/i_ku_z_score_' + str(timeframe) +
+    path = (os.path.dirname(__file__) + '/tmp/i_ku_zresid_' + str(timeframe) +
         '_' + str(period) + '_' + str(shift) + '_' + str(aud) + str(cad) +
         str(chf) + str(eur) + str(gbp) + str(jpy) + str(nzd) + str(usd) +
         '.pkl')
@@ -1247,12 +1249,12 @@ def i_ku_z_score(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=1.0,
     # 計算結果が保存されていれば復元する。
     if ((MODE == 'backtest' or MODE == 'walkforwardtest') and
         os.path.exists(path) == True):
-        ku_z_score = joblib.load(path)
+        ku_zresid = joblib.load(path)
     # さもなければ計算する。
     else:
         # zスコアを計算する関数を定義する。
         @jit(float64(float64[:]), nopython=True, cache=True)
-        def calc_ku_z_score(ku_close):
+        def calc_ku_zresid(ku_close):
             median = np.median(ku_close)
             period = len(ku_close)
             std = 0.0
@@ -1268,16 +1270,15 @@ def i_ku_z_score(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=1.0,
 
         ku_close = i_ku_close(timeframe, shift, aud, cad, chf, eur, gbp, jpy,
                               nzd, usd)
-        ku_z_score = ku_close.rolling(window=period).apply(calc_ku_z_score)
-        ku_z_score = ku_z_score.fillna(0)
-        ku_z_score[(ku_z_score==float('inf')) |
-            (ku_z_score==float('-inf'))] = 0.0
+        ku_zresid = ku_close.rolling(window=period).apply(calc_ku_zresid)
+        ku_zresid = ku_zresid.fillna(0)
+        ku_zresid[(ku_zresid==float('inf')) | (ku_zresid==float('-inf'))] = 0.0
 
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if MODE == 'backtest' or MODE == 'walkforwardtest':
-            joblib.dump(ku_z_score, path)
+            joblib.dump(ku_zresid, path)
 
-    return ku_z_score
+    return ku_zresid
 
 def i_low(symbol, timeframe, shift):
     '''安値を返す。
@@ -1372,6 +1373,124 @@ def i_open(symbol, timeframe, shift):
             joblib.dump(op, path)
 
     return op
+
+def i_pred(symbol, timeframe, period, method, shift):
+    '''予測値と標準誤差を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        period: 計算期間。
+        method: メソッド。
+        shift: シフト。
+    Returns:
+        予測値と標準誤差。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path1 = (os.path.dirname(__file__) + '/tmp/i_pred1_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + method + '_' + str(shift) +
+        '.pkl')
+    path2 = (os.path.dirname(__file__) + '/tmp/i_pred2_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + method + '_' + str(shift) +
+        '.pkl')
+
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if ((MODE == 'backtest' or MODE == 'walkforwardtest') and
+        os.path.exists(path1) == True and os.path.exists(path2) == True):
+        pred = joblib.load(path1)
+        se = joblib.load(path2)
+
+    # さもなければ計算する。
+    else:
+        close = i_close(symbol, timeframe, shift)
+        # メソッドが平均の場合、
+        if method == 'mean':
+            pred = close.rolling(window=period).mean()
+            se = close.rolling(window=period).std()
+        # メソッドが中央値の場合、
+        elif method == 'median':
+            def se_median(close):            
+                pred = np.median(close)
+                error = close - pred
+                se = np.std(error)
+                return se
+
+            pred = close.rolling(window=period).median()
+            se = close.rolling(window=period).apply(se_median)
+        # メソッドが線形回帰の場合、
+        elif method == 'linear':
+            def pred_linear(close):
+                clf = linear_model.LinearRegression()
+                period = len(close)
+                time = np.array(range(period))
+                time = time.reshape(period, 1)
+                clf.fit(time, close)
+                pred = clf.predict(time)
+                return pred[period-1]
+
+            def se_linear(close):
+                clf = linear_model.LinearRegression()
+                period = len(close)
+                time = np.array(range(period))
+                time = time.reshape(period, 1)
+                clf.fit(time, close)
+                pred = clf.predict(time)
+                error = close - pred
+                se = np.std(error)
+                return se
+
+            pred = close.rolling(window=period).apply(pred_linear)
+            se = close.rolling(window=period).apply(se_linear)
+        # その他
+        else:
+            pred = pd.Series()
+            se = pd.Series()
+
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if MODE == 'backtest' or MODE == 'walkforwardtest':
+            joblib.dump(pred, path1)
+            joblib.dump(se, path2)
+
+    return pred, se
+
+def i_zresid(symbol, timeframe, period, method, shift):
+    '''終値とその予測値との標準化残差を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        period: 期間。
+        method: メソッド
+        shift: シフト。
+    Returns:
+        終値とその予測値との標準化残差。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_zresid_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + method + '_' + str(shift) +
+        '.pkl')
+
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if ((MODE == 'backtest' or MODE == 'walkforwardtest') and
+        os.path.exists(path) == True):
+        zresid = joblib.load(path)
+
+    # さもなければ計算する。
+    else:
+        # 終値を格納する。
+        close = i_close(symbol, timeframe, shift)
+        # 予測値を格納する。
+        pred, se = i_pred(symbol, timeframe, period, method, shift)
+        # 標準化残差を計算する。
+        zresid = (close - pred) / se
+        zresid = zresid.fillna(0.0)
+        zresid[(zresid==float('inf')) | (zresid==float('-inf'))] = 0.0
+
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if MODE == 'backtest' or MODE == 'walkforwardtest':
+            joblib.dump(zresid, path)
+
+    return zresid
 
 def i_stop_hunting_zone(symbol, timeframe, period, shift):
     '''ストップ狩りのゾーンにあるか否かを返す。
@@ -1509,58 +1628,6 @@ def i_volume(symbol, timeframe, shift):
             joblib.dump(volume, path)
 
     return volume
-
-def i_z_score(symbol, timeframe, period, shift):
-    '''実測値とその予測値との誤差のzスコアを返す。
-    Args:
-        symbol: 通貨ペア名。
-        timeframe: タイムフレーム。
-        period: 期間。
-        shift: シフト。
-    Returns:
-        zスコア。
-    '''
-    # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/tmp/i_z_score_' + symbol +
-        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
-
-    # バックテスト、またはウォークフォワードテストのとき、
-    # 計算結果が保存されていれば復元する。
-    if ((MODE == 'backtest' or MODE == 'walkforwardtest') and
-        os.path.exists(path) == True):
-        z_score = joblib.load(path)
-
-    # さもなければ計算する。
-    else:
-        # zスコアを計算する関数を定義する。
-        @jit(float64(float64[:]), nopython=True, cache=True)
-        def calc_z_score(close):
-            median = np.median(close)
-            period = len(close)
-            std = 0.0
-            for i in range(period):
-                std = std + (close[i] - median) * (close[i] - median)
-            std = std / period
-            std = np.sqrt(std)
-            if std < EPS:
-                z_score = 0.0
-            else:
-                z_score = (close[-1] - median) / std
-            return z_score
-
-        # 終値を格納する。
-        close = i_close(symbol, timeframe, shift)
-
-        # zスコアを計算する。
-        z_score = close.rolling(window=period).apply(calc_z_score)
-        z_score = z_score.fillna(0.0)
-        z_score[(z_score==float('inf')) | (z_score==float('-inf'))] = (0.0)
-
-        # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if MODE == 'backtest' or MODE == 'walkforwardtest':
-            joblib.dump(z_score, path)
-
-    return z_score
 
 def is_trading_hours(index, market):
     '''取引時間であるか否かを返す。

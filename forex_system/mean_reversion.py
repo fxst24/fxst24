@@ -7,7 +7,7 @@ import numpy as np
 # パラメータの設定
 PERIOD = 10
 ENTRY_THRESHOLD = 1.5
-FILTER_THRESHOLD = 1.0
+FILTER_THRESHOLD = 0.5
 PARAMETER = [PERIOD, ENTRY_THRESHOLD, FILTER_THRESHOLD]
 
 # 最適化の設定
@@ -46,19 +46,21 @@ def calc_signal(parameter, symbol, timeframe, start, end, spread, optimization,
     entry_threshold = float(parameter[1])
     filter_threshold = float(parameter[2])
 
+    method = 'mean'
+
     # シグナルを計算する。
-    z_score1 = fs.i_z_score(symbol, timeframe, period, 1)[start:end]
-    bandwalk1 = fs.i_bandwalk(symbol, timeframe, period, 1)[start:end]
+    zresid1 = fs.i_zresid(symbol, timeframe, period, method, 1)[start:end]
+    bandwalk1 = fs.i_bandwalk(symbol, timeframe, period, method, 1)[start:end]
     stop_hunting_zone = fs.i_stop_hunting_zone(symbol, timeframe,
         int(1440 / timeframe), 1)[start:end]
-    longs_entry = (((z_score1 <= -entry_threshold) &
+    longs_entry = (((zresid1 <= -entry_threshold) &
         (bandwalk1 <= -filter_threshold) &
         (stop_hunting_zone['lower'] == False)) * 1)
-    longs_exit = (z_score1 >= 0.0) * 1
-    shorts_entry = (((z_score1 >= entry_threshold) &
+    longs_exit = (zresid1 >= 0.0) * 1
+    shorts_entry = (((zresid1 >= entry_threshold) &
         (bandwalk1 >= filter_threshold) &
         (stop_hunting_zone['upper'] == False)) * 1)
-    shorts_exit = (z_score1 <= 0.0) * 1
+    shorts_exit = (zresid1 <= 0.0) * 1
     longs = longs_entry.copy()
     longs[longs==0] = np.nan
     longs[longs_exit==1] = 0
