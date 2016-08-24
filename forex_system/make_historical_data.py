@@ -2,6 +2,7 @@
 
 import argparse
 import pandas as pd
+import time
 
 from collections import OrderedDict
 
@@ -10,6 +11,9 @@ def make_historical_data(parser):
           Args:
               parser: パーサー。
     '''
+    # 開始時間を記録する。
+    start_time = time.time()
+
     parser.add_argument('--audcad', type=int, default=0)
     parser.add_argument('--audchf', type=int, default=0)
     parser.add_argument('--audjpy', type=int, default=0)
@@ -370,7 +374,11 @@ def make_historical_data(parser):
         data1 = data1.fillna(method='bfill')
 
         # 重複行を削除する。
-        data1 = data1[~data1.index.duplicated()] 
+        data1 = data1[~data1.index.duplicated()]
+        
+        # 土日を削除する。
+        data1 = data1[data1.index.dayofweek != 6]
+        data1 = data1[data1.index.dayofweek != 7]
  
         data5 = data1.resample(
             '5Min', label='left', closed='left').apply(ohlc_dict)
@@ -382,6 +390,10 @@ def make_historical_data(parser):
             '60Min', label='left', closed='left').apply(ohlc_dict)
         data240 = data1.resample(
             '240Min', label='left', closed='left').apply(ohlc_dict)
+        data480 = data1.resample(
+            '480Min', label='left', closed='left').apply(ohlc_dict)
+        data720 = data1.resample(
+            '720Min', label='left', closed='left').apply(ohlc_dict)
         data1440 = data1.resample(
             '1440Min', label='left', closed='left').apply(ohlc_dict)
 
@@ -391,6 +403,8 @@ def make_historical_data(parser):
         data30 = data30.dropna()
         data60 = data60.dropna()
         data240 = data240.dropna()
+        data480 = data480.dropna()
+        data720 = data720.dropna()
         data1440 = data1440.dropna()
 
         # ファイルを出力する。
@@ -400,6 +414,8 @@ def make_historical_data(parser):
         filename30 =  '~/historical_data/' + symbol + '30.csv'
         filename60 =  '~/historical_data/' + symbol + '60.csv'
         filename240 =  '~/historical_data/' + symbol + '240.csv'
+        filename480 =  '~/historical_data/' + symbol + '480.csv'
+        filename720 =  '~/historical_data/' + symbol + '720.csv'
         filename1440 =  '~/historical_data/' + symbol + '1440.csv'
         data1.to_csv(filename1)
         data5.to_csv(filename5)
@@ -407,7 +423,22 @@ def make_historical_data(parser):
         data30.to_csv(filename30)
         data60.to_csv(filename60)
         data240.to_csv(filename240)
+        data480.to_csv(filename480)
+        data720.to_csv(filename720)
         data1440.to_csv(filename1440)
+
+    # 終了時間を記録する。
+    end_time = time.time()
+
+    # 実行時間を出力する。
+    if end_time - start_time < 60.0:
+        print(
+            '実行時間は',
+            int(round(end_time - start_time)), '秒です。')
+    else:
+        print(
+            '実行時間は',
+            int(round((end_time - start_time) / 60.0)), '分です。')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

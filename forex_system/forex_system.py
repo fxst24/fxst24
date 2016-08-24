@@ -953,6 +953,7 @@ def i_hl_band(symbol, timeframe, period, shift):
         hl_band = pd.DataFrame()
         hl_band['high'] = close.rolling(window=period).max()
         hl_band['low'] = close.rolling(window=period).min()
+        hl_band['middle'] = (hl_band['high'] + hl_band['low']) / 2
 
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if MODE == 'backtest' or MODE == 'walkforwardtest':
@@ -1327,6 +1328,39 @@ def i_low(symbol, timeframe, shift):
 
     return low
 
+def i_ma(symbol, timeframe, period, shift):
+    '''移動平均を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        period: 期間。
+        shift: シフト。
+    Returns:
+        移動平均。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_ma_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if ((MODE == 'backtest' or MODE == 'walkforwardtest') and
+        os.path.exists(path) == True):
+        ma = joblib.load(path)
+
+    # さもなければ計算する。
+    else:
+        close = i_close(symbol, timeframe, shift)
+        ma = close.rolling(window=period).mean()
+        ma = ma.fillna(method='ffill')
+        ma = ma.fillna(method='bfill')
+
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if MODE == 'backtest' or MODE == 'walkforwardtest':
+            joblib.dump(ma, path)
+
+    return ma
+
 def i_open(symbol, timeframe, shift):
     '''始値を返す。
     Args:
@@ -1452,6 +1486,70 @@ def i_pred(symbol, timeframe, period, method, shift):
             joblib.dump(se, path2)
 
     return pred, se
+
+def i_return(symbol, timeframe, shift):
+    '''リターンを返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        shift: シフト。
+    Returns:
+        リターン。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_return_' + symbol +
+        str(timeframe) + '_' + str(shift) + '.pkl')
+
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if ((MODE == 'backtest' or MODE == 'walkforwardtest') and
+        os.path.exists(path) == True):
+        ret = joblib.load(path)
+
+    # さもなければ計算する。
+    else:
+        close = i_close(symbol, timeframe, shift)
+        ret = (close - close.shift(1)) / close.shift(1)
+        ret = ret.fillna(0.0)
+        ret[(ret==float('inf')) | (ret==float('-inf'))] = 0.0
+
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if MODE == 'backtest' or MODE == 'walkforwardtest':
+            joblib.dump(ret, path)
+
+    return ret
+
+def i_updown(symbol, timeframe, shift):
+    '''騰落を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        shift: シフト。
+    Returns:
+        騰落。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_updown_' + symbol +
+        str(timeframe) + '_' + str(shift) + '.pkl')
+
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if ((MODE == 'backtest' or MODE == 'walkforwardtest') and
+        os.path.exists(path) == True):
+        updpwn = joblib.load(path)
+
+    # さもなければ計算する。
+    else:
+        close = i_close(symbol, timeframe, shift)
+        updown = close >= close.shift(1)
+        updown = updown.fillna(method='ffill')
+        updown = updown.fillna(method='bfill')
+
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if MODE == 'backtest' or MODE == 'walkforwardtest':
+            joblib.dump(updown, path)
+
+    return updown
 
 def i_zresid(symbol, timeframe, period, method, shift):
     '''終値とその予測値との標準化残差を返す。
@@ -1734,14 +1832,54 @@ def seconds():
 
     return seconds
 
+def send_mail(subject, some_text, fromaddr, toaddr, host, port, password):
+    '''メールを送信する。
+    Args:
+        subject: タイトル。
+        some_text: 文。
+    '''
+    msg = MIMEText(some_text)
+    msg['Subject'] = subject
+    msg['From'] = fromaddr
+    msg['To'] = toaddr
+    s = smtplib.SMTP_SSL(host, port)
+    s.login(fromaddr, password)
+    s.send_message(msg)
+    s.quit()
+
+def send_signal2mt4(filename, signal):
+    '''シグナルをMT4に送信する。
+    Args:
+        filename: ファイル名。
+        signal: シグナル。
+    '''
+    f = open(filename, 'w')
+    # 0を使いたくないので2を加える。
+    # MT4側で2を減じて調整する。
+    f.write(str(int(signal.iloc[len(signal)-1] + 2)))
+    f.close()
+
+def time_day(index):
+    '''日を返す。
+    Args:
+        index: インデックス。
+    Returns:
+        日。
+    '''
+    time_day = pd.Series(index.day, index=index)
+
+    return time_day
+
 def time_day_of_week(index):
     '''曜日を返す。
     Args:
         index: インデックス。
     Returns:
-        曜日。
+        曜日（日-土、0-6）。
     '''
-    time_day_of_week = pd.Series(index.dayofweek, index=index)
+    # pandasのdayofweekは月-日、0-6なので、MQL4に合わせて調整する。
+    time_day_of_week = pd.Series(index.dayofweek, index=index) + 1
+    time_day_of_week[time_day_of_week==7] = 0
 
     return time_day_of_week
  
@@ -1766,6 +1904,17 @@ def time_minute(index):
     time_minute = pd.Series(index.minute, index=index)
 
     return time_minute
+
+def time_month(index):
+    '''月を返す。
+    Args:
+        index: インデックス。
+    Returns:
+        月。
+    '''
+    time_month = pd.Series(index.month, index=index)
+
+    return time_month
 
 def trade(calc_signal, args, parameter, strategy):
     '''トレードを行う。
@@ -1858,21 +2007,14 @@ def trade(calc_signal, args, parameter, strategy):
                         ticket = 0
                         # メールにシグナルを送信する場合
                         if mail == 1:
-                            msg = MIMEText(
-                                symbol + 'を' +  str(Bid)
-                                + 'で買いエグジットです。')
-                            msg['Subject'] = strategy
-                            msg['From'] = fromaddr
-                            msg['To'] = toaddr
-                            s = smtplib.SMTP_SSL(host, port)
-                            s.login(fromaddr, password)
-                            s.send_message(msg)
-                            s.quit()
-                       # EAにシグナルを送信する場合
+                            subject = strategy
+                            some_text = (symbol + 'を' +  str(Bid) +
+                                'で買いエグジットです。')
+                            send_mail(subject, some_text, fromaddr, toaddr,
+                                      host, port, password)
+                        # EAにシグナルを送信する場合
                         if mt4 == 1:
-                            f = open(filename, 'w')
-                            f.write(str(int(signal[end_row] + 2)))
-                            f.close()
+                            send_signal2mt4(filename, signal)
                     # 売りエグジット
                     elif (pos == -1 and signal[end_row] != -1):
                         pos = 0
@@ -1880,64 +2022,43 @@ def trade(calc_signal, args, parameter, strategy):
                         ticket = 0
                         # メールにシグナルを送信する場合
                         if mail == 1:
-                            msg = MIMEText(
-                                symbol + 'を' + str(Ask)
-                                + 'で売りエグジットです。')
-                            msg['Subject'] = strategy
-                            msg['From'] = fromaddr
-                            msg['To'] = toaddr
-                            s = smtplib.SMTP_SSL(host, port)
-                            s.login(fromaddr, password)
-                            s.send_message(msg)
-                            s.quit()
-                       # EAにシグナルを送信する場合
+                            subject = strategy
+                            some_text = (symbol + 'を' +  str(Ask) +
+                                'で売りエグジットです。')
+                            send_mail(subject, some_text, fromaddr, toaddr,
+                                      host, port, password)
+                        # EAにシグナルを送信する場合
                         if mt4 == 1:
-                            f = open(filename, 'w')
-                            f.write(str(int(signal[end_row] + 2)))
-                            f.close()
+                            send_signal2mt4(filename, signal)
 
                     # 買いエントリー
-                    if (pos == 0 and signal[end_row] == 1):
+                    elif (pos == 0 and signal[end_row] == 1):
                         pos = 1
                         ticket = order_send(symbol, lots, 'buy')
                         # メールにシグナルを送信する場合
                         if mail == 1:
-                            msg = MIMEText(
-                                symbol + 'を' + str(Ask)
-                                + 'で買いエントリーです。')
-                            msg['Subject'] = strategy
-                            msg['From'] = fromaddr
-                            msg['To'] = toaddr
-                            s = smtplib.SMTP_SSL(host, port)
-                            s.login(fromaddr, password)
-                            s.send_message(msg)
-                            s.quit()
-                       # EAにシグナルを送信する場合
+                            subject = strategy
+                            some_text = (symbol + 'を' +  str(Ask) +
+                                'で買いエントリーです。')
+                            send_mail(subject, some_text, fromaddr, toaddr,
+                                      host, port, password)
+                        # EAにシグナルを送信する場合
                         if mt4 == 1:
-                            f = open(filename, 'w')
-                            f.write(str(int(signal[end_row] + 2)))
-                            f.close()
+                            send_signal2mt4(filename, signal)
                     # 売りエントリー
                     elif (pos == 0 and signal[end_row] == -1):
                         pos = -1
                         ticket = order_send(symbol, lots, 'sell')
                         # メールにシグナルを送信する場合
                         if mail == 1:
-                            msg = MIMEText(
-                                symbol + 'を' + str(Bid)
-                                + 'で売りエントリーです。')
-                            msg['Subject'] = strategy
-                            msg['From'] = fromaddr
-                            msg['To'] = toaddr
-                            s = smtplib.SMTP_SSL(host, port)
-                            s.login(fromaddr, password)
-                            s.send_message(msg)
-                            s.quit()
-                       # EAにシグナルを送信する場合
+                            subject = strategy
+                            some_text = (symbol + 'を' +  str(Bid) +
+                                'で売りエントリーです。')
+                            send_mail(subject, some_text, fromaddr, toaddr,
+                                      host, port, password)
+                        # EAにシグナルを送信する場合
                         if mt4 == 1:
-                            f = open(filename, 'w')
-                            f.write(str(int(signal[end_row] + 2)))
-                            f.close()
+                            send_signal2mt4(filename, signal)
 
                 # シグナルを出力する。
                 now = datetime.now()
