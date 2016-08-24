@@ -86,14 +86,6 @@ def backtest(calc_signal, args, parameter, rranges, strategy):
     position = args.position
     min_trade = args.min_trade
 
-    # スプレッドの単位の調整
-    if (symbol == 'AUDJPY' or symbol == 'CADJPY' or symbol == 'CHFJPY' or
-        symbol == 'EURJPY' or symbol == 'GBPJPY' or symbol == 'NZDJPY' or
-        symbol == 'USDJPY'):
-        spread = spread / 1000.0
-    else:
-        spread = spread / 100000.0
-
     def calc_performance(parameter, calc_signal, symbol, timeframe, start, end, 
                          spread, optimization, position, min_trade):
         '''パフォーマンスを計算する。
@@ -321,16 +313,31 @@ def calc_ret(symbol, timeframe, signal, spread, start, end):
     Returns:
         年率。
     '''
-    op = i_open(symbol, timeframe, 0)
+    # スプレッドの単位の調整
+    if (symbol == 'AUDJPY' or symbol == 'CADJPY' or symbol == 'CHFJPY' or
+        symbol == 'EURJPY' or symbol == 'GBPJPY' or symbol == 'NZDJPY' or
+        symbol == 'USDJPY'):
+        adjusted_spread = spread / 1000.0
+    elif (symbol == 'AUDCAD' or symbol == 'AUDCHF' or symbol == 'AUDNZD' or
+          symbol == 'AUDUSD' or symbol == 'CADCHF' or symbol == 'EURAUD' or
+          symbol == 'EURCAD' or symbol == 'EURCHF' or symbol == 'EURGBP' or
+          symbol == 'EURNZD' or symbol == 'EURUSD' or symbol == 'GBPAUD' or
+          symbol == 'GBPCAD' or symbol == 'GBPCHF' or symbol == 'GBPNZD' or
+          symbol == 'GBPUSD' or symbol == 'NZDCAD' or symbol == 'NZDCHF' or
+          symbol == 'NZDUSD' or symbol == 'USDCAD' or symbol == 'USDCHF'):
+        adjusted_spread = spread / 100000.0
+    else:
+        pass
 
     # コストを計算する。
-    temp1 = (spread * ((signal > 0) & (signal > signal.shift(1))) *
+    temp1 = (adjusted_spread * ((signal > 0) & (signal > signal.shift(1))) *
         (signal - signal.shift(1)))
-    temp2 = (spread * ((signal < 0) & (signal < signal.shift(1))) *
+    temp2 = (adjusted_spread * ((signal < 0) & (signal < signal.shift(1))) *
         (signal.shift(1) - signal))
     cost = temp1 + temp2
 
     # リターンを計算する。
+    op = i_open(symbol, timeframe, 0)
     ret = ((op.shift(-1) - op) * signal - cost) / op
     ret = ret.fillna(0.0)
     ret[(ret==float('inf')) | (ret==float('-inf'))] = 0.0
@@ -939,7 +946,7 @@ def i_hl_band(symbol, timeframe, period, shift):
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/tmp/i_hl_band_' + symbol +
-        str(timeframe) + '_' + str(shift) + '.pkl')
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
 
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
@@ -2095,22 +2102,6 @@ def walkforwardtest(calc_signal, args, rranges, strategy):
     min_trade = args.min_trade
     in_sample_period = args.in_sample_period
     out_of_sample_period = args.out_of_sample_period
-
-    # スプレッドの単位の調整
-    if (symbol == 'AUDJPY' or symbol == 'CADJPY' or symbol == 'CHFJPY' or
-        symbol == 'EURJPY' or symbol == 'GBPJPY' or symbol == 'NZDJPY' or
-        symbol == 'USDJPY'):
-        spread = spread / 1000.0
-    elif (symbol == 'AUDCAD' or symbol == 'AUDCHF' or symbol == 'AUDNZD' or
-          symbol == 'AUDUSD' or symbol == 'CADCHF' or symbol == 'EURAUD' or
-          symbol == 'EURCAD' or symbol == 'EURCHF' or symbol == 'EURGBP' or
-          symbol == 'EURNZD' or symbol == 'EURUSD' or symbol == 'GBPAUD' or
-          symbol == 'GBPCAD' or symbol == 'GBPCHF' or symbol == 'GBPNZD' or
-          symbol == 'GBPUSD' or symbol == 'NZDCAD' or symbol == 'NZDCHF' or
-          symbol == 'NZDUSD' or symbol == 'USDCAD' or symbol == 'USDCHF'):
-        spread = spread / 100000.0
-    else:
-        pass
 
     end_test = start
     report =  pd.DataFrame(
