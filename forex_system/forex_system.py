@@ -1519,77 +1519,6 @@ def i_return(symbol, timeframe, shift):
 
     return ret
 
-def i_updown(symbol, timeframe, shift):
-    '''騰落を返す。
-    Args:
-        symbol: 通貨ペア名。
-        timeframe: タイムフレーム。
-        shift: シフト。
-    Returns:
-        騰落。
-    '''
-    # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/tmp/i_updown_' + symbol +
-        str(timeframe) + '_' + str(shift) + '.pkl')
-
-    # バックテスト、またはウォークフォワードテストのとき、
-    # 計算結果が保存されていれば復元する。
-    if ((MODE == 'backtest' or MODE == 'walkforwardtest') and
-        os.path.exists(path) == True):
-        updpwn = joblib.load(path)
-
-    # さもなければ計算する。
-    else:
-        close = i_close(symbol, timeframe, shift)
-        updown = close >= close.shift(1)
-        updown = updown.fillna(method='ffill')
-        updown = updown.fillna(method='bfill')
-
-        # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if MODE == 'backtest' or MODE == 'walkforwardtest':
-            joblib.dump(updown, path)
-
-    return updown
-
-def i_zresid(symbol, timeframe, period, method, shift):
-    '''終値とその予測値との標準化残差を返す。
-    Args:
-        symbol: 通貨ペア名。
-        timeframe: タイムフレーム。
-        period: 期間。
-        method: メソッド
-        shift: シフト。
-    Returns:
-        終値とその予測値との標準化残差。
-    '''
-    # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/tmp/i_zresid_' + symbol +
-        str(timeframe) + '_' + str(period) + '_' + method + '_' + str(shift) +
-        '.pkl')
-
-    # バックテスト、またはウォークフォワードテストのとき、
-    # 計算結果が保存されていれば復元する。
-    if ((MODE == 'backtest' or MODE == 'walkforwardtest') and
-        os.path.exists(path) == True):
-        zresid = joblib.load(path)
-
-    # さもなければ計算する。
-    else:
-        # 終値を格納する。
-        close = i_close(symbol, timeframe, shift)
-        # 予測値を格納する。
-        pred, se = i_pred(symbol, timeframe, period, method, shift)
-        # 標準化残差を計算する。
-        zresid = (close - pred) / se
-        zresid = zresid.fillna(0.0)
-        zresid[(zresid==float('inf')) | (zresid==float('-inf'))] = 0.0
-
-        # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if MODE == 'backtest' or MODE == 'walkforwardtest':
-            joblib.dump(zresid, path)
-
-    return zresid
-
 def i_stop_hunting_zone(symbol, timeframe, period, shift):
     '''ストップ狩りのゾーンにあるか否かを返す。
     Args:
@@ -1645,6 +1574,38 @@ def i_stop_hunting_zone(symbol, timeframe, period, shift):
             joblib.dump(stop_hunting_zone, path)
 
     return stop_hunting_zone
+
+def i_updown(symbol, timeframe, shift):
+    '''騰落を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        shift: シフト。
+    Returns:
+        騰落。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_updown_' + symbol +
+        str(timeframe) + '_' + str(shift) + '.pkl')
+
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if ((MODE == 'backtest' or MODE == 'walkforwardtest') and
+        os.path.exists(path) == True):
+        updown = joblib.load(path)
+
+    # さもなければ計算する。
+    else:
+        close = i_close(symbol, timeframe, shift)
+        updown = close >= close.shift(1)
+        updown = updown.fillna(method='ffill')
+        updown = updown.fillna(method='bfill')
+
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if MODE == 'backtest' or MODE == 'walkforwardtest':
+            joblib.dump(updown, path)
+
+    return updown
 
 def i_vix4fx(symbol, timeframe, shift):
     '''1ヶ月当たりのボラティリティの予測値を返す。
@@ -1726,6 +1687,45 @@ def i_volume(symbol, timeframe, shift):
             joblib.dump(volume, path)
 
     return volume
+
+def i_zresid(symbol, timeframe, period, method, shift):
+    '''終値とその予測値との標準化残差を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        period: 期間。
+        method: メソッド
+        shift: シフト。
+    Returns:
+        終値とその予測値との標準化残差。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_zresid_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + method + '_' + str(shift) +
+        '.pkl')
+
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if ((MODE == 'backtest' or MODE == 'walkforwardtest') and
+        os.path.exists(path) == True):
+        zresid = joblib.load(path)
+
+    # さもなければ計算する。
+    else:
+        # 終値を格納する。
+        close = i_close(symbol, timeframe, shift)
+        # 予測値を格納する。
+        pred, se = i_pred(symbol, timeframe, period, method, shift)
+        # 標準化残差を計算する。
+        zresid = (close - pred) / se
+        zresid = zresid.fillna(0.0)
+        zresid[(zresid==float('inf')) | (zresid==float('-inf'))] = 0.0
+
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if MODE == 'backtest' or MODE == 'walkforwardtest':
+            joblib.dump(zresid, path)
+
+    return zresid
 
 def is_trading_hours(index, market):
     '''取引時間であるか否かを返す。
