@@ -1,6 +1,5 @@
 # coding: utf-8
 
-import argparse
 import forex_system as fs
 import numpy as np
 
@@ -25,7 +24,7 @@ RRANGES = (
     slice(START_ENTRY_THRESHOLD, END_ENTRY_THRESHOLD, STEP_ENTRY_THRESHOLD),
     slice(START_FILTER_THRESHOLD, END_FILTER_THRESHOLD, STEP_FILTER_THRESHOLD),
 )
- 
+
 def calc_signal(parameter, symbol, timeframe, start, end, spread, optimization,
                 position, min_trade):
     '''シグナルを計算する。
@@ -82,7 +81,3 @@ def calc_signal(parameter, symbol, timeframe, start, end, spread, optimization,
     signal = signal.astype(int)
 
     return signal
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    fs.forex_system(calc_signal, parser, PARAMETER, RRANGES)

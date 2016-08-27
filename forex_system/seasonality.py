@@ -1,6 +1,5 @@
 # coding: utf-8
 
-import argparse
 import forex_system as fs
 import numpy as np
 
@@ -55,7 +54,3 @@ def calc_signal(parameter, symbol, timeframe, start, end, spread, optimization,
     signal = signal.astype(int)
 
     return signal
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    fs.forex_system(calc_signal, parser, PARAMETER, RRANGES)

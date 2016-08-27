@@ -48,43 +48,34 @@ def ask(instrument):
 
     return ask
 
-def bid(instrument):
-    '''売値を得る。
-    Args:
-        instrument: OANDA APIでの通貨ペア名。
-    Returns:
-        売値。
-    '''
-    instruments = OANDA.get_prices(instruments=instrument)
-    bid = instruments['prices'][0]['bid']
-
-    return bid
-
-def backtest(calc_signal, args, parameter, rranges, strategy):
+def backtest(args):
     '''バックテストを行う。
     Args:
-        calc_signal: シグナルを計算する関数。
         args: 引数。
-        parameter: パラメータ。
-        rranges: パラメータの設定。
-        strategy: 戦略名。
+    Returns:
+        リターン、トレード数、パラメータ、タイムフレーム、開始日、終了日。
     '''
-    # 一時フォルダが残っていたら削除する。
-    path = os.path.dirname(__file__)
-    if os.path.exists(path + '/tmp') == True:
-        shutil.rmtree(path + '/tmp')
+    n = len(args)
+    ea = args[0]
+    symbol = args[1]
+    timeframe = int(args[2])
+    start = datetime.strptime(args[3], '%Y.%m.%d')
+    end = datetime.strptime(args[4], '%Y.%m.%d')
+    spread = int(args[5])
+    optimization = 0  # デフォルト値
+    position = 2  # デフォルト値
+    min_trade = 260  # デフォルト値
+    if n >= 7:
+          optimization = int(args[6])
+    if n >= 8:
+        position = int(args[7])
+    if n == 9:
+        min_trade = int(args[8])
 
-    # 一時フォルダを作成する。
-    os.mkdir(path + '/tmp')
-
-    symbol = args.symbol
-    timeframe = args.timeframe
-    start = datetime.strptime(args.start, '%Y.%m.%d')
-    end = datetime.strptime(args.end, '%Y.%m.%d')
-    spread = args.spread
-    optimization = args.optimization
-    position = args.position
-    min_trade = args.min_trade
+    exec('import ' + ea + ' as ea_file')
+    calc_signal = eval('ea_file.calc_signal')
+    parameter = eval('ea_file.PARAMETER')
+    rranges = eval('ea_file.RRANGES')
 
     def calc_performance(parameter, calc_signal, symbol, timeframe, start, end, 
                          spread, optimization, position, min_trade):
@@ -125,56 +116,32 @@ def backtest(calc_signal, args, parameter, rranges, strategy):
     
         # 最適化しない場合、各パフォーマンスを返す。
         else:
-            apr = calc_apr(ret, start, end)
-            kelly = calc_kelly(ret)
-            drawdowns = calc_drawdowns(ret)
-            durations = calc_durations(ret, timeframe)
-
-            return ret, trades, apr, sharpe, kelly, drawdowns, durations
+            return ret, trades
 
     # バックテストを行う。
     if optimization == 1:
-        result = optimize.brute(
-            calc_performance, rranges, args=(calc_signal, symbol, timeframe,
-                start, end, spread, 1, position, min_trade), finish=None)
+        result = optimize.brute(calc_performance, rranges,
+                                args=(calc_signal, symbol, timeframe, start,
+                                      end, spread, 1, position, min_trade),
+                                      finish=None)
         parameter = result
+    ret, trades = calc_performance(parameter, calc_signal, symbol, timeframe,
+                                   start, end, spread, 0, position, min_trade)
+    return ret, trades, parameter, timeframe, start, end
 
-    ret, trades, apr, sharpe, kelly, drawdowns, durations = (
-        calc_performance(parameter, calc_signal, symbol, timeframe,start, end,
-        spread, 0, position, min_trade))
+def bid(instrument):
+    '''売値を得る。
+    Args:
+        instrument: OANDA APIでの通貨ペア名。
+    Returns:
+        売値。
+    '''
+    global OANDA
+    instruments = OANDA.get_prices(instruments=instrument)
+    bid = instruments['prices'][0]['bid']
 
-    # グラフを作成する。
-    cum_ret = ret.cumsum()
-    graph = cum_ret.plot()
-    graph.set_title(strategy + '(' + symbol + str(timeframe) + ')')
-    graph.set_xlabel('date')
-    graph.set_ylabel('cumulative return')
+    return bid
 
-    # レポートを作成する。
-    report =  pd.DataFrame(
-        index=[0], columns=['start','end', 'trades', 'apr', 'sharpe', 'kelly',
-        'drawdowns', 'durations', 'parameter'])
-    report['start'] = start.strftime('%Y.%m.%d')
-    report['end'] = end.strftime('%Y.%m.%d')
-    report['trades'] = trades
-    report['apr'] = apr
-    report['sharpe'] = sharpe
-    report['kelly'] = kelly
-    report['drawdowns'] = drawdowns
-    report['durations'] = durations
-    report['parameter'] = str(parameter)
-
-    # グラフを出力する。
-    plt.show(graph)
-    plt.close()
-
-    # レポートを出力する。
-    pd.set_option('line_width', 1000)
-    print('strategy = ', strategy)
-    print('symbol = ', symbol)
-    print('timeframe = ', str(timeframe))
-    print(report)
- 
 def calc_apr(ret, start, end):
     '''年率を計算する。
     Args:
@@ -754,8 +721,7 @@ def i_bandwalk(symbol, timeframe, period, method, shift):
 
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
-    if ((MODE == 'backtest' or MODE == 'walkforwardtest') and
-        os.path.exists(path) == True):
+    if OANDA is None and os.path.exists(path) == True:
         bandwalk = joblib.load(path)
     # さもなければ計算する。
     else:
@@ -803,7 +769,7 @@ def i_bandwalk(symbol, timeframe, period, method, shift):
         bandwalk = bandwalk.fillna(0)
 
         # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if MODE == 'backtest' or MODE == 'walkforwardtest':
+        if OANDA is None:
             joblib.dump(bandwalk, path)
  
     return bandwalk
@@ -822,7 +788,7 @@ def i_close(symbol, timeframe, shift):
         str(timeframe) + '_' + str(shift) + '.pkl')
 
     # トレードのとき、
-    if MODE == 'trade':
+    if OANDA is not None:
         instrument = convert_symbol2instrument(symbol)
         granularity = convert_timeframe2granularity(timeframe)
         temp = OANDA.get_history(
@@ -870,8 +836,7 @@ def i_diff(symbol, timeframe, shift):
 
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
-    if ((MODE == 'backtest' or MODE == 'walkforwardtest') and
-        os.path.exists(path) == True):
+    if OANDA is None and os.path.exists(path) == True:
         diff = joblib.load(path)
 
     # さもなければ計算する。
@@ -882,7 +847,7 @@ def i_diff(symbol, timeframe, shift):
         diff[(diff==float('inf')) | (diff==float('-inf'))] = 0.0
 
         # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if MODE == 'backtest' or MODE == 'walkforwardtest':
+        if OANDA is None:
             joblib.dump(diff, path)
 
     return diff
@@ -901,7 +866,7 @@ def i_high(symbol, timeframe, shift):
         str(timeframe) + '_' + str(shift) + '.pkl')
 
     # トレードのとき、
-    if MODE == 'trade':
+    if OANDA is not None:
         instrument = convert_symbol2instrument(symbol)
         granularity = convert_timeframe2granularity(timeframe)
         temp = OANDA.get_history(
@@ -950,8 +915,7 @@ def i_hl_band(symbol, timeframe, period, shift):
 
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
-    if ((MODE == 'backtest' or MODE == 'walkforwardtest') and
-        os.path.exists(path) == True):
+    if OANDA is None and os.path.exists(path) == True:
         hl_band = joblib.load(path)
 
     # さもなければ計算する。
@@ -963,7 +927,7 @@ def i_hl_band(symbol, timeframe, period, shift):
         hl_band['middle'] = (hl_band['high'] + hl_band['low']) / 2
 
         # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if MODE == 'backtest' or MODE == 'walkforwardtest':
+        if OANDA is None:
             joblib.dump(hl_band, path)
 
     return hl_band
@@ -994,8 +958,7 @@ def i_ku_bandwalk(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=1.0,
 
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
-    if ((MODE == 'backtest' or MODE == 'walkforwardtest') and
-        os.path.exists(path) == True):
+    if OANDA is None and os.path.exists(path) == True:
         ku_bandwalk = joblib.load(path)
     # さもなければ計算する。
     else:
@@ -1038,7 +1001,7 @@ def i_ku_bandwalk(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=1.0,
         ku_bandwalk = ku_bandwalk / (float(period) ** a + b)
 
         # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if MODE == 'backtest' or MODE == 'walkforwardtest':
+        if OANDA is None:
             joblib.dump(ku_bandwalk, path)
 
     return ku_bandwalk
@@ -1067,8 +1030,7 @@ def i_ku_close(timeframe, shift, aud=0.0, cad=0.0, chf=0.0, eur=1.0, gbp=0.0,
 
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
-    if ((MODE == 'backtest' or MODE == 'walkforwardtest') and
-        os.path.exists(path) == True):
+    if OANDA is None and os.path.exists(path) == True:
         ku_close = joblib.load(path)
     # さもなければ計算する。
     else:
@@ -1224,7 +1186,7 @@ def i_ku_close(timeframe, shift, aud=0.0, cad=0.0, chf=0.0, eur=1.0, gbp=0.0,
         ku_close = ku_close.fillna(method='bfill')
 
         # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if MODE == 'backtest' or MODE == 'walkforwardtest':
+        if OANDA is None:
             joblib.dump(ku_close, path)
 
     return ku_close
@@ -1255,8 +1217,7 @@ def i_ku_zresid(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=1.0,
 
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
-    if ((MODE == 'backtest' or MODE == 'walkforwardtest') and
-        os.path.exists(path) == True):
+    if OANDA is None and os.path.exists(path) == True:
         ku_zresid = joblib.load(path)
     # さもなければ計算する。
     else:
@@ -1283,7 +1244,7 @@ def i_ku_zresid(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=1.0,
         ku_zresid[(ku_zresid==float('inf')) | (ku_zresid==float('-inf'))] = 0.0
 
         # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if MODE == 'backtest' or MODE == 'walkforwardtest':
+        if OANDA is None:
             joblib.dump(ku_zresid, path)
 
     return ku_zresid
@@ -1302,7 +1263,7 @@ def i_low(symbol, timeframe, shift):
         str(timeframe) + '_' + str(shift) + '.pkl')
 
     # トレードのとき、
-    if MODE == 'trade':
+    if OANDA is not None:
         instrument = convert_symbol2instrument(symbol)
         granularity = convert_timeframe2granularity(timeframe)
         temp = OANDA.get_history(
@@ -1351,8 +1312,7 @@ def i_ma(symbol, timeframe, period, shift):
 
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
-    if ((MODE == 'backtest' or MODE == 'walkforwardtest') and
-        os.path.exists(path) == True):
+    if OANDA is None and os.path.exists(path) == True:
         ma = joblib.load(path)
 
     # さもなければ計算する。
@@ -1363,7 +1323,7 @@ def i_ma(symbol, timeframe, period, shift):
         ma = ma.fillna(method='bfill')
 
         # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if MODE == 'backtest' or MODE == 'walkforwardtest':
+        if OANDA is None:
             joblib.dump(ma, path)
 
     return ma
@@ -1382,7 +1342,7 @@ def i_open(symbol, timeframe, shift):
         str(timeframe) + '_' + str(shift) + '.pkl')
 
     # トレードのとき、
-    if MODE == 'trade':
+    if OANDA is not None:
         instrument = convert_symbol2instrument(symbol)
         granularity = convert_timeframe2granularity(timeframe)
         temp = OANDA.get_history(
@@ -1436,8 +1396,8 @@ def i_pred(symbol, timeframe, period, method, shift):
 
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
-    if ((MODE == 'backtest' or MODE == 'walkforwardtest') and
-        os.path.exists(path1) == True and os.path.exists(path2) == True):
+    if (OANDA is None and os.path.exists(path1) == True
+        and os.path.exists(path2) == True):
         pred = joblib.load(path1)
         se = joblib.load(path2)
 
@@ -1488,7 +1448,7 @@ def i_pred(symbol, timeframe, period, method, shift):
             se = pd.Series()
 
         # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if MODE == 'backtest' or MODE == 'walkforwardtest':
+        if OANDA is None:
             joblib.dump(pred, path1)
             joblib.dump(se, path2)
 
@@ -1509,8 +1469,7 @@ def i_return(symbol, timeframe, shift):
 
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
-    if ((MODE == 'backtest' or MODE == 'walkforwardtest') and
-        os.path.exists(path) == True):
+    if OANDA is None and os.path.exists(path) == True:
         ret = joblib.load(path)
 
     # さもなければ計算する。
@@ -1521,7 +1480,7 @@ def i_return(symbol, timeframe, shift):
         ret[(ret==float('inf')) | (ret==float('-inf'))] = 0.0
 
         # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if MODE == 'backtest' or MODE == 'walkforwardtest':
+        if OANDA is None:
             joblib.dump(ret, path)
 
     return ret
@@ -1542,8 +1501,7 @@ def i_stop_hunting_zone(symbol, timeframe, period, shift):
 
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
-    if ((MODE == 'backtest' or MODE == 'walkforwardtest') and
-        os.path.exists(path) == True):
+    if OANDA is None and os.path.exists(path) == True:
         stop_hunting_zone = joblib.load(path)
 
     # さもなければ計算する。
@@ -1577,7 +1535,7 @@ def i_stop_hunting_zone(symbol, timeframe, period, shift):
         stop_hunting_zone = stop_hunting_zone.astype(bool)
 
         # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if MODE == 'backtest' or MODE == 'walkforwardtest':
+        if OANDA is None:
             joblib.dump(stop_hunting_zone, path)
 
     return stop_hunting_zone
@@ -1597,8 +1555,7 @@ def i_updown(symbol, timeframe, shift):
 
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
-    if ((MODE == 'backtest' or MODE == 'walkforwardtest') and
-        os.path.exists(path) == True):
+    if OANDA is None and os.path.exists(path) == True:
         updown = joblib.load(path)
 
     # さもなければ計算する。
@@ -1609,7 +1566,7 @@ def i_updown(symbol, timeframe, shift):
         updown = updown.fillna(method='bfill')
 
         # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if MODE == 'backtest' or MODE == 'walkforwardtest':
+        if OANDA is None:
             joblib.dump(updown, path)
 
     return updown
@@ -1629,8 +1586,7 @@ def i_vix4fx(symbol, timeframe, shift):
 
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
-    if ((MODE == 'backtest' or MODE == 'walkforwardtest') and
-        os.path.exists(path) == True):
+    if OANDA is None and os.path.exists(path) == True:
         vix4fx = joblib.load(path)
 
     # さもなければ計算する。
@@ -1643,7 +1599,7 @@ def i_vix4fx(symbol, timeframe, shift):
             np.sqrt(maturity) * 100.0)
 
         # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if MODE == 'backtest' or MODE == 'walkforwardtest':
+        if OANDA is None:
             joblib.dump(vix4fx, path)
 
     return vix4fx
@@ -1662,7 +1618,7 @@ def i_volume(symbol, timeframe, shift):
         str(timeframe) + '_' + str(shift) + '.pkl')
 
     # トレードのとき、
-    if MODE == 'trade':
+    if OANDA is None:
         instrument = convert_symbol2instrument(symbol)
         granularity = convert_timeframe2granularity(timeframe)
         temp = OANDA.get_history(
@@ -1713,8 +1669,7 @@ def i_zresid(symbol, timeframe, period, method, shift):
 
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
-    if ((MODE == 'backtest' or MODE == 'walkforwardtest') and
-        os.path.exists(path) == True):
+    if OANDA is None and os.path.exists(path) == True:
         zresid = joblib.load(path)
 
     # さもなければ計算する。
@@ -1729,7 +1684,7 @@ def i_zresid(symbol, timeframe, period, method, shift):
         zresid[(zresid==float('inf')) | (zresid==float('-inf'))] = 0.0
 
         # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if MODE == 'backtest' or MODE == 'walkforwardtest':
+        if OANDA is None:
             joblib.dump(zresid, path)
 
     return zresid
@@ -1866,6 +1821,96 @@ def send_signal2mt4(filename, signal):
     f.write(str(int(signal.iloc[len(signal)-1] + 2)))
     f.close()
 
+def show_backtest_result(ret, trades, timeframe, start, end, parameter_ea1,
+                parameter_ea2, parameter_ea3):
+    '''バックテストの結果を表示する。
+    Args:
+        ret: リターン。
+        trades: トレード数。
+        timeframe: タイムフレーム。
+        start: 開始日。
+        end: 終了日。
+        parameter_ea1: EA1のパラメータ。
+        parameter_ea2: EA2のパラメータ。
+        parameter_ea3: EA3のパラメータ。
+    '''
+    apr = calc_apr(ret, start, end)
+    sharpe = calc_sharpe(ret, start, end)
+    kelly = calc_kelly(ret)
+    drawdowns = calc_drawdowns(ret)
+    durations = calc_durations(ret, timeframe)
+
+    # グラフを作成する。
+    cum_ret = ret.cumsum()
+    graph = cum_ret.plot()
+    graph.set_xlabel('date')
+    graph.set_ylabel('cumulative return')
+
+    # レポートを作成する。
+    report =  pd.DataFrame(index=[0])
+    report['start'] = start.strftime('%Y.%m.%d')
+    report['end'] = end.strftime('%Y.%m.%d')
+    report['trades'] = trades
+    report['apr'] = apr
+    report['sharpe'] = sharpe
+    report['kelly'] = kelly
+    report['drawdowns'] = drawdowns
+    report['durations'] = durations
+    if parameter_ea1 is not None:
+        report['parameter_ea1'] = str(parameter_ea1)
+    if parameter_ea2 is not None:
+        report['parameter_ea2'] = str(parameter_ea2)
+    if parameter_ea3 is not None:
+        report['parameter_ea3'] = str(parameter_ea3)
+
+    # グラフを出力する。
+    plt.show(graph)
+    plt.close()
+
+    # レポートを出力する。
+    pd.set_option('line_width', 1000)
+    print(report)
+
+def show_walkforwardtest_result(ret, trades, timeframe, start, end):
+    '''ウォークフォワードテストの結果を表示する。
+    Args:
+        ret: リターン。
+        trades: トレード数。
+        timeframe: タイムフレーム。
+        start: 開始日。
+        end: 終了日。
+    '''
+    apr = calc_apr(ret, start, end)
+    sharpe = calc_sharpe(ret, start, end)
+    kelly = calc_kelly(ret)
+    drawdowns = calc_drawdowns(ret)
+    durations = calc_durations(ret, timeframe)
+
+    # グラフを作成する。
+    cum_ret = ret.cumsum()
+    graph = cum_ret.plot()
+    graph.set_xlabel('date')
+    graph.set_ylabel('cumulative return')
+
+    # レポートを作成する。
+    report = pd.DataFrame(index=[0])
+    report['start'] = start.strftime('%Y.%m.%d')
+    report['end'] = end.strftime('%Y.%m.%d')
+    report['trades'] = trades
+    report['apr'] = apr
+    report['sharpe'] = sharpe
+    report['kelly'] = kelly
+    report['drawdowns'] = drawdowns
+    report['durations'] = int(durations)
+
+    # グラフを出力する。
+    plt.show(graph)
+    plt.close()
+
+    # レポートを出力する。
+    pd.set_option('line_width', 1000)
+    print(report)
+
 def time_day(index):
     '''日を返す。
     Args:
@@ -1923,7 +1968,7 @@ def time_month(index):
 
     return time_month
 
-def trade(calc_signal, args, parameter, strategy):
+def trade(*args):
     '''トレードを行う。
     Args:
         calc_signal: シグナルを計算する関数。
@@ -1937,21 +1982,26 @@ def trade(calc_signal, args, parameter, strategy):
     global ACCESS_TOKEN
     global ACCOUNT_ID
 
-    symbol = args.symbol
-    timeframe = args.timeframe
+    ea = args[0]
+    symbol = args[1]
+    timeframe = int(args[2])
+    lots = float(args[3])
     start = datetime.strptime('2001.01.01', '%Y.%m.%d')
     end = datetime.strptime('2100.12.31', '%Y.%m.%d')
-    spread = args.spread
-    optimization = args.optimization
-    position = args.position
-    min_trade = args.min_trade
-    lots = args.lots
-    mail = args.mail
-    mt4 = args.mt4
+    spread = 4
+    optimization = 0
+    position = 2
+    min_trade = 0
+    mail = 0
+    mt4 = 0
 
     path = os.path.dirname(__file__)
     config = configparser.ConfigParser()
     config.read(path + '/settings.ini')
+
+    exec('import ' + ea + ' as ea1')
+    calc_signal = eval('ea1.calc_signal')
+    parameter = eval('ea1.PARAMETER')
 
     # メールを設定する。
     if mail == 1:
@@ -1976,7 +2026,7 @@ def trade(calc_signal, args, parameter, strategy):
     # MT4用に設定する。
     if mt4 == 1:
         folder_ea = config['DEFAULT']['folder_ea']
-        filename = folder_ea + '/' + strategy + '.csv'
+        filename = folder_ea + '/' + ea + '.csv'
         f = open(filename, 'w')
         f.write(str(2))  # EA側で-2とするので2で初期化する。
         f.close()
@@ -1988,8 +2038,8 @@ def trade(calc_signal, args, parameter, strategy):
         # 回線接続を確認してから実行する。
         try:
             # 回線が接続していないと約15分でエラーになる。
-            Bid = bid(instrument)  # 関数名とかぶるので先頭を大文字にした。
-            Ask = ask(instrument)  # 同上。
+            Bid = bid(instrument)  # 関数名と被るので先頭を大文字にする。
+            Ask = ask(instrument)# 同上。
             # tickが動いたときのみ実行する。
             if np.abs(Bid - pre_bid) >= EPS or np.abs(Ask - pre_ask) >= EPS:
                 pre_bid = Bid
@@ -2014,7 +2064,7 @@ def trade(calc_signal, args, parameter, strategy):
                         ticket = 0
                         # メールにシグナルを送信する場合
                         if mail == 1:
-                            subject = strategy
+                            subject = ea
                             some_text = (symbol + 'を' +  str(Bid) +
                                 'で買いエグジットです。')
                             send_mail(subject, some_text, fromaddr, toaddr,
@@ -2029,7 +2079,7 @@ def trade(calc_signal, args, parameter, strategy):
                         ticket = 0
                         # メールにシグナルを送信する場合
                         if mail == 1:
-                            subject = strategy
+                            subject = ea
                             some_text = (symbol + 'を' +  str(Ask) +
                                 'で売りエグジットです。')
                             send_mail(subject, some_text, fromaddr, toaddr,
@@ -2044,7 +2094,7 @@ def trade(calc_signal, args, parameter, strategy):
                         ticket = order_send(symbol, lots, 'buy')
                         # メールにシグナルを送信する場合
                         if mail == 1:
-                            subject = strategy
+                            subject = ea
                             some_text = (symbol + 'を' +  str(Ask) +
                                 'で買いエントリーです。')
                             send_mail(subject, some_text, fromaddr, toaddr,
@@ -2058,7 +2108,7 @@ def trade(calc_signal, args, parameter, strategy):
                         ticket = order_send(symbol, lots, 'sell')
                         # メールにシグナルを送信する場合
                         if mail == 1:
-                            subject = strategy
+                            subject = ea
                             some_text = (symbol + 'を' +  str(Bid) +
                                 'で売りエントリーです。')
                             send_mail(subject, some_text, fromaddr, toaddr,
@@ -2066,10 +2116,9 @@ def trade(calc_signal, args, parameter, strategy):
                         # EAにシグナルを送信する場合
                         if mt4 == 1:
                             send_signal2mt4(filename, signal)
-
                 # シグナルを出力する。
                 now = datetime.now()
-                print(now.strftime('%Y.%m.%d %H:%M:%S'), strategy, symbol,
+                print(now.strftime('%Y.%m.%d %H:%M:%S'), ea, symbol,
                       timeframe, signal.iloc[end_row])
 
         except Exception as e:
@@ -2077,13 +2126,12 @@ def trade(calc_signal, args, parameter, strategy):
             print(e)
             time.sleep(1) # 1秒おきに表示させる。
 
-def walkforwardtest(calc_signal, args, rranges, strategy):
-    '''ウォークフォワードテストを行う。
+def walkforwardtest(args):
+    '''ウォークフォワードテストテストを行う。
     Args:
-        calc_signal: シグナルを計算する関数。
         args: 引数。
-        rranges: パラメータの設定。
-        strategy: 戦略名。
+    Returns:
+        リターン、トレード数、パラメータ、タイムフレーム、開始日、終了日。
     '''
     # 一時フォルダが残っていたら削除する。
     path = os.path.dirname(__file__)
@@ -2092,25 +2140,31 @@ def walkforwardtest(calc_signal, args, rranges, strategy):
 
     # 一時フォルダを作成する。
     os.mkdir(path + '/tmp')
+    n = len(args)
+    ea = args[0]
+    symbol = args[1]
+    timeframe = int(args[2])
+    start = datetime.strptime(args[3], '%Y.%m.%d')
+    end = datetime.strptime(args[4], '%Y.%m.%d')
+    spread = int(args[5])
+    in_sample_period = 360
+    out_of_sample_period = 30
+    position = 2  # デフォルト値
+    min_trade = 260  # デフォルト値
+    if n >= 7:
+          in_sample_period = int(args[6])
+    if n >= 8:
+          out_of_sample_period = int(args[7])
+    if n >= 9:
+        position = int(args[8])
+    if n == 10:
+        min_trade = int(args[9])
 
-    symbol = args.symbol
-    timeframe = args.timeframe
-    start = datetime.strptime(args.start, '%Y.%m.%d')
-    end = datetime.strptime(args.end, '%Y.%m.%d')
-    spread = args.spread
-    position = args.position
-    min_trade = args.min_trade
-    in_sample_period = args.in_sample_period
-    out_of_sample_period = args.out_of_sample_period
+    exec('import ' + ea + ' as ea_file')
+    calc_signal = eval('ea_file.calc_signal')
+    rranges = eval('ea_file.RRANGES')
 
-    end_test = start
-    report =  pd.DataFrame(
-        index=range(1000),
-        columns=['start_train','end_train', 'start_test', 'end_test', 'trades',
-                 'apr', 'sharpe', 'kelly', 'drawdowns', 'durations',
-                 'parameter'])
-
-    def calc_performance(parameter, calc_signal, symbol, timeframe, start, end,
+    def calc_performance(parameter, calc_signal, symbol, timeframe, start, end, 
                          spread, optimization, position, min_trade):
         '''パフォーマンスを計算する。
         Args:
@@ -2126,8 +2180,7 @@ def walkforwardtest(calc_signal, args, rranges, strategy):
             min_trade: 最低トレード数。
         Returns:
             最適化の場合は適応度、そうでない場合はリターン, トレード数, 年率,
-            シャープレシオ, 最適レバレッジ, ドローダウン, ドローダウン期間、
-            シグナル。
+            シャープレシオ, 最適レバレッジ, ドローダウン, ドローダウン期間。
         '''
         # パフォーマンスを計算する。
         signal = calc_signal(parameter, symbol, timeframe, start, end, spread,
@@ -2149,17 +2202,10 @@ def walkforwardtest(calc_signal, args, rranges, strategy):
             return -fitness
     
         # 最適化しない場合、各パフォーマンスを返す。
-        elif optimization == 0:
-            apr = calc_apr(ret, start, end)
-            kelly = calc_kelly(ret)
-            drawdowns = calc_drawdowns(ret)
-            durations = calc_durations(ret, timeframe)
-
-            return (ret, trades, apr, sharpe, kelly, drawdowns, durations,
-                    signal)
-
         else:
-            pass
+            return ret, trades, signal
+
+    end_test = start
 
     # ウォークフォワードテストを行う。
     i = 0
@@ -2178,21 +2224,9 @@ def walkforwardtest(calc_signal, args, rranges, strategy):
             start_train, end_train, spread, 1, position, min_trade),
             finish=None)
         parameter = result
-        ret, trades, apr, sharpe, kelly, drawdowns, durations, signal = (
+        ret, trades, signal = (
             calc_performance(parameter, calc_signal, symbol, timeframe,
             start_test, end_test, spread, 0, position, min_trade))
-
-        report.iloc[i][0] = start_train.strftime('%Y.%m.%d')
-        report.iloc[i][1] = end_train.strftime('%Y.%m.%d')
-        report.iloc[i][2] = start_test.strftime('%Y.%m.%d')
-        report.iloc[i][3] = end_test.strftime('%Y.%m.%d')
-        report.iloc[i][4] = trades
-        report.iloc[i][5] = apr
-        report.iloc[i][6] = sharpe
-        report.iloc[i][7] = kelly
-        report.iloc[i][8] = drawdowns
-        report.iloc[i][9] = durations
-        report.iloc[i][10] = str(parameter)
 
         if i == 0:
             signal_all = signal[start_test:end_test]
@@ -2207,39 +2241,5 @@ def walkforwardtest(calc_signal, args, rranges, strategy):
     ret_all = calc_ret(symbol, timeframe, signal_all, spread,
                             start_all, end_all)
     trades_all = calc_trades(signal_all, start_all, end_all)
-    apr_all = calc_apr(ret_all, start_all, end_all)
-    sharpe_all = calc_sharpe(ret_all, start_all, end_all)
-    kelly_all = calc_kelly(ret_all)
-    drawdowns_all = calc_drawdowns(ret_all)
-    durations_all = calc_durations(ret_all, timeframe)
 
-    # グラフを作成する。
-    cum_ret = ret_all.cumsum()
-    graph = cum_ret.plot()
-    graph.set_title(strategy + '(' + symbol + str(timeframe) + ')')
-    graph.set_xlabel('date')
-    graph.set_ylabel('cumulative return')
-
-    # レポートを作成する。
-    report.iloc[i][0] = ''
-    report.iloc[i][1] = ''
-    report.iloc[i][2] = start_all.strftime('%Y.%m.%d')
-    report.iloc[i][3] = end_all.strftime('%Y.%m.%d')
-    report.iloc[i][4] = trades_all
-    report.iloc[i][5] = apr_all
-    report.iloc[i][6] = sharpe_all
-    report.iloc[i][7] = kelly_all
-    report.iloc[i][8] = drawdowns_all
-    report.iloc[i][9] = int(durations_all)
-    report.iloc[i][10] = ''
-
-    # グラフを出力する。
-    plt.show(graph)
-    plt.close()
-
-    # レポートを出力する。
-    pd.set_option('line_width', 1000)
-    print('strategy = ', strategy)
-    print('symbol = ', symbol)
-    print('timeframe = ', str(timeframe))
-    print(report.iloc[:i+1, ])
+    return ret_all, trades_all, timeframe, start, end
