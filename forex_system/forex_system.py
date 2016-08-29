@@ -932,6 +932,48 @@ def i_hl_band(symbol, timeframe, period, shift):
 
     return hl_band
 
+def i_hurst(symbol, timeframe, period, shift):
+    '''ハースト指数を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        period: 期間。
+        shift: シフト。
+    Returns:
+        ハースト指数。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_hurst_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        hurst = joblib.load(path)
+
+    # さもなければ計算する。
+    else:
+        def calc_hurst(close): 
+            max_lag = int(np.floor(len(close) / 2))
+            lags = range(2, max_lag)
+            
+            tau = [np.sqrt(np.std(np.subtract(close[lag:],
+                                              close[:-lag]))) for lag in lags]
+            
+            poly = np.polyfit(np.log(lags), np.log(tau), 1)
+            
+            return poly[0]*2.0
+
+        close = i_close(symbol, timeframe, shift)
+        hurst = close.rolling(window=period).apply(calc_hurst)
+        hurst = hurst.fillna(0.0)
+
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            joblib.dump(hurst, path)
+
+    return hurst
+
 def i_ku_bandwalk(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=1.0,
                   gbp=0.0, jpy=1.0, nzd=0.0, usd=1.0):
     '''Ku-Chartによるバンドウォークを返す。
@@ -1995,6 +2037,14 @@ def trade(*args):
     mail = 0
     mt4 = 0
 
+    n = len(args)
+    if n >= 5:
+          position = int(args[4])
+    if n >= 6:
+        mail = int(args[5])
+    if n == 7:
+        mt4 = int(args[6])
+
     path = os.path.dirname(__file__)
     config = configparser.ConfigParser()
     config.read(path + '/settings.ini')
@@ -2016,8 +2066,7 @@ def trade(*args):
     ACCESS_TOKEN = config['DEFAULT']['access_token']
     ACCOUNT_ID = config['DEFAULT']['account_id']
     OANDA = oandapy.API(environment=ENVIRONMENT, access_token=ACCESS_TOKEN)
-    pre_bid = 0.0
-    pre_ask = 0.0
+    second_before = 0
     count = COUNT
     pre_history_time = None
     instrument = convert_symbol2instrument(symbol)
@@ -2038,12 +2087,10 @@ def trade(*args):
         # 回線接続を確認してから実行する。
         try:
             # 回線が接続していないと約15分でエラーになる。
-            Bid = bid(instrument)  # 関数名と被るので先頭を大文字にする。
-            Ask = ask(instrument)# 同上。
-            # tickが動いたときのみ実行する。
-            if np.abs(Bid - pre_bid) >= EPS or np.abs(Ask - pre_ask) >= EPS:
-                pre_bid = Bid
-                pre_ask = Ask
+            second_now = seconds()
+            # 毎秒実行する。
+            if second_now != second_before:
+                second_before = second_now
                 history = OANDA.get_history(
                     instrument=instrument, granularity=granularity,
                     count=count)
@@ -2056,6 +2103,8 @@ def trade(*args):
                     signal = calc_signal(parameter, symbol, timeframe, start,
                         end, spread, optimization, position, min_trade)
                     end_row = len(signal) - 1
+                    open0 = i_open(symbol, timeframe, 0)
+                    price = open0[len(open0)-1]
                     # エグジット→エントリーの順に設定しないとドテンができない。
                     # 買いエグジット。
                     if (pos == 1 and signal.iloc[end_row] != 1):
@@ -2065,7 +2114,7 @@ def trade(*args):
                         # メールにシグナルを送信する場合
                         if mail == 1:
                             subject = ea
-                            some_text = (symbol + 'を' +  str(Bid) +
+                            some_text = (symbol + 'を' + str(price) +
                                 'で買いエグジットです。')
                             send_mail(subject, some_text, fromaddr, toaddr,
                                       host, port, password)
@@ -2080,7 +2129,7 @@ def trade(*args):
                         # メールにシグナルを送信する場合
                         if mail == 1:
                             subject = ea
-                            some_text = (symbol + 'を' +  str(Ask) +
+                            some_text = (symbol + 'を' + str(price) +
                                 'で売りエグジットです。')
                             send_mail(subject, some_text, fromaddr, toaddr,
                                       host, port, password)
@@ -2095,7 +2144,7 @@ def trade(*args):
                         # メールにシグナルを送信する場合
                         if mail == 1:
                             subject = ea
-                            some_text = (symbol + 'を' +  str(Ask) +
+                            some_text = (symbol + 'を' + str(price) +
                                 'で買いエントリーです。')
                             send_mail(subject, some_text, fromaddr, toaddr,
                                       host, port, password)
@@ -2109,7 +2158,7 @@ def trade(*args):
                         # メールにシグナルを送信する場合
                         if mail == 1:
                             subject = ea
-                            some_text = (symbol + 'を' +  str(Bid) +
+                            some_text = (symbol + 'を' + str(price) +
                                 'で売りエントリーです。')
                             send_mail(subject, some_text, fromaddr, toaddr,
                                       host, port, password)
