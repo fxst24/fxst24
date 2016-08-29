@@ -2062,10 +2062,14 @@ def trade(*args):
         password = config['DEFAULT']['password']
 
     # OANDA API用に設定する。
-    ENVIRONMENT = config['DEFAULT']['environment']
-    ACCESS_TOKEN = config['DEFAULT']['access_token']
-    ACCOUNT_ID = config['DEFAULT']['account_id']
-    OANDA = oandapy.API(environment=ENVIRONMENT, access_token=ACCESS_TOKEN)
+    if ENVIRONMENT is None:
+        ENVIRONMENT = config['DEFAULT']['environment']
+    if ACCESS_TOKEN is None:
+        ACCESS_TOKEN = config['DEFAULT']['access_token']
+    if ACCOUNT_ID is None:
+        ACCOUNT_ID = config['DEFAULT']['account_id']
+    if OANDA is None:
+        OANDA = oandapy.API(environment=ENVIRONMENT, access_token=ACCESS_TOKEN)
     second_before = 0
     count = COUNT
     pre_history_time = None
