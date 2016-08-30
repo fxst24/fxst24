@@ -22,6 +22,8 @@ if __name__ == '__main__':
     parser.add_argument('--ea1', nargs='*')
     parser.add_argument('--ea2', nargs='*')
     parser.add_argument('--ea3', nargs='*')
+    parser.add_argument('--ea4', nargs='*')
+    parser.add_argument('--ea5', nargs='*')
     args = parser.parse_args()
 
     ret_ea1, trades_ea1, timeframe, start, end = (
@@ -38,6 +40,16 @@ if __name__ == '__main__':
             fs.walkforwardtest(args.ea3))
         ret += ret_ea3
         trades += trades_ea3
+    if args.ea4 is not None:
+        ret_ea4, trades_ea4, timeframe, start, end = (
+            fs.walkforwardtest(args.ea4))
+        ret += ret_ea4
+        trades += trades_ea4
+    if args.ea5 is not None:
+        ret_ea5, trades_ea5, timeframe, start, end = (
+            fs.walkforwardtest(args.ea5))
+        ret += ret_ea5
+        trades += trades_ea5
 
     fs.show_walkforwardtest_result(ret, trades, timeframe, start, end)
 

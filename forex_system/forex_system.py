@@ -1804,7 +1804,7 @@ def send_signal2mt4(filename, signal):
     f.close()
 
 def show_backtest_result(ret, trades, timeframe, start, end, parameter_ea1,
-                parameter_ea2, parameter_ea3):
+                parameter_ea2, parameter_ea3, parameter_ea4, parameter_ea5):
     '''バックテストの結果を表示する。
     Args:
         ret: リターン。
@@ -1815,6 +1815,8 @@ def show_backtest_result(ret, trades, timeframe, start, end, parameter_ea1,
         parameter_ea1: EA1のパラメータ。
         parameter_ea2: EA2のパラメータ。
         parameter_ea3: EA3のパラメータ。
+        parameter_ea4: EA4のパラメータ。
+        parameter_ea5: EA5のパラメータ。
     '''
     apr = calc_apr(ret, start, end)
     sharpe = calc_sharpe(ret, start, end)
@@ -1844,6 +1846,10 @@ def show_backtest_result(ret, trades, timeframe, start, end, parameter_ea1,
         report['parameter_ea2'] = str(parameter_ea2)
     if parameter_ea3 is not None:
         report['parameter_ea3'] = str(parameter_ea3)
+    if parameter_ea4 is not None:
+        report['parameter_ea4'] = str(parameter_ea4)
+    if parameter_ea5 is not None:
+        report['parameter_ea5'] = str(parameter_ea5)
 
     # グラフを出力する。
     plt.show(graph)

@@ -22,10 +22,14 @@ if __name__ == '__main__':
     parser.add_argument('--ea1', nargs='*')
     parser.add_argument('--ea2', nargs='*')
     parser.add_argument('--ea3', nargs='*')
+    parser.add_argument('--ea4', nargs='*')
+    parser.add_argument('--ea5', nargs='*')
     args = parser.parse_args()
 
     parameter_ea2 = None
     parameter_ea3 = None
+    parameter_ea4 = None
+    parameter_ea5 = None
 
     ret_ea1, trades_ea1, parameter_ea1, timeframe, start, end = (
         fs.backtest(args.ea1))
@@ -41,10 +45,19 @@ if __name__ == '__main__':
             fs.backtest(args.ea3))
         ret += ret_ea3
         trades += trades_ea3
-
+    if args.ea4 is not None:
+        ret_ea4, trades_ea4, parameter_ea4, timeframe, start, end = (
+            fs.backtest(args.ea4))
+        ret += ret_ea4
+        trades += trades_ea4
+    if args.ea5 is not None:
+        ret_ea5, trades_ea5, parameter_ea5, timeframe, start, end = (
+            fs.backtest(args.ea5))
+        ret += ret_ea5
+        trades += trades_ea5
 
     fs.show_backtest_result(ret, trades, timeframe, start, end, parameter_ea1,
-                parameter_ea2, parameter_ea3)
+                parameter_ea2, parameter_ea3, parameter_ea4, parameter_ea5)
 
     # 一時フォルダを削除する。
     path = os.path.dirname(__file__)
