@@ -1,7 +1,6 @@
 # coding: utf-8
 
 import configparser
-import inspect
 import matplotlib.pyplot as plt
 import numpy as np
 import oandapy
@@ -9,6 +8,7 @@ import os
 import pandas as pd
 import shutil
 import smtplib
+import threading
 import time
 
 from datetime import datetime
@@ -23,8 +23,8 @@ from sklearn.externals import joblib
 import warnings
 warnings.simplefilter(action = 'ignore', category = RuntimeWarning)
 
-# モードを設定する。
-MODE = None
+# threading.Lockオブジェクトを生成する。
+LOCK = threading.Lock()
 
 # OANDA API用に設定する。
 OANDA = None
@@ -633,66 +633,6 @@ def divide_symbol_time(symbol):
         quote_time = 'tokyo'
 
     return base_time, quote_time
-
-def forex_system(calc_signal, parser, parameter, rranges):
-    '''各モードのプログラムを行う。
-    Args:
-        calc_signal: シグナルを計算する関数。
-        parser: パーサー。
-        parameter: パラメータ。
-        rranges: パラメータの設定。
-    '''   
-    # 開始時間を記録する。
-    start_time = time.time()
-
-    global MODE
-
-    parser.add_argument('--mode', type=str)
-    parser.add_argument('--symbol', type=str)
-    parser.add_argument('--timeframe', type=int)
-    parser.add_argument('--start', type=str)
-    parser.add_argument('--end', type=str)
-    parser.add_argument('--spread', type=int)
-    parser.add_argument('--optimization', type=int, default=0)
-    parser.add_argument('--position', type=int, default=2)
-    parser.add_argument('--min_trade', type=int, default=260)
-    parser.add_argument('--in_sample_period', type=int, default=360)
-    parser.add_argument('--out_of_sample_period', type=int, default=30)
-    parser.add_argument('--lots', type=float, default=0.1)
-    parser.add_argument('--mail', type=int, default=0)
-    parser.add_argument('--mt4', type=int, default=0)
-
-    args = parser.parse_args()
-
-    # 戦略名を取得する。
-    path = os.path.dirname(__file__)
-    temp = inspect.currentframe().f_back.f_code.co_filename
-    temp = temp.replace(path, '')
-    temp = temp.replace('/', '')
-    strategy = temp.replace('.py', '')
-
-    if args.mode == 'trade':
-        MODE = 'trade'
-        trade(calc_signal, args, parameter, strategy)
-    elif args.mode == 'backtest':
-        MODE = 'backtest'
-        backtest(calc_signal, args, parameter, rranges, strategy)
-    else:
-        MODE = 'walkforwardtest'
-        walkforwardtest(calc_signal, args, rranges, strategy)
-
-    # 終了時間を記録する。
-    end_time = time.time()
-
-    # 実行時間を出力する。
-    if end_time - start_time < 60.0:
-        print(
-            '実行時間は',
-            int(round(end_time - start_time)), '秒です。')
-    else:
-        print(
-            '実行時間は',
-            int(round((end_time - start_time) / 60.0)), '分です。')
 
 def hour():
     '''現在の時を返す。
@@ -2019,6 +1959,7 @@ def trade(*args):
         strategy: 戦略名。
     '''
     # グローバル変数を設定する。
+    global LOCK
     global OANDA
     global ENVIRONMENT
     global ACCESS_TOKEN
@@ -2090,6 +2031,8 @@ def trade(*args):
     while True:
         # 回線接続を確認してから実行する。
         try:
+            # ロックを獲得する。
+            LOCK.acquire()
             # 回線が接続していないと約15分でエラーになる。
             second_now = seconds()
             # 毎秒実行する。
@@ -2173,6 +2116,8 @@ def trade(*args):
                 now = datetime.now()
                 print(now.strftime('%Y.%m.%d %H:%M:%S'), ea, symbol,
                       timeframe, signal.iloc[end_row])
+            # ロックを解放する。
+            LOCK.release()
 
         except Exception as e:
             print('エラーが発生しました。')
