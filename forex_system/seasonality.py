@@ -1,33 +1,23 @@
 # coding: utf-8
-
 import forex_system as fs
 import numpy as np
-
 # パラメータの設定
 PARAMETER = None
-
 # 最適化の設定
 RRANGES = None
 
-def calc_signal(parameter, symbol, timeframe, start, end, spread, optimization,
-                position, min_trade):
+def calc_signal(parameter, symbol, timeframe, position):
     '''シグナルを計算する。
     Args:
         parameter: 最適化したパラメータ。
         symbol: 通貨ペア名。
         timeframe: タイムフレーム。
-        start: 開始年月日。
-        end: 終了年月日。
-        spread: スプレッド。
-        optimization: 最適化の設定。
         position: ポジションの設定。
-        min_trade: 最低トレード数。
     Returns:
         シグナル。
     '''
-    base_time, quote_time = fs.divide_symbol_time(symbol)
-
     # シグナルを計算する。
+    base_time, quote_time = fs.divide_symbol_time(symbol)
     close1 = fs.i_close(symbol, timeframe, 1)
     index = close1.index
     is_base_time = fs.is_trading_hours(index, base_time)
@@ -48,9 +38,8 @@ def calc_signal(parameter, symbol, timeframe, start, end, spread, optimization,
         signal = longs
     elif position == 1:
         signal = shorts
-    else:  # position == 2
+    else:
         signal = longs + shorts
     signal = signal.fillna(0)
     signal = signal.astype(int)
-
     return signal

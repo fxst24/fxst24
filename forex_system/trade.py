@@ -1,11 +1,11 @@
 # coding: utf-8
-
 import argparse
 import forex_system as fs
 import threading
 import time
 
 if __name__ == '__main__':
+    # 設定を格納する。
     parser = argparse.ArgumentParser()
     parser.add_argument('--ea1', nargs='*')
     parser.add_argument('--ea2', nargs='*')
@@ -13,9 +13,8 @@ if __name__ == '__main__':
     parser.add_argument('--ea4', nargs='*')
     parser.add_argument('--ea5', nargs='*')
     args = parser.parse_args()
-
     wait_time = 1  # 秒単位。
-
+    # トレードを行う。
     threading1 = threading.Thread(target=fs.trade, args=args.ea1)
     threading1.start()
     if args.ea2 is not None:

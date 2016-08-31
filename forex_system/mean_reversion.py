@@ -1,14 +1,11 @@
 # coding: utf-8
-
 import forex_system as fs
 import numpy as np
-
 # パラメータの設定
 PERIOD = 10
 ENTRY_THRESHOLD = 1.5
 FILTER_THRESHOLD = 0.5
 PARAMETER = [PERIOD, ENTRY_THRESHOLD, FILTER_THRESHOLD]
-
 # 最適化の設定
 START_PERIOD = 10
 END_PERIOD = 50
@@ -25,33 +22,26 @@ RRANGES = (
     slice(START_FILTER_THRESHOLD, END_FILTER_THRESHOLD, STEP_FILTER_THRESHOLD),
 )
 
-def calc_signal(parameter, symbol, timeframe, start, end, spread, optimization,
-                position, min_trade):
+def calc_signal(parameter, symbol, timeframe, position):
     '''シグナルを計算する。
     Args:
         parameter: 最適化したパラメータ。
         symbol: 通貨ペア名。
         timeframe: タイムフレーム。
-        start: 開始年月日。
-        end: 終了年月日。
-        spread: スプレッド。
-        optimization: 最適化の設定。
         position: ポジションの設定。
-        min_trade: 最低トレード数。
     Returns:
         シグナル。
     '''
+    # パラメータを格納する。
     period = int(parameter[0])
     entry_threshold = float(parameter[1])
     filter_threshold = float(parameter[2])
-
-    method = 'mean'
-
     # シグナルを計算する。
-    zresid1 = fs.i_zresid(symbol, timeframe, period, method, 1)[start:end]
-    bandwalk1 = fs.i_bandwalk(symbol, timeframe, period, method, 1)[start:end]
+    method = 'mean'
+    zresid1 = fs.i_zresid(symbol, timeframe, period, method, 1)
+    bandwalk1 = fs.i_bandwalk(symbol, timeframe, period, method, 1)
     stop_hunting_zone = fs.i_stop_hunting_zone(symbol, timeframe,
-        int(1440 / timeframe), 1)[start:end]
+        int(1440 / timeframe), 1)
     longs_entry = (((zresid1 <= -entry_threshold) &
         (bandwalk1 <= -filter_threshold) &
         (stop_hunting_zone['lower'] == False)) * 1)
@@ -72,12 +62,8 @@ def calc_signal(parameter, symbol, timeframe, start, end, spread, optimization,
         signal = longs
     elif position == 1:
         signal = shorts
-    elif position == 2:
-        signal = longs + shorts
     else:
-        pass
-
+        signal = longs + shorts
     signal = signal.fillna(0)
     signal = signal.astype(int)
-
     return signal
