@@ -37,9 +37,8 @@ def calc_signal(parameter, symbol, timeframe, position):
     entry_threshold = float(parameter[1])
     filter_threshold = float(parameter[2])
     # シグナルを計算する。
-    method = 'mean'
-    zresid1 = fs.i_zresid(symbol, timeframe, period, method, 1)
-    bandwalk1 = fs.i_bandwalk(symbol, timeframe, period, method, 1)
+    zresid1 = fs.i_zresid(symbol, timeframe, period, 'ma', None, 1)
+    bandwalk1 = fs.i_bandwalk(symbol, timeframe, period, 1)
     stop_hunting_zone = fs.i_stop_hunting_zone(symbol, timeframe,
         int(1440 / timeframe), 1)
     longs_entry = (((zresid1 <= -entry_threshold) &
