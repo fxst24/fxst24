@@ -1209,7 +1209,7 @@ def i_ku_zresid(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=1.0,
     return ku_zresid
 
 def i_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0, chf=0,
-                        eur=0, gbp=0, nzd=0, jpy=0):
+                        eur=0, gbp=0, jpy=0, nzd=0):
     '''線形回帰による予測値を返す。
     Args:
         symbol: 通貨ペア名。
@@ -1221,23 +1221,22 @@ def i_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0, chf=0,
         chf: スイスフラン。
         eur: ユーロ。
         gbp: ポンド。
-        nzd: NZドル。
         jpy: 円。
+        nzd: NZドル。
     Returns:
         線形回帰による予測値。
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/tmp/i_linear_regression_' + symbol +
         str(timeframe) + '_' + str(period) + '_' + str(shift) + str(aud) +
-        str(cad) + str(chf) + str(eur) + str(gbp) + str(nzd) + str(jpy) +
-        '.pkl')
+        str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) +str(nzd) + '.pkl')
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
     if OANDA is None and os.path.exists(path) == True:
         linear_regression = joblib.load(path)
     # さもなければ計算する。
     else:
-        def calc_linear_regression(data, args):
+        def calc_linear_regression(data):
             clf = linear_model.LinearRegression()
             period = len(data)
             y = data[:, 0]
@@ -1247,12 +1246,13 @@ def i_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0, chf=0,
             return pred[period-1]
 
         close = i_close(symbol, timeframe, shift)
-        data = pd.DataFrame(index=close.index)
+        index =close.index
+        data = pd.DataFrame(index=index)
         data['symbol'] = close
 
         if aud + cad + chf + eur + gbp + nzd + jpy == 0:
             time = np.array(range(len(close)))
-            data['time'] = pd.Series(time, close.index)
+            data['time'] = pd.Series(time, index)
         else:
             if aud == 1:
                 data['aud'] = i_close('AUDUSD', timeframe, shift)
@@ -1264,13 +1264,18 @@ def i_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0, chf=0,
                 data['eur'] = i_close('EURUSD', timeframe, shift)
             if gbp == 1:
                 data['gbp'] = i_close('GBPUSD', timeframe, shift)
-            if nzd == 1:
-                data['nzd'] = i_close('NZDUSD', timeframe, shift)
             if jpy == 1:
                 data['jpy'] = i_close('USDJPY', timeframe, shift)
-        args = None
-        linear_regression = rolling_apply(data, period, calc_linear_regression,
-                                          args)
+            if nzd == 1:
+                data['nzd'] = i_close('NZDUSD', timeframe, shift)
+        # リスト内包表記も試したが、特に速度は変わらない。
+        n = len(data)
+        data = np.array(data)
+        linear_regression = np.empty(n)
+        for i in range(period, n):
+            data2 = data[i-period:i, :]
+            linear_regression[i] = calc_linear_regression(data2)
+        linear_regression = pd.Series(linear_regression, index=index)
         linear_regression = linear_regression.fillna(method='ffill')
         linear_regression = linear_regression.fillna(method='bfill')
         # バックテスト、またはウォークフォワードテストのとき、保存する。
@@ -1470,7 +1475,7 @@ def i_std_dev(symbol, timeframe, period, shift):
     return std_dev
 
 def i_std_dev_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0,
-                                chf=0, eur=0, gbp=0, nzd=0, jpy=0):
+                                chf=0, eur=0, gbp=0, jpy=0, nzd=0):
     '''線形回帰による予測値との標準偏差を返す。
     Args:
         symbol: 通貨ペア名。
@@ -1482,23 +1487,23 @@ def i_std_dev_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0,
         chf: スイスフラン。
         eur: ユーロ。
         gbp: ポンド。
-        nzd: NZドル。
         jpy: 円。
+        nzd: NZドル。
     Returns:
         線形回帰による予測値との標準偏差。
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/tmp/i_std_dev_linear_regression_' +
         symbol + str(timeframe) + '_' + str(period) + '_' + str(shift) +
-        str(aud) + str(cad) + str(chf) + str(eur) + str(gbp) + str(nzd) +
-        str(jpy) + '.pkl')
+        str(aud) + str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) + 
+        str(nzd) + '.pkl')
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
     if OANDA is None and os.path.exists(path) == True:
         std_dev_linear_regression = joblib.load(path)
     # さもなければ計算する。
     else:
-        def calc_std_dev_linear_regression(data, args):
+        def calc_std_dev_linear_regression(data):
             clf = linear_model.LinearRegression()
             y = data[:, 0]
             x = data[:, 1:]
@@ -1508,12 +1513,13 @@ def i_std_dev_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0,
             return np.std(error)
 
         close = i_close(symbol, timeframe, shift)
-        data = pd.DataFrame(index=close.index)
+        index = close.index
+        data = pd.DataFrame(index=index)
         data['symbol'] = close
 
         if aud + cad + chf + eur + gbp + nzd + jpy == 0:
             time = np.array(range(len(close)))
-            data['time'] = pd.Series(time, close.index)
+            data['time'] = pd.Series(time, index)
         else:
             if aud == 1:
                 data['aud'] = i_close('AUDUSD', timeframe, shift)
@@ -1525,13 +1531,19 @@ def i_std_dev_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0,
                 data['eur'] = i_close('EURUSD', timeframe, shift)
             if gbp == 1:
                 data['gbp'] = i_close('GBPUSD', timeframe, shift)
-            if nzd == 1:
-                data['nzd'] = i_close('NZDUSD', timeframe, shift)
             if jpy == 1:
                 data['jpy'] = i_close('USDJPY', timeframe, shift)
-        args = None
-        std_dev_linear_regression = rolling_apply(data, period,
-            calc_std_dev_linear_regression, args)
+            if nzd == 1:
+                data['nzd'] = i_close('NZDUSD', timeframe, shift)
+        # リスト内包表記も試したが、特に速度は変わらない。
+        n = len(data)
+        data = np.array(data)
+        std_dev_linear_regression = np.empty(n)
+        for i in range(period, n):
+            data2 = data[i-period:i, :]
+            std_dev_linear_regression[i] = calc_std_dev_linear_regression(data2)
+        std_dev_linear_regression = pd.Series(std_dev_linear_regression,
+                                              index=index)
         std_dev_linear_regression = std_dev_linear_regression.fillna(
             method='ffill')
         std_dev_linear_regression = std_dev_linear_regression.fillna(
@@ -1544,30 +1556,30 @@ def i_std_dev_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0,
             joblib.dump(std_dev_linear_regression, path)
     return std_dev_linear_regression
 
-def i_std_dev_tree_regression(symbol, timeframe, period, max_depth, shift,
-                              aud=0, cad=0, chf=0, eur=0, gbp=0, nzd=0, jpy=0):
+def i_std_dev_tree_regression(symbol, timeframe, period, shift, aud=0, cad=0,
+                              chf=0, eur=0, gbp=0, jpy=0, nzd=0, max_depth=3):
     '''決定木による予測値との標準偏差を返す。
     Args:
         symbol: 通貨ペア名。
         timeframe: タイムフレーム。
         period: 期間。
-        max_depth: 最大の深さ。
         shift: シフト。
         aud: 豪ドル。
         cad: カナダドル。
         chf: スイスフラン。
         eur: ユーロ。
         gbp: ポンド。
-        nzd: NZドル。
         jpy: 円。
+        nzd: NZドル。
+        max_depth: 最大の深さ。
     Returns:
         決定木による予測値との標準偏差。
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/tmp/i_std_dev_tree_regression_' +
-        symbol + str(timeframe) + '_' + str(period) + '_' + str(max_depth) +
-        '_' + str(shift) + str(aud) + str(cad) + str(chf) + str(eur) +
-        str(gbp) + str(nzd) + str(jpy) + '.pkl')
+        symbol + str(timeframe) + '_' + str(period) + '_' + str(shift) + '_' +
+        str(aud) + str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) +
+        str(nzd) + '_' + str(max_depth) + '.pkl')
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
     if OANDA is None and os.path.exists(path) == True:
@@ -1575,7 +1587,7 @@ def i_std_dev_tree_regression(symbol, timeframe, period, max_depth, shift,
     # さもなければ計算する。
     else:
         def calc_std_dev_tree_regression(data, max_depth):
-            clf = tree.DecisionTreeRegressor(max_depth=3)
+            clf = tree.DecisionTreeRegressor(max_depth=max_depth)
             y = data[:, 0]
             x = data[:, 1:]
             clf.fit(x, y)
@@ -1584,12 +1596,13 @@ def i_std_dev_tree_regression(symbol, timeframe, period, max_depth, shift,
             return np.std(error)
 
         close = i_close(symbol, timeframe, shift)
-        data = pd.DataFrame(index=close.index)
+        index = close.index
+        data = pd.DataFrame(index=index)
         data['symbol'] = close
 
         if aud + cad + chf + eur + gbp + nzd + jpy == 0:
             time = np.array(range(len(close)))
-            data['time'] = pd.Series(time, close.index)
+            data['time'] = pd.Series(time, index)
         else:
             if aud == 1:
                 data['aud'] = i_close('AUDUSD', timeframe, shift)
@@ -1601,13 +1614,20 @@ def i_std_dev_tree_regression(symbol, timeframe, period, max_depth, shift,
                 data['eur'] = i_close('EURUSD', timeframe, shift)
             if gbp == 1:
                 data['gbp'] = i_close('GBPUSD', timeframe, shift)
-            if nzd == 1:
-                data['nzd'] = i_close('NZDUSD', timeframe, shift)
             if jpy == 1:
                 data['jpy'] = i_close('USDJPY', timeframe, shift)
-        std_dev_tree_regression = rolling_apply(data, period,
-                                                calc_std_dev_tree_regression,
-                                                max_depth)
+            if nzd == 1:
+                data['nzd'] = i_close('NZDUSD', timeframe, shift)
+        # リスト内包表記も試したが、特に速度は変わらない。
+        n = len(data)
+        data = np.array(data)
+        std_dev_tree_regression = np.empty(n)
+        for i in range(period, n):
+            data2 = data[i-period:i, :]
+            std_dev_tree_regression[i] = calc_std_dev_tree_regression(data2,
+                max_depth)
+        std_dev_tree_regression = pd.Series(std_dev_tree_regression,
+                                            index=index)
         std_dev_tree_regression = std_dev_tree_regression.fillna(method='ffill')
         std_dev_tree_regression = std_dev_tree_regression.fillna(method='bfill')
         # バックテスト、またはウォークフォワードテストのとき、保存する。
@@ -1667,30 +1687,30 @@ def i_stop_hunting_zone(symbol, timeframe, period, shift):
             joblib.dump(stop_hunting_zone, path)
     return stop_hunting_zone
 
-def i_tree_regression(symbol, timeframe, period, max_depth, shift, aud=0, cad=0,
-                      chf=0, eur=0, gbp=0, nzd=0, jpy=0):
+def i_tree_regression(symbol, timeframe, period, shift, aud=0, cad=0, chf=0,
+                      eur=0, gbp=0, jpy=0, nzd=0, max_depth=3):
     '''決定木による予測値を返す。
     Args:
         symbol: 通貨ペア名。
         timeframe: タイムフレーム。
         period: 期間。
-        max_depth: 最大の深さ。
         shift: シフト。
         aud: 豪ドル。
         cad: カナダドル。
         chf: スイスフラン。
         eur: ユーロ。
         gbp: ポンド。
-        nzd: NZドル。
         jpy: 円。
+        nzd: NZドル。
+        max_depth: 最大の深さ。
     Returns:
         決定木による予測値。
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/tmp/i_tree_regression_' + symbol +
-        str(timeframe) + '_' + str(period) + '_' + str(max_depth) + '_' +
-        str(shift) + str(aud) + str(cad) + str(chf) + str(eur) + str(gbp) +
-        str(nzd) + str(jpy) + '.pkl')
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '_' + str(aud) +
+        str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) + str(nzd) + '_' + 
+        str(max_depth) + '.pkl')
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
     if OANDA is None and os.path.exists(path) == True:
@@ -1698,7 +1718,7 @@ def i_tree_regression(symbol, timeframe, period, max_depth, shift, aud=0, cad=0,
     # さもなければ計算する。
     else:
         def calc_tree_regression(data, max_depth):
-            clf = tree.DecisionTreeRegressor(max_depth=3)
+            clf = tree.DecisionTreeRegressor(max_depth=max_depth)
             period = len(data)
             y = data[:, 0]
             x = data[:, 1:]
@@ -1707,12 +1727,13 @@ def i_tree_regression(symbol, timeframe, period, max_depth, shift, aud=0, cad=0,
             return pred[period-1]
 
         close = i_close(symbol, timeframe, shift)
-        data = pd.DataFrame(index=close.index)
+        index = close.index
+        data = pd.DataFrame(index=index)
         data['symbol'] = close
 
         if aud + cad + chf + eur + gbp + nzd + jpy == 0:
             time = np.array(range(len(close)))
-            data['time'] = pd.Series(time, close.index)
+            data['time'] = pd.Series(time, index)
         else:
             if aud == 1:
                 data['aud'] = i_close('AUDUSD', timeframe, shift)
@@ -1724,12 +1745,18 @@ def i_tree_regression(symbol, timeframe, period, max_depth, shift, aud=0, cad=0,
                 data['eur'] = i_close('EURUSD', timeframe, shift)
             if gbp == 1:
                 data['gbp'] = i_close('GBPUSD', timeframe, shift)
-            if nzd == 1:
-                data['nzd'] = i_close('NZDUSD', timeframe, shift)
             if jpy == 1:
                 data['jpy'] = i_close('USDJPY', timeframe, shift)
-        tree_regression = rolling_apply(data, period, calc_tree_regression,
-                                        max_depth)
+            if nzd == 1:
+                data['nzd'] = i_close('NZDUSD', timeframe, shift)
+        # リスト内包表記も試したが、特に速度は変わらない。
+        n = len(data)
+        data = np.array(data)
+        tree_regression = np.empty(n)
+        for i in range(period, n):
+            data2 = data[i-period:i, :]
+            tree_regression[i] = calc_tree_regression(data2, max_depth)
+        tree_regression = pd.Series(tree_regression, index=index)
         tree_regression = tree_regression.fillna(method='ffill')
         tree_regression = tree_regression.fillna(method='bfill')
         # バックテスト、またはウォークフォワードテストのとき、保存する。
@@ -1850,22 +1877,24 @@ def i_volume(symbol, timeframe, shift):
             joblib.dump(volume, path)
     return volume
 
-def i_zresid(symbol, timeframe, period, method, args, shift):
+def i_zresid(symbol, timeframe, period, method, shift, aud=0, cad=0, chf=0,
+             eur=0, gbp=0, jpy=0, nzd=0, max_depth=3):
     '''終値とその予測値との標準化残差を返す。
     Args:
         symbol: 通貨ペア名。
         timeframe: タイムフレーム。
         period: 期間。
         method: メソッド
-        args: 引数。
         shift: シフト。
+        kwargs: 可変長引数。
     Returns:
         終値とその予測値との標準化残差。
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/tmp/i_zresid_' + symbol +
-        str(timeframe) + '_' + str(period) + '_' + method + '_' + str(shift) +
-        '.pkl')
+        str(timeframe) + '_' + str(period) + '_' + str(method) + '_' +
+        str(shift) + '_' + str(aud) + str(cad) + str(chf) + str(eur) +
+        str(gbp) + str(jpy) + str(nzd) + '_' + str(max_depth) + '.pkl')
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
     if OANDA is None and os.path.exists(path) == True:
@@ -1879,14 +1908,18 @@ def i_zresid(symbol, timeframe, period, method, args, shift):
             pred = i_ma(symbol, timeframe, period, shift)
             se = i_std_dev(symbol, timeframe, period, shift)
         elif method == 'linear_regression':
-            pred = i_linear_regression(symbol, timeframe, period, shift)
-            se = i_std_dev_linear_regression(symbol, timeframe, period, shift)
+            pred = i_linear_regression(symbol, timeframe, period, shift, aud=aud,
+                                       cad=cad, chf=chf, eur=eur, gbp=gbp, jpy=jpy, nzd=nzd)
+            se = i_std_dev_linear_regression(symbol, timeframe, period, shift,
+                                             aud=aud,
+                                       cad=cad, chf=chf, eur=eur, gbp=gbp, jpy=jpy, nzd=nzd)
         elif method == 'tree_regression':
-            max_depth = args
-            pred = i_tree_regression(symbol, timeframe, period, max_depth,
-                                     shift)
-            se = i_std_dev_tree_regression(symbol, timeframe, period, max_depth,
-                                           shift)
+            pred = i_tree_regression(symbol, timeframe, period, shift, aud=aud,
+                                       cad=cad, chf=chf, eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, max_depth=max_depth)
+            se = i_std_dev_tree_regression(symbol, timeframe, period, shift,
+                                           aud=aud,
+                                       cad=cad, chf=chf, eur=eur, gbp=gbp, jpy=jpy, nzd=nzd,
+                                           max_depth=max_depth)
         # 標準化残差を計算する。
         zresid = (close - pred) / se
         zresid = zresid.fillna(0.0)
@@ -1986,30 +2019,6 @@ def orders_total():
     positions = OANDA.get_positions(ACCOUNT_ID)
     total = len(positions['positions'])
     return total
-
-def rolling_apply(data, window, func, *args):
-    '''関数をローリング・ウィンドウで適用して計算する。
-        data: データ。
-        window: 窓のサイズ。
-        func: 関数。
-        args: 関数の引数。
-    Returns:
-        関数をローリング・ウィンドウで適用して算出した値。
-    '''   
-    def func2(data, window, func, args, i):
-        data2 = data[i-window:i, :]
-        func(data2, args)
-    n = len(data)
-
-    ret = np.empty(n)
-    index = data.index
-    data = np.array(data)
-    # リスト内包表記も試したが、特に速度は変わらない。
-    for i in range(window, n):
-        data2 = data[i-window:i, :]
-        ret[i] = func(data2, args)
-    ret = pd.Series(ret, index=index)
-    return ret
 
 def seconds():
     '''現在の秒を返す。
