@@ -1,6 +1,5 @@
 # coding: utf-8
 import forex_system as fs
-import numpy as np
 # パラメータの設定
 PERIOD = 10
 ENTRY_THRESHOLD = 1.5
@@ -22,47 +21,31 @@ RRANGES = (
     slice(START_FILTER_THRESHOLD, END_FILTER_THRESHOLD, STEP_FILTER_THRESHOLD),
 )
 
-def calc_signal(parameter, symbol, timeframe, position):
-    '''シグナルを計算する。
+def define_trading_rules(parameter, symbol, timeframe):
+    '''トレードルールを定義する。
     Args:
         parameter: 最適化したパラメータ。
         symbol: 通貨ペア名。
         timeframe: タイムフレーム。
-        position: ポジションの設定。
     Returns:
-        シグナル。
+        買いエントリー、買いエグジット、売りエントリー、売りエグジット、最大保有期間。
     '''
     # パラメータを格納する。
     period = int(parameter[0])
     entry_threshold = float(parameter[1])
     filter_threshold = float(parameter[2])
-    # シグナルを計算する。
-    zresid1 = fs.i_zresid(symbol, timeframe, period, 'ma', None, 1)
+    max_hold_bars = None
+    # トレードルールを定義する。
+    zresid1 = fs.i_zresid(symbol, timeframe, period, 1)
     bandwalk1 = fs.i_bandwalk(symbol, timeframe, period, 1)
     stop_hunting_zone = fs.i_stop_hunting_zone(symbol, timeframe,
         int(1440 / timeframe), 1)
-    longs_entry = (((zresid1 <= -entry_threshold) &
+    buy_entry = (((zresid1 <= -entry_threshold) &
         (bandwalk1 <= -filter_threshold) &
         (stop_hunting_zone['lower'] == False)) * 1)
-    longs_exit = (zresid1 >= 0.0) * 1
-    shorts_entry = (((zresid1 >= entry_threshold) &
+    buy_exit = (zresid1 >= 0.0) * 1
+    sell_entry = (((zresid1 >= entry_threshold) &
         (bandwalk1 >= filter_threshold) &
         (stop_hunting_zone['upper'] == False)) * 1)
-    shorts_exit = (zresid1 <= 0.0) * 1
-    longs = longs_entry.copy()
-    longs[longs==0] = np.nan
-    longs[longs_exit==1] = 0
-    longs = longs.fillna(method='ffill')
-    shorts = -shorts_entry.copy()
-    shorts[shorts==0] = np.nan
-    shorts[shorts_exit==1] = 0
-    shorts = shorts.fillna(method='ffill')
-    if position == 0:
-        signal = longs
-    elif position == 1:
-        signal = shorts
-    else:
-        signal = longs + shorts
-    signal = signal.fillna(0)
-    signal = signal.astype(int)
-    return signal
+    sell_exit = (zresid1 <= 0.0) * 1
+    return buy_entry, buy_exit, sell_entry, sell_exit, max_hold_bars

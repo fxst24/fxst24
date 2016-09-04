@@ -13,6 +13,7 @@ from datetime import datetime
 from datetime import timedelta
 from email.mime.text import MIMEText
 from numba import float64, int64, jit
+from pykalman import KalmanFilter
 from scipy import optimize
 from sklearn import linear_model
 from sklearn import tree
@@ -67,16 +68,16 @@ def backtest(args):
     if n == 9:
         optimization = int(args[8])
     exec('import ' + ea + ' as ea_file')
-    calc_signal = eval('ea_file.calc_signal')
+    define_trading_rules = eval('ea_file.define_trading_rules')
     parameter = eval('ea_file.PARAMETER')
     rranges = eval('ea_file.RRANGES')
     # パフォーマンスを計算する関数を定義する。
-    def calc_performance(parameter, calc_signal, symbol, timeframe, start, end, 
-                         spread, position, min_trade, optimization):
+    def calc_performance(parameter, define_trading_rules, symbol, timeframe,
+                         start, end, spread, position, min_trade, optimization):
         '''パフォーマンスを計算する。
         Args:
             parameter: 最適化するパラメータ。
-            calc_signal: シグナルを計算する関数。
+            define_trading_rules: トレードルールを定義する関数。
             symbol: 通貨ペア名。
             timeframe: タイムフレーム。
             start: 開始日。
@@ -90,7 +91,10 @@ def backtest(args):
             シャープレシオ, 最適レバレッジ, ドローダウン, ドローダウン期間。
         '''
         # パフォーマンスを計算する。
-        signal = calc_signal(parameter, symbol, timeframe, position)
+        buy_entry, buy_exit, sell_entry, sell_exit, max_hold_bars = (
+            define_trading_rules(parameter, symbol, timeframe))
+        signal = calc_signal(buy_entry, buy_exit, sell_entry, sell_exit,
+                             max_hold_bars, position)
         ret = calc_ret(symbol, timeframe, signal, spread, start, end)
         trades = calc_trades(signal, start, end)
         sharpe = calc_sharpe(ret, start, end)
@@ -110,12 +114,13 @@ def backtest(args):
     # バックテストを行う。
     if optimization == 1:
         result = optimize.brute(calc_performance, rranges,
-                                args=(calc_signal, symbol, timeframe, start,
-                                      end, spread, position, min_trade, 1),
-                                      finish=None)
+                                args=(define_trading_rules, symbol, timeframe,
+                                      start, end, spread, position, min_trade,
+                                      1), finish=None)
         parameter = result
-    ret, trades = calc_performance(parameter, calc_signal, symbol, timeframe,
-                                   start, end, spread, position, min_trade, 0)
+    ret, trades = calc_performance(parameter, define_trading_rules, symbol,
+                                   timeframe, start, end, spread, position,
+                                   min_trade, 0)
     return ret, trades, parameter, timeframe, start, end
 
 def bid(instrument):
@@ -302,7 +307,69 @@ def calc_sharpe(ret, start, end):
     else:
         sharpe = np.sqrt(num_bar_per_year) * mean / std
     return sharpe
- 
+
+def calc_signal(buy_entry, buy_exit, sell_entry, sell_exit, max_hold_bars,
+                position):
+    '''シグナルを計算する。
+    Args:
+        buy_entry: 買いエントリー。
+        buy_exit: 買いエグジット。
+        sell_entry: 売りエントリー。
+        sell_exit: 売りエグジット。
+        max_hold_bars: 最大保有期間（足単位）
+        position: ポジションの設定。  0: 買いのみ。  1: 売りのみ。  2: 売買両方。
+    Returns:
+        シグナル。
+    '''
+    # シグナルを計算する。
+    buy = buy_entry.copy()
+    buy[buy==0] = np.nan
+    buy[buy_exit==1] = 0
+    buy = buy.fillna(method='ffill')
+    sell = -sell_entry.copy()
+    sell[sell==0] = np.nan
+    sell[sell_exit==1] = 0
+    sell = sell.fillna(method='ffill')
+    if position == 0:
+        signal = buy
+    elif position == 1:
+        signal = sell
+    else:
+        signal = buy + sell
+    # 最大保有期間の設定がある場合、
+    if max_hold_bars is not None:
+        index = signal.index
+        signal = np.array(signal)
+        # 保有期間を計算する関数を定義する。
+        @jit(float64[:](float64[:]),
+            nopython=True, cache=True)
+        def calc_hold_bars(signal):
+            buy_hold = 0
+            sell_hold = 0
+            length = len(signal)
+            hold_bars = np.empty(length)
+            for i in range(length):
+                if (signal[i] > 0):
+                    buy_hold = buy_hold + 1
+                else:
+                    buy_hold = 0
+                if (signal[i] < 0):
+                    sell_hold = sell_hold + 1
+                else:
+                    sell_hold = 0
+                hold_bars[i] = buy_hold - sell_hold
+            return hold_bars
+
+        # 最大保有期間を超え、かつエントリーが発生したタイミングでなければ0とする。
+        hold_bars = calc_hold_bars(signal)
+        signal = pd.Series(signal, index=index)
+        signal[(hold_bars > max_hold_bars) & (buy_entry!=1)] = 0
+        signal[(hold_bars < -max_hold_bars) & (sell_entry!=1)] = 0
+
+    signal = signal.fillna(0)
+    signal = signal.astype(int)
+    return signal
+
 def calc_trades(signal, start, end):
     '''トレード数を計算する。
     Args:
@@ -902,6 +969,58 @@ def i_hurst(symbol, timeframe, period, shift):
                 os.mkdir(os.path.dirname(__file__) + '/tmp')
             joblib.dump(hurst, path)
     return hurst
+
+def i_kalman_filter(symbol, timeframe, period, shift):
+    '''バンドウォークを返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        period: 期間。
+        shift: シフト。
+    Returns:
+        バンドウォーク。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_kalman_filter_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        kalman_filter = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        # バンドウォークを計算する関数を定義する。
+        def calc_kalman_filter(data, period):
+            kf = KalmanFilter(transition_matrices=np.array([[1, 1], [0, 1]]),
+                              transition_covariance=0.0000001*np.eye(2))
+            smoothed_states_pred = kf.em(data).smooth(data)[0]
+            #filtered_states_pred = kf.em(data).filter(data)[0]
+            kalman_filter = smoothed_states_pred[period-1, 0]
+            #filtered_states_pred[period-1, 0]
+            return kalman_filter
+        # 終値を格納する。
+        close = i_close(symbol, timeframe, shift)
+        # インデックスを格納する。
+        index = close.index
+        # 終値をnumpy配列に変換する。
+        close = np.array(close)
+        # バンドウォークを計算する。
+        # リスト内包表記も試したが、特に速度は変わらない。
+        n = len(close)
+        kalman_filter = np.empty(n)
+        for i in range(period, n):
+            data = close[i-period:i]
+            kalman_filter[i] = calc_kalman_filter(data, period)
+        kalman_filter = pd.Series(kalman_filter, index=index)
+        kalman_filter = kalman_filter.fillna(method='ffill')
+        kalman_filter = kalman_filter.fillna(method='bfill')
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
+                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            joblib.dump(kalman_filter, path)
+    return kalman_filter
 
 def i_ku_bandwalk(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=1.0,
                   gbp=0.0, jpy=1.0, nzd=0.0, usd=1.0):
@@ -1877,24 +1996,19 @@ def i_volume(symbol, timeframe, shift):
             joblib.dump(volume, path)
     return volume
 
-def i_zresid(symbol, timeframe, period, method, shift, aud=0, cad=0, chf=0,
-             eur=0, gbp=0, jpy=0, nzd=0, max_depth=3):
-    '''終値とその予測値との標準化残差を返す。
+def i_zresid(symbol, timeframe, period, shift):
+    '''終値とその予測値（移動平均）との標準化残差を返す。
     Args:
         symbol: 通貨ペア名。
         timeframe: タイムフレーム。
         period: 期間。
-        method: メソッド
         shift: シフト。
-        kwargs: 可変長引数。
     Returns:
-        終値とその予測値との標準化残差。
+        終値とその予測値（移動平均）との標準化残差。
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/tmp/i_zresid_' + symbol +
-        str(timeframe) + '_' + str(period) + '_' + str(method) + '_' +
-        str(shift) + '_' + str(aud) + str(cad) + str(chf) + str(eur) +
-        str(gbp) + str(jpy) + str(nzd) + '_' + str(max_depth) + '.pkl')
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
     if OANDA is None and os.path.exists(path) == True:
@@ -1904,22 +2018,8 @@ def i_zresid(symbol, timeframe, period, method, shift, aud=0, cad=0, chf=0,
         # 終値を格納する。
         close = i_close(symbol, timeframe, shift)
         # 予測値、標準誤差を格納する。
-        if method == 'ma':
-            pred = i_ma(symbol, timeframe, period, shift)
-            se = i_std_dev(symbol, timeframe, period, shift)
-        elif method == 'linear_regression':
-            pred = i_linear_regression(symbol, timeframe, period, shift, aud=aud,
-                                       cad=cad, chf=chf, eur=eur, gbp=gbp, jpy=jpy, nzd=nzd)
-            se = i_std_dev_linear_regression(symbol, timeframe, period, shift,
-                                             aud=aud,
-                                       cad=cad, chf=chf, eur=eur, gbp=gbp, jpy=jpy, nzd=nzd)
-        elif method == 'tree_regression':
-            pred = i_tree_regression(symbol, timeframe, period, shift, aud=aud,
-                                       cad=cad, chf=chf, eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, max_depth=max_depth)
-            se = i_std_dev_tree_regression(symbol, timeframe, period, shift,
-                                           aud=aud,
-                                       cad=cad, chf=chf, eur=eur, gbp=gbp, jpy=jpy, nzd=nzd,
-                                           max_depth=max_depth)
+        pred = i_ma(symbol, timeframe, period, shift)
+        se = i_std_dev(symbol, timeframe, period, shift)
         # 標準化残差を計算する。
         zresid = (close - pred) / se
         zresid = zresid.fillna(0.0)
@@ -1931,6 +2031,94 @@ def i_zresid(symbol, timeframe, period, method, shift, aud=0, cad=0, chf=0,
                 os.mkdir(os.path.dirname(__file__) + '/tmp')
             joblib.dump(zresid, path)
     return zresid
+
+def i_zresid_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0,
+                               chf=0, eur=0, gbp=0, jpy=0, nzd=0):
+    '''終値とその予測値（線形回帰）との標準化残差を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        period: 期間。
+        shift: シフト。
+    Returns:
+        終値とその予測値（線形回帰）との標準化残差。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_zresid_linear_regression_' +
+        symbol + str(timeframe) + '_' + str(period) + '_' + str(shift) + '_' +
+        str(aud) + str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) +
+        str(nzd) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        zresid_linear_regression = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        # 終値を格納する。
+        close = i_close(symbol, timeframe, shift)
+        # 予測値、標準誤差を格納する。
+        pred = i_linear_regression(symbol, timeframe, period, shift, aud=aud,
+                                   cad=cad, chf=chf, eur=eur, gbp=gbp, jpy=jpy,
+                                   nzd=nzd)
+        se = i_std_dev_linear_regression(symbol, timeframe, period, shift,
+                                         aud=aud, cad=cad, chf=chf, eur=eur,
+                                         gbp=gbp, jpy=jpy, nzd=nzd)
+        # 標準化残差を計算する。
+        zresid_linear_regression = (close - pred) / se
+        zresid_linear_regression = zresid_linear_regression.fillna(0.0)
+        zresid_linear_regression[(zresid_linear_regression==float('inf')) |
+            (zresid_linear_regression==float('-inf'))] = 0.0
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
+                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            joblib.dump(zresid_linear_regression, path)
+    return zresid_linear_regression
+
+def i_zresid_tree_regression(symbol, timeframe, period, shift, aud=0, cad=0,
+                             chf=0, eur=0, gbp=0, jpy=0, nzd=0, max_depth=3):
+    '''終値とその予測値（決定木）との標準化残差を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        period: 期間。
+        shift: シフト。
+    Returns:
+        終値とその予測値（決定木）との標準化残差。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_zresid_tree_regression_' +
+        symbol + str(timeframe) + '_' + str(period) + '_' + str(shift) + '_' +
+        str(aud) + str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) +
+        str(nzd) + '_' + str(max_depth) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        zresid_tree_regression = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        # 終値を格納する。
+        close = i_close(symbol, timeframe, shift)
+        # 予測値、標準誤差を格納する。
+        pred = i_tree_regression(symbol, timeframe, period, shift, aud=aud,
+                                 cad=cad, chf=chf, eur=eur, gbp=gbp, jpy=jpy,
+                                 nzd=nzd, max_depth=max_depth)
+        se = i_std_dev_tree_regression(symbol, timeframe, period, shift,aud=aud,
+                                       cad=cad, chf=chf, eur=eur, gbp=gbp,
+                                       jpy=jpy, nzd=nzd, max_depth=max_depth)
+        # 標準化残差を計算する。
+        zresid_tree_regression = (close - pred) / se
+        zresid_tree_regression = zresid_tree_regression.fillna(0.0)
+        zresid_tree_regression[(zresid_tree_regression==float('inf')) |
+            (zresid_tree_regression==float('-inf'))] = 0.0
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
+                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            joblib.dump(zresid_tree_regression, path)
+    return zresid_tree_regression
 
 def is_trading_hours(index, market):
     '''取引時間であるか否かを返す。
@@ -2225,7 +2413,7 @@ def trade(*args):
     if n == 7:
         mt4 = int(args[6])
     exec('import ' + ea + ' as ea1')
-    calc_signal = eval('ea1.calc_signal')
+    define_trading_rules = eval('ea1.define_trading_rules')
     parameter = eval('ea1.PARAMETER')
     # 設定ファイルを読み込む。
     path = os.path.dirname(__file__)
@@ -2281,7 +2469,10 @@ def trade(*args):
                 # 更新が完了してから実行しないと計算がおかしくなる。
                 if history_time != pre_history_time:
                     pre_history_time = history_time
-                    signal = calc_signal(parameter, symbol, timeframe, position)
+                    buy_entry, buy_exit, sell_entry, sell_exit, max_hold_bars =(
+                        define_trading_rules(parameter, symbol, timeframe))
+                    signal = calc_signal(buy_entry, buy_exit, sell_entry,
+                                         sell_exit, max_hold_bars, position)
                     end_row = len(signal) - 1
                     open0 = i_open(symbol, timeframe, 0)
                     price = open0[len(open0)-1]
@@ -2390,15 +2581,15 @@ def walkforwardtest(args):
     if n == 10:
         out_of_sample_period = int(args[9])
     exec('import ' + ea + ' as ea_file')
-    calc_signal = eval('ea_file.calc_signal')
+    define_trading_rules = eval('ea_file.define_trading_rules')
     rranges = eval('ea_file.RRANGES')
     # パフォーマンスを計算する関数を定義する。
-    def calc_performance(parameter, calc_signal, symbol, timeframe, start, end, 
-                         spread, position, min_trade, optimization):
+    def calc_performance(parameter, define_trading_rules, symbol, timeframe,
+                         start, end, spread, position, min_trade, optimization):
         '''パフォーマンスを計算する。
         Args:
             parameter: 最適化するパラメータ。
-            calc_signal: シグナルを計算する関数。
+            define_trading_rules: トレードルールを定義する関数。
             symbol: 通貨ペア名。
             timeframe: タイムフレーム。
             start: 開始日。
@@ -2412,7 +2603,10 @@ def walkforwardtest(args):
             シャープレシオ, 最適レバレッジ, ドローダウン, ドローダウン期間。
         '''
         # パフォーマンスを計算する。
-        signal = calc_signal(parameter, symbol, timeframe, position)
+        buy_entry, buy_exit, sell_entry, sell_exit, max_hold_bars = (
+            define_trading_rules(parameter, symbol, timeframe))
+        signal = calc_signal(buy_entry, buy_exit, sell_entry, sell_exit,
+                             max_hold_bars, position)
         ret = calc_ret(symbol, timeframe, signal, spread, start, end)
         trades = calc_trades(signal, start, end)
         sharpe = calc_sharpe(ret, start, end)
@@ -2443,12 +2637,12 @@ def walkforwardtest(args):
         if end_test > end:
             break
         result = optimize.brute(
-            calc_performance, rranges, args=(calc_signal, symbol, timeframe,
-            start_train, end_train, spread, position, min_trade, 1),
+            calc_performance, rranges, args=(define_trading_rules, symbol,
+            timeframe, start_train, end_train, spread, position, min_trade, 1),
             finish=None)
         parameter = result
         ret, trades, signal = (
-            calc_performance(parameter, calc_signal, symbol, timeframe,
+            calc_performance(parameter, define_trading_rules, symbol, timeframe,
             start_test, end_test, spread, position, min_trade, 0))
 
         if i == 0:
