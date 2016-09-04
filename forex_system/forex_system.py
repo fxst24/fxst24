@@ -710,14 +710,14 @@ def i_bands(symbol, timeframe, period, deviation, shift):
     return bands
 
 def i_bandwalk(symbol, timeframe, period, shift):
-    '''バンドウォークを返す。
+    '''バンドウォーク（移動平均）を返す。
     Args:
         symbol: 通貨ペア名。
         timeframe: タイムフレーム。
         period: 期間。
         shift: シフト。
     Returns:
-        バンドウォーク。
+        バンドウォーク（移動平均）。
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/tmp/i_bandwalk_' + symbol +
@@ -772,6 +772,165 @@ def i_bandwalk(symbol, timeframe, period, shift):
                 os.mkdir(os.path.dirname(__file__) + '/tmp')
             joblib.dump(bandwalk, path)
     return bandwalk
+
+def i_bandwalk_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0,
+                                 chf=0, eur=0, gbp=0, jpy=0, nzd=0):
+    '''バンドウォーク（線形回帰）を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        period: 期間。
+        shift: シフト。
+        aud: 豪ドル。
+        cad: カナダドル。
+        chf: スイスフラン。
+        eur: ユーロ。
+        gbp: ポンド。
+        jpy: 円。
+        nzd: NZドル。
+    Returns:
+        バンドウォーク（線形回帰）。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_bandwalk_linear_regression_' +
+        symbol + str(timeframe) + '_' + str(period) + '_' + str(shift) + '_' +
+        str(aud) + str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) +
+        str(nzd) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        bandwalk_linear_regression = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        # バンドウォークを計算する関数を定義する。
+        @jit(float64[:](float64[:], float64[:], float64[:]),
+            nopython=True, cache=True)
+        def calc_bandwalk_linear_regression(high, low, pred):
+            up = 0
+            down = 0
+            length = len(pred)
+            bandwalk_linear_regression = np.empty(length)
+            for i in range(length):
+                if (low[i] > pred[i]):
+                    up = up + 1
+                else:
+                    up = 0
+                if (high[i] < pred[i]):
+                    down = down + 1
+                else:
+                    down = 0
+                bandwalk_linear_regression[i] = up - down
+            return bandwalk_linear_regression
+        # 高値、安値、線形回帰による予測値を格納する。
+        high = i_high(symbol, timeframe, shift)
+        low = i_low(symbol, timeframe, shift)
+        pred = i_linear_regression(symbol, timeframe, period, shift, aud=aud,
+                                   cad=cad, chf=chf, eur=eur, gbp=gbp, jpy=jpy,
+                                   nzd=nzd)
+        # インデックスを格納する。
+        index = pred.index
+        # 高値、安値、線形回帰による予測値をnumpy配列に変換する。
+        high = np.array(high)
+        low = np.array(low)
+        pred = np.array(pred)
+        # バンドウォークを計算する。
+        bandwalk_linear_regression = calc_bandwalk_linear_regression(high, low,
+                                                                     pred)
+        a = 0.903  # 指数（正規化するために経験的に導き出した数値）
+        b = 0.393  # 切片（同上）
+        bandwalk_linear_regression = (bandwalk_linear_regression /
+            (float(period) ** a + b))
+        # Seriesに変換する。
+        bandwalk_linear_regression = pd.Series(bandwalk_linear_regression,
+                                               index=index)
+        bandwalk_linear_regression = bandwalk_linear_regression.fillna(0)
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
+                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            joblib.dump(bandwalk_linear_regression, path)
+    return bandwalk_linear_regression
+
+def i_bandwalk_tree_regression(symbol, timeframe, period, shift, aud=0, cad=0,
+                               chf=0, eur=0, gbp=0, jpy=0, nzd=0, max_depth=3):
+    '''バンドウォーク（決定木）を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        period: 期間。
+        shift: シフト。
+        aud: 豪ドル。
+        cad: カナダドル。
+        chf: スイスフラン。
+        eur: ユーロ。
+        gbp: ポンド。
+        jpy: 円。
+        nzd: NZドル。
+        max_depth: 最大の深さ。
+    Returns:
+        バンドウォーク（決定木）。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_bandwalk_tree_regression_' +
+        symbol + str(timeframe) + '_' + str(period) + '_' + str(shift) + '_' +
+        str(aud) + str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) +
+        str(nzd) + '_' + str(max_depth) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        bandwalk_tree_regression = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        # バンドウォークを計算する関数を定義する。
+        @jit(float64[:](float64[:], float64[:], float64[:]),
+            nopython=True, cache=True)
+        def calc_bandwalk_tree_regression(high, low, pred):
+            up = 0
+            down = 0
+            length = len(pred)
+            bandwalk_linear_regression = np.empty(length)
+            for i in range(length):
+                if (low[i] > pred[i]):
+                    up = up + 1
+                else:
+                    up = 0
+                if (high[i] < pred[i]):
+                    down = down + 1
+                else:
+                    down = 0
+                bandwalk_linear_regression[i] = up - down
+            return bandwalk_linear_regression
+        # 高値、安値、決定木による予測値を格納する。
+        high = i_high(symbol, timeframe, shift)
+        low = i_low(symbol, timeframe, shift)
+        pred = i_tree_regression(symbol, timeframe, period, shift, aud=aud,
+                                 cad=cad, chf=chf, eur=eur, gbp=gbp, jpy=jpy,
+                                 nzd=nzd, max_depth=max_depth)
+        # インデックスを格納する。
+        index = pred.index
+        # 高値、安値、決定木による予測値をnumpy配列に変換する。
+        high = np.array(high)
+        low = np.array(low)
+        pred = np.array(pred)
+        # バンドウォークを計算する。
+        bandwalk_tree_regression = calc_bandwalk_tree_regression(high, low,
+                                                                 pred)
+        a = 0.903  # 指数（正規化するために経験的に導き出した数値）
+        b = 0.393  # 切片（同上）
+        bandwalk_tree_regression = (bandwalk_tree_regression /
+            (float(period) ** a + b))
+        # Seriesに変換する。
+        bandwalk_tree_regression = pd.Series(bandwalk_tree_regression,
+                                             index=index)
+        bandwalk_tree_regression = bandwalk_tree_regression.fillna(0)
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
+                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            joblib.dump(bandwalk_tree_regression, path)
+    return bandwalk_tree_regression
 
 def i_close(symbol, timeframe, shift):
     '''終値を返す。
@@ -970,15 +1129,16 @@ def i_hurst(symbol, timeframe, period, shift):
             joblib.dump(hurst, path)
     return hurst
 
+# まだ作りかけ。rolling_applyを使ったほうが速い？
 def i_kalman_filter(symbol, timeframe, period, shift):
-    '''バンドウォークを返す。
+    '''カルマンフィルターによる予測値を返す。
     Args:
         symbol: 通貨ペア名。
         timeframe: タイムフレーム。
         period: 期間。
         shift: シフト。
     Returns:
-        バンドウォーク。
+        カルマンフィルターによる予測値。
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/tmp/i_kalman_filter_' + symbol +
@@ -989,7 +1149,7 @@ def i_kalman_filter(symbol, timeframe, period, shift):
         kalman_filter = joblib.load(path)
     # さもなければ計算する。
     else:
-        # バンドウォークを計算する関数を定義する。
+        # カルマンフィルターを計算する関数を定義する。
         def calc_kalman_filter(data, period):
             kf = KalmanFilter(transition_matrices=np.array([[1, 1], [0, 1]]),
                               transition_covariance=0.0000001*np.eye(2))
@@ -998,13 +1158,10 @@ def i_kalman_filter(symbol, timeframe, period, shift):
             kalman_filter = smoothed_states_pred[period-1, 0]
             #filtered_states_pred[period-1, 0]
             return kalman_filter
-        # 終値を格納する。
+        # カルマンフィルターを計算する
         close = i_close(symbol, timeframe, shift)
-        # インデックスを格納する。
         index = close.index
-        # 終値をnumpy配列に変換する。
         close = np.array(close)
-        # バンドウォークを計算する。
         # リスト内包表記も試したが、特に速度は変わらない。
         n = len(close)
         kalman_filter = np.empty(n)
@@ -1355,9 +1512,8 @@ def i_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0, chf=0,
         linear_regression = joblib.load(path)
     # さもなければ計算する。
     else:
-        def calc_linear_regression(data):
+        def calc_linear_regression(data, period):
             clf = linear_model.LinearRegression()
-            period = len(data)
             y = data[:, 0]
             x = data[:, 1:]
             clf.fit(x, y)
@@ -1366,34 +1522,34 @@ def i_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0, chf=0,
 
         close = i_close(symbol, timeframe, shift)
         index =close.index
-        data = pd.DataFrame(index=index)
-        data['symbol'] = close
+        closes = pd.DataFrame(index=index)
+        closes['symbol'] = close
 
         if aud + cad + chf + eur + gbp + nzd + jpy == 0:
             time = np.array(range(len(close)))
-            data['time'] = pd.Series(time, index)
+            closes['time'] = pd.Series(time, index)
         else:
             if aud == 1:
-                data['aud'] = i_close('AUDUSD', timeframe, shift)
+                closes['aud'] = i_close('AUDUSD', timeframe, shift)
             if cad == 1:
-                data['cad'] = i_close('USDCAD', timeframe, shift)
+                closes['cad'] = i_close('USDCAD', timeframe, shift)
             if chf == 1:
-                data['chf'] = i_close('USDCHF', timeframe, shift)
+                closes['chf'] = i_close('USDCHF', timeframe, shift)
             if eur == 1:
-                data['eur'] = i_close('EURUSD', timeframe, shift)
+                closes['eur'] = i_close('EURUSD', timeframe, shift)
             if gbp == 1:
-                data['gbp'] = i_close('GBPUSD', timeframe, shift)
+                closes['gbp'] = i_close('GBPUSD', timeframe, shift)
             if jpy == 1:
-                data['jpy'] = i_close('USDJPY', timeframe, shift)
+                closes['jpy'] = i_close('USDJPY', timeframe, shift)
             if nzd == 1:
-                data['nzd'] = i_close('NZDUSD', timeframe, shift)
+                closes['nzd'] = i_close('NZDUSD', timeframe, shift)
         # リスト内包表記も試したが、特に速度は変わらない。
-        n = len(data)
-        data = np.array(data)
+        n = len(closes)
+        closes = np.array(closes)
         linear_regression = np.empty(n)
         for i in range(period, n):
-            data2 = data[i-period:i, :]
-            linear_regression[i] = calc_linear_regression(data2)
+            data = closes[i-period:i, :]
+            linear_regression[i] = calc_linear_regression(data, period)
         linear_regression = pd.Series(linear_regression, index=index)
         linear_regression = linear_regression.fillna(method='ffill')
         linear_regression = linear_regression.fillna(method='bfill')
@@ -1633,34 +1789,34 @@ def i_std_dev_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0,
 
         close = i_close(symbol, timeframe, shift)
         index = close.index
-        data = pd.DataFrame(index=index)
-        data['symbol'] = close
+        closes = pd.DataFrame(index=index)
+        closes['symbol'] = close
 
         if aud + cad + chf + eur + gbp + nzd + jpy == 0:
             time = np.array(range(len(close)))
-            data['time'] = pd.Series(time, index)
+            closes['time'] = pd.Series(time, index)
         else:
             if aud == 1:
-                data['aud'] = i_close('AUDUSD', timeframe, shift)
+                closes['aud'] = i_close('AUDUSD', timeframe, shift)
             if cad == 1:
-                data['cad'] = i_close('USDCAD', timeframe, shift)
+                closes['cad'] = i_close('USDCAD', timeframe, shift)
             if chf == 1:
-                data['chf'] = i_close('USDCHF', timeframe, shift)
+                closes['chf'] = i_close('USDCHF', timeframe, shift)
             if eur == 1:
-                data['eur'] = i_close('EURUSD', timeframe, shift)
+                closes['eur'] = i_close('EURUSD', timeframe, shift)
             if gbp == 1:
-                data['gbp'] = i_close('GBPUSD', timeframe, shift)
+                closes['gbp'] = i_close('GBPUSD', timeframe, shift)
             if jpy == 1:
-                data['jpy'] = i_close('USDJPY', timeframe, shift)
+                closes['jpy'] = i_close('USDJPY', timeframe, shift)
             if nzd == 1:
-                data['nzd'] = i_close('NZDUSD', timeframe, shift)
+                closes['nzd'] = i_close('NZDUSD', timeframe, shift)
         # リスト内包表記も試したが、特に速度は変わらない。
-        n = len(data)
-        data = np.array(data)
+        n = len(closes)
+        closes = np.array(closes)
         std_dev_linear_regression = np.empty(n)
         for i in range(period, n):
-            data2 = data[i-period:i, :]
-            std_dev_linear_regression[i] = calc_std_dev_linear_regression(data2)
+            data = closes[i-period:i, :]
+            std_dev_linear_regression[i] = calc_std_dev_linear_regression(data)
         std_dev_linear_regression = pd.Series(std_dev_linear_regression,
                                               index=index)
         std_dev_linear_regression = std_dev_linear_regression.fillna(
@@ -1716,34 +1872,34 @@ def i_std_dev_tree_regression(symbol, timeframe, period, shift, aud=0, cad=0,
 
         close = i_close(symbol, timeframe, shift)
         index = close.index
-        data = pd.DataFrame(index=index)
-        data['symbol'] = close
+        closes = pd.DataFrame(index=index)
+        closes['symbol'] = close
 
         if aud + cad + chf + eur + gbp + nzd + jpy == 0:
             time = np.array(range(len(close)))
-            data['time'] = pd.Series(time, index)
+            closes['time'] = pd.Series(time, index)
         else:
             if aud == 1:
-                data['aud'] = i_close('AUDUSD', timeframe, shift)
+                closes['aud'] = i_close('AUDUSD', timeframe, shift)
             if cad == 1:
-                data['cad'] = i_close('USDCAD', timeframe, shift)
+                closes['cad'] = i_close('USDCAD', timeframe, shift)
             if chf == 1:
-                data['chf'] = i_close('USDCHF', timeframe, shift)
+                closes['chf'] = i_close('USDCHF', timeframe, shift)
             if eur == 1:
-                data['eur'] = i_close('EURUSD', timeframe, shift)
+                closes['eur'] = i_close('EURUSD', timeframe, shift)
             if gbp == 1:
-                data['gbp'] = i_close('GBPUSD', timeframe, shift)
+                closes['gbp'] = i_close('GBPUSD', timeframe, shift)
             if jpy == 1:
-                data['jpy'] = i_close('USDJPY', timeframe, shift)
+                closes['jpy'] = i_close('USDJPY', timeframe, shift)
             if nzd == 1:
-                data['nzd'] = i_close('NZDUSD', timeframe, shift)
+                closes['nzd'] = i_close('NZDUSD', timeframe, shift)
         # リスト内包表記も試したが、特に速度は変わらない。
-        n = len(data)
-        data = np.array(data)
+        n = len(closes)
+        closes = np.array(closes)
         std_dev_tree_regression = np.empty(n)
         for i in range(period, n):
-            data2 = data[i-period:i, :]
-            std_dev_tree_regression[i] = calc_std_dev_tree_regression(data2,
+            data = closes[i-period:i, :]
+            std_dev_tree_regression[i] = calc_std_dev_tree_regression(data,
                 max_depth)
         std_dev_tree_regression = pd.Series(std_dev_tree_regression,
                                             index=index)
@@ -1836,9 +1992,8 @@ def i_tree_regression(symbol, timeframe, period, shift, aud=0, cad=0, chf=0,
         tree_regression = joblib.load(path)
     # さもなければ計算する。
     else:
-        def calc_tree_regression(data, max_depth):
+        def calc_tree_regression(data, period, max_depth):
             clf = tree.DecisionTreeRegressor(max_depth=max_depth)
-            period = len(data)
             y = data[:, 0]
             x = data[:, 1:]
             clf.fit(x, y)
@@ -1847,34 +2002,34 @@ def i_tree_regression(symbol, timeframe, period, shift, aud=0, cad=0, chf=0,
 
         close = i_close(symbol, timeframe, shift)
         index = close.index
-        data = pd.DataFrame(index=index)
-        data['symbol'] = close
+        closes = pd.DataFrame(index=index)
+        closes['symbol'] = close
 
         if aud + cad + chf + eur + gbp + nzd + jpy == 0:
             time = np.array(range(len(close)))
-            data['time'] = pd.Series(time, index)
+            closes['time'] = pd.Series(time, index)
         else:
             if aud == 1:
-                data['aud'] = i_close('AUDUSD', timeframe, shift)
+                closes['aud'] = i_close('AUDUSD', timeframe, shift)
             if cad == 1:
-                data['cad'] = i_close('USDCAD', timeframe, shift)
+                closes['cad'] = i_close('USDCAD', timeframe, shift)
             if chf == 1:
-                data['chf'] = i_close('USDCHF', timeframe, shift)
+                closes['chf'] = i_close('USDCHF', timeframe, shift)
             if eur == 1:
-                data['eur'] = i_close('EURUSD', timeframe, shift)
+                closes['eur'] = i_close('EURUSD', timeframe, shift)
             if gbp == 1:
-                data['gbp'] = i_close('GBPUSD', timeframe, shift)
+                closes['gbp'] = i_close('GBPUSD', timeframe, shift)
             if jpy == 1:
-                data['jpy'] = i_close('USDJPY', timeframe, shift)
+                closes['jpy'] = i_close('USDJPY', timeframe, shift)
             if nzd == 1:
-                data['nzd'] = i_close('NZDUSD', timeframe, shift)
+                closes['nzd'] = i_close('NZDUSD', timeframe, shift)
         # リスト内包表記も試したが、特に速度は変わらない。
-        n = len(data)
-        data = np.array(data)
+        n = len(closes)
+        closes = np.array(closes)
         tree_regression = np.empty(n)
         for i in range(period, n):
-            data2 = data[i-period:i, :]
-            tree_regression[i] = calc_tree_regression(data2, max_depth)
+            data = closes[i-period:i, :]
+            tree_regression[i] = calc_tree_regression(data, period, max_depth)
         tree_regression = pd.Series(tree_regression, index=index)
         tree_regression = tree_regression.fillna(method='ffill')
         tree_regression = tree_regression.fillna(method='bfill')
