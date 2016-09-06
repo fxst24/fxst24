@@ -1129,7 +1129,7 @@ def i_hurst(symbol, timeframe, period, shift):
             joblib.dump(hurst, path)
     return hurst
 
-# まだ作りかけ。rolling_applyを使ったほうが速い？
+# まだ作りかけ。
 def i_kalman_filter(symbol, timeframe, period, shift):
     '''カルマンフィルターによる予測値を返す。
     Args:
@@ -1150,13 +1150,13 @@ def i_kalman_filter(symbol, timeframe, period, shift):
     # さもなければ計算する。
     else:
         # カルマンフィルターを計算する関数を定義する。
-        def calc_kalman_filter(data, period):
-            kf = KalmanFilter(transition_matrices=np.array([[1, 1], [0, 1]]),
-                              transition_covariance=0.0000001*np.eye(2))
-            smoothed_states_pred = kf.em(data).smooth(data)[0]
-            #filtered_states_pred = kf.em(data).filter(data)[0]
-            kalman_filter = smoothed_states_pred[period-1, 0]
-            #filtered_states_pred[period-1, 0]
+        def calc_kalman_filter(data, period, n_iter):
+            kf = KalmanFilter()
+            kf = kf.em(data, n_iter=n_iter)
+            #smoothed_state_means = kf.smooth(data)[0]
+            #kalman_filter = smoothed_state_means[period-1, 0]
+            filtered_state_means = kf.filter(data)[0]
+            kalman_filter = filtered_state_means[period-1, 0]
             return kalman_filter
         # カルマンフィルターを計算する
         close = i_close(symbol, timeframe, shift)
@@ -1167,7 +1167,7 @@ def i_kalman_filter(symbol, timeframe, period, shift):
         kalman_filter = np.empty(n)
         for i in range(period, n):
             data = close[i-period:i]
-            kalman_filter[i] = calc_kalman_filter(data, period)
+            kalman_filter[i] = calc_kalman_filter(data, period, 0)
         kalman_filter = pd.Series(kalman_filter, index=index)
         kalman_filter = kalman_filter.fillna(method='ffill')
         kalman_filter = kalman_filter.fillna(method='bfill')
