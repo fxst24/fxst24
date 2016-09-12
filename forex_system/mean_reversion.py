@@ -21,21 +21,21 @@ RRANGES = (
     slice(START_FILTER_THRESHOLD, END_FILTER_THRESHOLD, STEP_FILTER_THRESHOLD),
 )
 
-def define_trading_rules(parameter, symbol, timeframe):
-    '''トレードルールを定義する。
+def strategy(parameter, symbol, timeframe, position):
+    '''戦略を記述する。
     Args:
-        parameter: 最適化したパラメータ。
+        parameter: パラメータ。
         symbol: 通貨ペア名。
-        timeframe: タイムフレーム。
+        timeframe: 足の種類。
+        position: ポジションの設定。  0: 買いのみ。  1: 売りのみ。  2: 売買両方。
     Returns:
-        買いエントリー、買いエグジット、売りエントリー、売りエグジット、最大保有期間。
+        シグナル。
     '''
     # パラメータを格納する。
     period = int(parameter[0])
     entry_threshold = float(parameter[1])
     filter_threshold = float(parameter[2])
-    max_hold_bars = None
-    # トレードルールを定義する。
+    # 戦略を記述する。
     zresid1 = fs.i_zresid(symbol, timeframe, period, 1)
     bandwalk1 = fs.i_bandwalk(symbol, timeframe, period, 1)
     stop_hunting_zone = fs.i_stop_hunting_zone(symbol, timeframe,
@@ -48,4 +48,6 @@ def define_trading_rules(parameter, symbol, timeframe):
         (bandwalk1 >= filter_threshold) &
         (stop_hunting_zone['upper'] == False)) * 1)
     sell_exit = (zresid1 <= 0.0) * 1
-    return buy_entry, buy_exit, sell_entry, sell_exit, max_hold_bars
+    signal = fs.calc_signal(buy_entry, buy_exit, sell_entry, sell_exit,
+                            position)
+    return signal

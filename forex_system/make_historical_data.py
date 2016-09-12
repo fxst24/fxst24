@@ -1,10 +1,9 @@
 # coding: utf-8
-
 import argparse
 import pandas as pd
 import time
-
 from collections import OrderedDict
+from datetime import timedelta
 
 def make_historical_data(parser):
     '''ヒストリカルデータを作成する。
@@ -74,7 +73,6 @@ def make_historical_data(parser):
     usdjpy = args.usdjpy
 
     data = pd.DataFrame()
-
     # csvファイルを読み込む。
     for i in range(28):
         if i == 0:
@@ -191,28 +189,28 @@ def make_historical_data(parser):
             symbol = 'USDJPY'
         else:
             pass
-
         # 選択した通貨ペアの数を数える。
         n = (audcad + audchf + audjpy + audnzd + audusd + cadchf + cadjpy +
              chfjpy + euraud + eurcad + eurchf + eurgbp + eurjpy + eurnzd +
              eurusd + gbpaud + gbpcad + gbpchf + gbpjpy + gbpnzd + gbpusd +
              nzdcad + nzdchf + nzdjpy + nzdusd + usdcad + usdchf + usdjpy)
-
         # 1分足の作成
         filename = '~/historical_data/' + symbol + '.csv'
         if i == 0:
             data = pd.read_csv(filename, header=None, index_col=0)
             data.index = pd.to_datetime(data.index)
+            # デューカスコピーのデータはUTC時間のようなので、UTC+2に変更する。
+            data.index = data.index + timedelta(hours=2)
         else:
             temp = pd.read_csv(filename, header=None, index_col=0)
             temp.index = pd.to_datetime(temp.index)
+            # 同上。
+            temp.index = temp.index + timedelta(hours=2)
             data = pd.merge(
                 data, temp, left_index=True, right_index=True, how='outer')
-
     # 列名を変更する。
     label = ['open', 'high', 'low', 'close', 'volume']
     data.columns = label * n
-
     # リサンプリングの方法を設定する。
     ohlc_dict = OrderedDict()
     ohlc_dict['open'] = 'first'
@@ -220,7 +218,6 @@ def make_historical_data(parser):
     ohlc_dict['low'] = 'min'
     ohlc_dict['close'] = 'last'
     ohlc_dict['volume'] = 'sum'
-
     # 各足を作成する。
     count = 0
     for i in range(28):
@@ -366,16 +363,12 @@ def make_historical_data(parser):
             count = count + 1
         else:
             pass
- 
         data1 = data.iloc[:, 0+(5*(count-1)): 5+(5*(count-1))]
-
         # 欠損値を補間する。
         data1 = data1.fillna(method='ffill')
         data1 = data1.fillna(method='bfill')
-
         # 重複行を削除する。
         data1 = data1[~data1.index.duplicated()]
-        
         # 土日を削除する。
         data1 = data1[data1.index.dayofweek != 6]
         data1 = data1[data1.index.dayofweek != 7]
@@ -396,7 +389,6 @@ def make_historical_data(parser):
             '720Min', label='left', closed='left').apply(ohlc_dict)
         data1440 = data1.resample(
             '1440Min', label='left', closed='left').apply(ohlc_dict)
-
         # 欠損値を削除する。
         data5 = data5.dropna()
         data15 = data15.dropna()
@@ -406,7 +398,6 @@ def make_historical_data(parser):
         data480 = data480.dropna()
         data720 = data720.dropna()
         data1440 = data1440.dropna()
-
         # ファイルを出力する。
         filename1 =  '~/historical_data/' + symbol + '1.csv'
         filename5 =  '~/historical_data/' + symbol + '5.csv'
@@ -426,10 +417,8 @@ def make_historical_data(parser):
         data480.to_csv(filename480)
         data720.to_csv(filename720)
         data1440.to_csv(filename1440)
-
     # 終了時間を記録する。
     end_time = time.time()
-
     # 実行時間を出力する。
     if end_time - start_time < 60.0:
         print(

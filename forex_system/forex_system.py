@@ -68,33 +68,30 @@ def backtest(args):
     if n == 9:
         optimization = int(args[8])
     exec('import ' + ea + ' as ea_file')
-    define_trading_rules = eval('ea_file.define_trading_rules')
+    strategy = eval('ea_file.strategy')
     parameter = eval('ea_file.PARAMETER')
     rranges = eval('ea_file.RRANGES')
     # パフォーマンスを計算する関数を定義する。
-    def calc_performance(parameter, define_trading_rules, symbol, timeframe,
-                         start, end, spread, position, min_trade, optimization):
+    def calc_performance(parameter, strategy, symbol, timeframe, start, end,
+                         spread, position, min_trade, optimization):
         '''パフォーマンスを計算する。
         Args:
             parameter: 最適化するパラメータ。
-            define_trading_rules: トレードルールを定義する関数。
+            strategy: 戦略を記述した関数。
             symbol: 通貨ペア名。
-            timeframe: タイムフレーム。
+            timeframe: 足の種類。
             start: 開始日。
             end: 終了日。
             spread: スプレッド。
-            position: ポジションの設定。
+            position: ポジションの設定。  0: 買いのみ。  1: 売りのみ。  2: 売買両方。
             min_trade: 最低トレード数。
-            optimization: 最適化の設定。
+            optimization: 最適化の設定。  0: 最適化なし。  1: 最適化あり。
         Returns:
-            最適化の場合は適応度、そうでない場合はリターン, トレード数, 年率,
+            最適化ありの場合は適応度、最適化なしの場合はリターン, トレード数, 年率,
             シャープレシオ, 最適レバレッジ, ドローダウン, ドローダウン期間。
         '''
         # パフォーマンスを計算する。
-        buy_entry, buy_exit, sell_entry, sell_exit, max_hold_bars = (
-            define_trading_rules(parameter, symbol, timeframe))
-        signal = calc_signal(buy_entry, buy_exit, sell_entry, sell_exit,
-                             max_hold_bars, position)
+        signal = strategy(parameter, symbol, timeframe, position)
         ret = calc_ret(symbol, timeframe, signal, spread, start, end)
         trades = calc_trades(signal, start, end)
         sharpe = calc_sharpe(ret, start, end)
@@ -114,13 +111,12 @@ def backtest(args):
     # バックテストを行う。
     if optimization == 1:
         result = optimize.brute(calc_performance, rranges,
-                                args=(define_trading_rules, symbol, timeframe,
-                                      start, end, spread, position, min_trade,
-                                      1), finish=None)
+                                args=(strategy, symbol, timeframe, start, end,
+                                      spread, position, min_trade, 1),
+                                      finish=None)
         parameter = result
-    ret, trades = calc_performance(parameter, define_trading_rules, symbol,
-                                   timeframe, start, end, spread, position,
-                                   min_trade, 0)
+    ret, trades = calc_performance(parameter, strategy, symbol, timeframe,
+                                   start, end, spread, position, min_trade, 0)
     return ret, trades, parameter, timeframe, start, end
 
 def bid(instrument):
@@ -308,15 +304,13 @@ def calc_sharpe(ret, start, end):
         sharpe = np.sqrt(num_bar_per_year) * mean / std
     return sharpe
 
-def calc_signal(buy_entry, buy_exit, sell_entry, sell_exit, max_hold_bars,
-                position):
+def calc_signal(buy_entry, buy_exit, sell_entry, sell_exit, position):
     '''シグナルを計算する。
     Args:
         buy_entry: 買いエントリー。
         buy_exit: 買いエグジット。
         sell_entry: 売りエントリー。
         sell_exit: 売りエグジット。
-        max_hold_bars: 最大保有期間（足単位）
         position: ポジションの設定。  0: 買いのみ。  1: 売りのみ。  2: 売買両方。
     Returns:
         シグナル。
@@ -336,36 +330,6 @@ def calc_signal(buy_entry, buy_exit, sell_entry, sell_exit, max_hold_bars,
         signal = sell
     else:
         signal = buy + sell
-    # 最大保有期間の設定がある場合、
-    if max_hold_bars is not None:
-        index = signal.index
-        signal = np.array(signal)
-        # 保有期間を計算する関数を定義する。
-        @jit(float64[:](float64[:]),
-            nopython=True, cache=True)
-        def calc_hold_bars(signal):
-            buy_hold = 0
-            sell_hold = 0
-            length = len(signal)
-            hold_bars = np.empty(length)
-            for i in range(length):
-                if (signal[i] > 0):
-                    buy_hold = buy_hold + 1
-                else:
-                    buy_hold = 0
-                if (signal[i] < 0):
-                    sell_hold = sell_hold + 1
-                else:
-                    sell_hold = 0
-                hold_bars[i] = buy_hold - sell_hold
-            return hold_bars
-
-        # 最大保有期間を超え、かつエントリーが発生したタイミングでなければ0とする。
-        hold_bars = calc_hold_bars(signal)
-        signal = pd.Series(signal, index=index)
-        signal[(hold_bars > max_hold_bars) & (buy_entry!=1)] = 0
-        signal[(hold_bars < -max_hold_bars) & (sell_entry!=1)] = 0
-
     signal = signal.fillna(0)
     signal = signal.astype(int)
     return signal
@@ -664,6 +628,28 @@ def divide_symbol_time(symbol):
         quote_time = 'tokyo'
     return base_time, quote_time
 
+def has_event(index, timeframe, nfp=0):
+    '''イベントの有無を返す。
+    Args:
+        index: インデックス。
+        timeframe: 足の種類。
+    Returns:
+        イベントの有無。
+    '''
+    event = pd.Series(index=index)
+    week = time_week(index)
+    day_of_week = time_day_of_week(index)
+    hour = time_hour(index)
+    minute = time_minute(index)
+    # 非農業部門雇用者数
+    if nfp == 1:
+        m = int(np.floor(30 / timeframe) * timeframe)
+        h = int(np.floor(15 / (timeframe / 60)) * (timeframe / 60))
+        event[(week==1) & (day_of_week==5) & (hour==h) & (minute==m)] = 1
+    event = event.fillna(0)
+    event = event.astype(int)
+    return event
+
 def hour():
     '''現在の時を返す。
     Returns:
@@ -746,6 +732,7 @@ def i_bandwalk(symbol, timeframe, period, shift):
                 else:
                     down = 0
                 bandwalk[i] = up - down
+
             return bandwalk
         # 高値、安値、移動平均を格納する。
         high = i_high(symbol, timeframe, shift)
@@ -979,6 +966,92 @@ def i_close(symbol, timeframe, shift):
                 os.mkdir(os.path.dirname(__file__) + '/tmp')
             joblib.dump(close, path)
     return close
+
+def i_coef(symbol, timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
+           jpy=0, nzd=0):
+    '''線形回帰による係数を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        period: 期間。
+        shift: シフト。
+        aud: 豪ドル。
+        cad: カナダドル。
+        chf: スイスフラン。
+        eur: ユーロ。
+        gbp: ポンド。
+        jpy: 円。
+        nzd: NZドル。
+    Returns:
+        線形回帰による係数。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_coef_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + str(aud) +
+        str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) +str(nzd) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        coef = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        def calc_coef(data, period):
+            clf = linear_model.LinearRegression()
+            y = data[:, 0]
+            x = data[:, 1:]
+            clf.fit(x, y)
+            coef = clf.coef_
+            return coef
+
+        close = i_close(symbol, timeframe, shift)
+        index =close.index
+        closes = pd.DataFrame(index=index)
+        closes['symbol'] = close
+
+        n_currency = aud + cad + chf + eur + gbp + nzd + jpy
+        if n_currency == 0:
+            time = np.array(range(len(close)))
+            closes['time'] = pd.Series(time, index)
+            n = 1
+        else:
+            if aud == 1:
+                closes['aud'] = i_close('AUDUSD', timeframe, shift)
+            if cad == 1:
+                closes['cad'] = i_close('USDCAD', timeframe, shift)
+            if chf == 1:
+                closes['chf'] = i_close('USDCHF', timeframe, shift)
+            if eur == 1:
+                closes['eur'] = i_close('EURUSD', timeframe, shift)
+            if gbp == 1:
+                closes['gbp'] = i_close('GBPUSD', timeframe, shift)
+            if jpy == 1:
+                closes['jpy'] = i_close('USDJPY', timeframe, shift)
+            if nzd == 1:
+                closes['nzd'] = i_close('NZDUSD', timeframe, shift)
+            n = n_currency
+        # リスト内包表記も試したが、特に速度は変わらない。
+        m = len(closes)
+        closes = np.array(closes)
+        if n == 1:
+            coef = np.empty(m)
+        else:
+            coef = np.empty([m, n])
+        for i in range(period, m):
+            data = closes[i-period:i, :]
+            coef[i] = calc_coef(data, period)
+        if n == 1:
+            coef = pd.Series(coef, index=index)
+        else:
+            coef = pd.DataFrame(coef, index=index)
+        coef = coef.fillna(method='ffill')
+        coef = coef.fillna(method='bfill')
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
+                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            joblib.dump(coef, path)
+    return coef
 
 def i_diff(symbol, timeframe, shift):
     '''終値の階差を返す。
@@ -1484,6 +1557,37 @@ def i_ku_zresid(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=1.0,
             joblib.dump(ku_zresid, path)
     return ku_zresid
 
+def i_kurt(symbol, timeframe, period, shift):
+    '''リターンの尖度を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        period: 期間。
+        shift: シフト。
+    Returns:
+        リターンの尖度。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_kurt_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        kurt = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        ret = i_return(symbol, timeframe, shift)
+        kurt = ret.rolling(window=period).kurt()
+        kurt = kurt.fillna(method='ffill')
+        kurt = kurt.fillna(method='bfill')
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
+                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            joblib.dump(kurt, path)
+    return kurt
+
 def i_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0, chf=0,
                         eur=0, gbp=0, jpy=0, nzd=0):
     '''線形回帰による予測値を返す。
@@ -1518,14 +1622,16 @@ def i_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0, chf=0,
             x = data[:, 1:]
             clf.fit(x, y)
             pred = clf.predict(x)
-            return pred[period-1]
+            linear_regression = pred[period-1]
+            return linear_regression
 
         close = i_close(symbol, timeframe, shift)
         index =close.index
         closes = pd.DataFrame(index=index)
         closes['symbol'] = close
 
-        if aud + cad + chf + eur + gbp + nzd + jpy == 0:
+        n_currency = aud + cad + chf + eur + gbp + nzd + jpy
+        if n_currency == 0:
             time = np.array(range(len(close)))
             closes['time'] = pd.Series(time, index)
         else:
@@ -1640,6 +1746,37 @@ def i_ma(symbol, timeframe, period, shift):
             joblib.dump(ma, path)
     return ma
 
+def i_mean(symbol, timeframe, period, shift):
+    '''リターンの平均を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        period: 期間。
+        shift: シフト。
+    Returns:
+        リターンの平均。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_mean_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        mean = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        ret = i_return(symbol, timeframe, shift)
+        mean = ret.rolling(window=period).mean()
+        mean = mean.fillna(method='ffill')
+        mean = mean.fillna(method='bfill')
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
+                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            joblib.dump(mean, path)
+    return mean
+
 def i_open(symbol, timeframe, shift):
     '''始値を返す。
     Args:
@@ -1707,7 +1844,8 @@ def i_return(symbol, timeframe, shift):
     # さもなければ計算する。
     else:
         close = i_close(symbol, timeframe, shift)
-        ret = (close - close.shift(1)) / close.shift(1)
+        log_close = close.apply(np.log)
+        ret = log_close - log_close.shift(1)
         ret = ret.fillna(0.0)
         ret[(ret==float('inf')) | (ret==float('-inf'))] = 0.0
         # バックテスト、またはウォークフォワードテストのとき、保存する。
@@ -1717,6 +1855,68 @@ def i_return(symbol, timeframe, shift):
                 os.mkdir(os.path.dirname(__file__) + '/tmp')
             joblib.dump(ret, path)
     return ret
+
+def i_skew(symbol, timeframe, period, shift):
+    '''リターンの歪度を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        period: 期間。
+        shift: シフト。
+    Returns:
+        リターンの歪度。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_skew_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        skew = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        ret = i_return(symbol, timeframe, shift)
+        skew = ret.rolling(window=period).skew()
+        skew = skew.fillna(method='ffill')
+        skew = skew.fillna(method='bfill')
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
+                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            joblib.dump(skew, path)
+    return skew
+
+def i_std(symbol, timeframe, period, shift):
+    '''リターンの標準偏差を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        period: 期間。
+        shift: シフト。
+    Returns:
+        リターンの標準偏差。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_std_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        std = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        ret = i_return(symbol, timeframe, shift)
+        std = ret.rolling(window=period).std()
+        std = std.fillna(method='ffill')
+        std = std.fillna(method='bfill')
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
+                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            joblib.dump(std, path)
+    return std
 
 def i_std_dev(symbol, timeframe, period, shift):
     '''# 標準偏差を返す。
@@ -2285,42 +2485,24 @@ def is_trading_hours(index, market):
     '''
     # 東京時間の場合。
     if market == 'tokyo':
-        trading_hours = (index.hour>=0) & (index.hour<6)
+        trading_hours = ((index.hour>=2) & (index.hour<8)) * 1
         trading_hours = pd.Series(trading_hours, index=index)
-        '''
         # 夏時間の大まかな調整。
         trading_hours[(trading_hours.index.month>=3)
-            & (trading_hours.index.month<11)] = ((index.hour>=0)
-            & (index.hour<6))
-        '''
+            & (trading_hours.index.month<11)] = (((index.hour>=3)
+            & (index.hour<9))) * 1
     # ロンドン時間の場合。
     elif market == 'ldn':
-        trading_hours = (index.hour>=8) & (index.hour<16)
+        trading_hours = ((index.hour>=10) & (index.hour<18)) * 1
+        trading_hours = pd.Series(trading_hours, index=index)
+        trading_hours[(trading_hours.index.hour==18)
+            & (trading_hours.index.minute<30)] = 1
+    # NY時間の場合。
+    else:
+        trading_hours = ((index.hour>=17) & (index.hour<23)) * 1
         trading_hours = pd.Series(trading_hours, index=index)
         trading_hours[(trading_hours.index.hour==16)
-            & (trading_hours.index.minute<30)] = True
-        # 夏時間の大まかな調整。
-        trading_hours[(trading_hours.index.month>=3)
-            & (trading_hours.index.month<11)] = ((index.hour>=7)
-            & (index.hour<15))
-        trading_hours[(trading_hours.index.month>=3)
-            & (trading_hours.index.month<11)
-            & (trading_hours.index.hour==15)
-            & (trading_hours.index.minute<30)] = True
-    # NY時間の場合。
-    else:  # market == 'ny':
-        trading_hours = (index.hour>=15) & (index.hour<21)
-        trading_hours = pd.Series(trading_hours, index=index)
-        trading_hours[(trading_hours.index.hour==14)
-            & (trading_hours.index.minute>=30)] = True
-        # 夏時間の大まかな調整。
-        trading_hours[(trading_hours.index.month>=3)
-            & (trading_hours.index.month<11)] = ((index.hour>=14)
-            & (index.hour<20))
-        trading_hours[(trading_hours.index.month>=3)
-            & (trading_hours.index.month<11)
-            & (trading_hours.index.hour==13)
-            & (trading_hours.index.minute>=30)] = True
+            & (trading_hours.index.minute>=30)] = 1
     return trading_hours
 
 def minute():
@@ -2447,7 +2629,7 @@ def show_backtest_result(ret, trades, timeframe, start, end, parameter_ea1,
     plt.show(graph)
     plt.close()
     # レポートを出力する。
-    pd.set_option('line_width', 1000)
+    pd.set_option('display.width', 1000)
     print(report)
 
 def show_walkforwardtest_result(ret, trades, timeframe, start, end):
@@ -2483,7 +2665,7 @@ def show_walkforwardtest_result(ret, trades, timeframe, start, end):
     plt.show(graph)
     plt.close()
     # レポートを出力する。
-    pd.set_option('line_width', 1000)
+    pd.set_option('display.width', 1000)
     print(report)
 
 def time_day(index):
@@ -2501,13 +2683,13 @@ def time_day_of_week(index):
     Args:
         index: インデックス。
     Returns:
-        曜日（日-土、0-6）。
+        曜日（0-6（日-土））。
     '''
     # pandasのdayofweekは月-日、0-6なので、MQL4に合わせて調整する。
     time_day_of_week = pd.Series(index.dayofweek, index=index) + 1
     time_day_of_week[time_day_of_week==7] = 0
     return time_day_of_week
- 
+
 def time_hour(index):
     '''時を返す。
     Args:
@@ -2537,6 +2719,18 @@ def time_month(index):
     '''
     time_month = pd.Series(index.month, index=index)
     return time_month
+
+def time_week(index):
+    '''週を返す。
+       ただし、月の第n週という意味ではなく、月のn番目の曜日という意味。
+    Args:
+        index: インデックス。
+    Returns:
+        週（0-4）。
+    '''
+    day = time_day(index)
+    time_week = (np.ceil(day / 7)).astype(int)
+    return time_week
 
 def trade(*args):
     '''トレードを行う。
@@ -2568,7 +2762,7 @@ def trade(*args):
     if n == 7:
         mt4 = int(args[6])
     exec('import ' + ea + ' as ea1')
-    define_trading_rules = eval('ea1.define_trading_rules')
+    strategy = eval('ea1.strategy')
     parameter = eval('ea1.PARAMETER')
     # 設定ファイルを読み込む。
     path = os.path.dirname(__file__)
@@ -2624,10 +2818,7 @@ def trade(*args):
                 # 更新が完了してから実行しないと計算がおかしくなる。
                 if history_time != pre_history_time:
                     pre_history_time = history_time
-                    buy_entry, buy_exit, sell_entry, sell_exit, max_hold_bars =(
-                        define_trading_rules(parameter, symbol, timeframe))
-                    signal = calc_signal(buy_entry, buy_exit, sell_entry,
-                                         sell_exit, max_hold_bars, position)
+                    signal = strategy(parameter, symbol, timeframe, position)
                     end_row = len(signal) - 1
                     open0 = i_open(symbol, timeframe, 0)
                     price = open0[len(open0)-1]
@@ -2736,32 +2927,29 @@ def walkforwardtest(args):
     if n == 10:
         out_of_sample_period = int(args[9])
     exec('import ' + ea + ' as ea_file')
-    define_trading_rules = eval('ea_file.define_trading_rules')
+    strategy = eval('ea_file.strategy')
     rranges = eval('ea_file.RRANGES')
     # パフォーマンスを計算する関数を定義する。
-    def calc_performance(parameter, define_trading_rules, symbol, timeframe,
-                         start, end, spread, position, min_trade, optimization):
+    def calc_performance(parameter, strategy, symbol, timeframe, start, end,
+                         spread, position, min_trade, optimization):
         '''パフォーマンスを計算する。
         Args:
             parameter: 最適化するパラメータ。
-            define_trading_rules: トレードルールを定義する関数。
+            strategy: 戦略を記述した関数。
             symbol: 通貨ペア名。
-            timeframe: タイムフレーム。
+            timeframe: 足の種類。
             start: 開始日。
             end: 終了日。
             spread: スプレッド。
-            position: ポジションの設定。
+            position: ポジションの設定。  0: 買いのみ。  1: 売りのみ。  2: 売買両方。
             min_trade: 最低トレード数。
-            optimization: 最適化の設定。
+            optimization: 最適化の設定。  0: 最適化なし。  1: 最適化あり。
         Returns:
-            最適化の場合は適応度、そうでない場合はリターン, トレード数, 年率,
+            最適化ありの場合は適応度、なしの場合はリターン, トレード数, 年率,
             シャープレシオ, 最適レバレッジ, ドローダウン, ドローダウン期間。
         '''
         # パフォーマンスを計算する。
-        buy_entry, buy_exit, sell_entry, sell_exit, max_hold_bars = (
-            define_trading_rules(parameter, symbol, timeframe))
-        signal = calc_signal(buy_entry, buy_exit, sell_entry, sell_exit,
-                             max_hold_bars, position)
+        signal = strategy(parameter, symbol, timeframe, position)
         ret = calc_ret(symbol, timeframe, signal, spread, start, end)
         trades = calc_trades(signal, start, end)
         sharpe = calc_sharpe(ret, start, end)
@@ -2792,12 +2980,12 @@ def walkforwardtest(args):
         if end_test > end:
             break
         result = optimize.brute(
-            calc_performance, rranges, args=(define_trading_rules, symbol,
-            timeframe, start_train, end_train, spread, position, min_trade, 1),
+            calc_performance, rranges, args=(strategy, symbol, timeframe,
+            start_train, end_train, spread, position, min_trade, 1),
             finish=None)
         parameter = result
         ret, trades, signal = (
-            calc_performance(parameter, define_trading_rules, symbol, timeframe,
+            calc_performance(parameter, strategy, symbol, timeframe,
             start_test, end_test, spread, position, min_trade, 0))
 
         if i == 0:

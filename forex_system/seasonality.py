@@ -5,18 +5,17 @@ PARAMETER = None
 # 最適化の設定
 RRANGES = None
 
-def define_trading_rules(parameter, symbol, timeframe):
-    '''トレードルールを定義する。
+def strategy(parameter, symbol, timeframe, position):
+    '''戦略を記述する。
     Args:
-        parameter: 最適化したパラメータ。
+        parameter: パラメータ。
         symbol: 通貨ペア名。
-        timeframe: タイムフレーム。
+        timeframe: 足の種類。
+        position: ポジションの設定。  0: 買いのみ。  1: 売りのみ。  2: 売買両方。
     Returns:
-        買いエントリー、買いエグジット、売りエントリー、売りエグジット、最大保有期間。
+        シグナル。
     '''
-    # パラメータを格納する。
-    max_hold_bars = None
-    # トレードルールを定義する。
+    # 戦略を記述する。
     base_time, quote_time = fs.divide_symbol_time(symbol)
     close1 = fs.i_close(symbol, timeframe, 1)
     index = close1.index
@@ -26,4 +25,6 @@ def define_trading_rules(parameter, symbol, timeframe):
     buy_exit = (buy_entry != 1) * 1
     sell_entry = ((is_base_time == True) & (is_quote_time == False)) * 1
     sell_exit = (sell_entry != 1) * 1
-    return buy_entry, buy_exit, sell_entry, sell_exit, max_hold_bars
+    signal = fs.calc_signal(buy_entry, buy_exit, sell_entry, sell_exit,
+                            position)
+    return signal
