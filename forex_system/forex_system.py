@@ -734,22 +734,19 @@ def i_bandwalk(symbol, timeframe, period, shift):
                 bandwalk[i] = up - down
 
             return bandwalk
-        # 高値、安値、移動平均を格納する。
+
+        # バンドウォークを計算する。
         high = i_high(symbol, timeframe, shift)
         low = i_low(symbol, timeframe, shift)
         ma = i_ma(symbol, timeframe, period, shift)
-        # インデックスを格納する。
         index = ma.index
-        # 高値、安値、移動平均をnumpy配列に変換する。
         high = np.array(high)
         low = np.array(low)
         ma = np.array(ma)
-        # バンドウォークを計算する。
         bandwalk = calc_bandwalk(high, low, ma)
         a = 0.903  # 指数（正規化するために経験的に導き出した数値）
         b = 0.393  # 切片（同上）
         bandwalk = bandwalk / (float(period) ** a + b)
-        # Seriesに変換する。
         bandwalk = pd.Series(bandwalk, index=index)
         bandwalk = bandwalk.fillna(0)
         # バックテスト、またはウォークフォワードテストのとき、保存する。
@@ -760,8 +757,9 @@ def i_bandwalk(symbol, timeframe, period, shift):
             joblib.dump(bandwalk, path)
     return bandwalk
 
-def i_bandwalk_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0,
-                                 chf=0, eur=0, gbp=0, jpy=0, nzd=0):
+def i_bandwalk_linear_regression(symbol, timeframe, period, shift, aud=0.0,
+                                 cad=0.0, chf=0.0, eur=0.0, gbp=0.0, jpy=0.0,
+                                 nzd=0.0, usd=0.0):
     '''バンドウォーク（線形回帰）を返す。
     Args:
         symbol: 通貨ペア名。
@@ -775,6 +773,7 @@ def i_bandwalk_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0,
         gbp: ポンド。
         jpy: 円。
         nzd: NZドル。
+        usd: 米ドル。
     Returns:
         バンドウォーク（線形回帰）。
     '''
@@ -782,7 +781,7 @@ def i_bandwalk_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0,
     path = (os.path.dirname(__file__) + '/tmp/i_bandwalk_linear_regression_' +
         symbol + str(timeframe) + '_' + str(period) + '_' + str(shift) + '_' +
         str(aud) + str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) +
-        str(nzd) + '.pkl')
+        str(nzd) + str(usd) + '.pkl')
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
     if OANDA is None and os.path.exists(path) == True:
@@ -808,26 +807,23 @@ def i_bandwalk_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0,
                     down = 0
                 bandwalk_linear_regression[i] = up - down
             return bandwalk_linear_regression
-        # 高値、安値、線形回帰による予測値を格納する。
+
+        # バンドウォークを計算する。
         high = i_high(symbol, timeframe, shift)
         low = i_low(symbol, timeframe, shift)
         pred = i_linear_regression(symbol, timeframe, period, shift, aud=aud,
                                    cad=cad, chf=chf, eur=eur, gbp=gbp, jpy=jpy,
-                                   nzd=nzd)
-        # インデックスを格納する。
+                                   nzd=nzd, usd=usd)
         index = pred.index
-        # 高値、安値、線形回帰による予測値をnumpy配列に変換する。
         high = np.array(high)
         low = np.array(low)
         pred = np.array(pred)
-        # バンドウォークを計算する。
         bandwalk_linear_regression = calc_bandwalk_linear_regression(high, low,
                                                                      pred)
         a = 0.903  # 指数（正規化するために経験的に導き出した数値）
         b = 0.393  # 切片（同上）
         bandwalk_linear_regression = (bandwalk_linear_regression /
             (float(period) ** a + b))
-        # Seriesに変換する。
         bandwalk_linear_regression = pd.Series(bandwalk_linear_regression,
                                                index=index)
         bandwalk_linear_regression = bandwalk_linear_regression.fillna(0)
@@ -839,8 +835,81 @@ def i_bandwalk_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0,
             joblib.dump(bandwalk_linear_regression, path)
     return bandwalk_linear_regression
 
+def i_bandwalk_rank(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0,
+                    eur=0.0, gbp=0.0, jpy=0.0, nzd=0.0, usd=0.0):
+    '''バンドウォーク（通貨の強弱の順位）を返す。
+    Args:
+        timeframe: 足の種類。
+        period: 計算期間。
+        shift: シフト。
+        aud: 豪ドル。
+        cad: カナダドル。
+        chf: スイスフラン。
+        eur: ユーロ。
+        gbp: ポンド。
+        jpy: 円。
+        nzd: NZドル。
+        usd: 米ドル。
+    Returns:
+        バンドウォーク（通貨の強弱の順位）。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_bandwalk_rank_' +
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '_' +
+        str(aud) + str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) +
+        str(nzd) + str(usd) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        bandwalk_rank = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        # バンドウォークを計算する関数を定義する。
+        @jit(float64[:, :](float64[:, :], float64[:, :], int64, int64),
+             nopython=True, cache=True)
+        def calc_bandwalk_rank(rank, bandwalk_rank, m, n):
+            for j in range(n):
+                up = 0
+                down = 0
+                for i in range(m):
+                    if (rank[i][j] > 0.0):
+                        up = up + 1
+                    else:
+                        up = 0
+                    if (rank[i][j] < 0.0):
+                        down = down + 1
+                    else:
+                        down = 0
+                    bandwalk_rank[i][j] = up - down
+            return bandwalk_rank
+
+        # バンドウォークを計算する。
+        rank =i_rank(timeframe, period, shift, aud=aud, cad=cad, chf=chf,
+                     eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
+        index = rank.index
+        columns = rank.columns
+        rank = np.array(rank)
+        m = len(rank)
+        n = len(rank[0])
+        bandwalk_rank = np.empty([m, n])  # numbaは関数内部で2次元配列を作れない。
+        bandwalk_rank = calc_bandwalk_rank(rank, bandwalk_rank, m, n)
+        a = 0.903  # 指数（正規化するために経験的に導き出した数値）
+        b = 0.393  # 切片（同上）
+        bandwalk_rank = bandwalk_rank / (float(period) ** a + b)
+        bandwalk_rank = pd.DataFrame(bandwalk_rank, index=index,
+                                     columns=columns)
+        bandwalk_rank = bandwalk_rank.fillna(0)
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
+                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            joblib.dump(bandwalk_rank, path)
+    return bandwalk_rank
+
 def i_bandwalk_tree_regression(symbol, timeframe, period, shift, aud=0, cad=0,
-                               chf=0, eur=0, gbp=0, jpy=0, nzd=0, max_depth=3):
+                               chf=0, eur=0, gbp=0, jpy=0, nzd=0, usd=0.0,
+                               max_depth=3):
     '''バンドウォーク（決定木）を返す。
     Args:
         symbol: 通貨ペア名。
@@ -854,6 +923,7 @@ def i_bandwalk_tree_regression(symbol, timeframe, period, shift, aud=0, cad=0,
         gbp: ポンド。
         jpy: 円。
         nzd: NZドル。
+        usd: 米ドル。
         max_depth: 最大の深さ。
     Returns:
         バンドウォーク（決定木）。
@@ -862,7 +932,7 @@ def i_bandwalk_tree_regression(symbol, timeframe, period, shift, aud=0, cad=0,
     path = (os.path.dirname(__file__) + '/tmp/i_bandwalk_tree_regression_' +
         symbol + str(timeframe) + '_' + str(period) + '_' + str(shift) + '_' +
         str(aud) + str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) +
-        str(nzd) + '_' + str(max_depth) + '.pkl')
+        str(nzd) + str(usd) + '_' + str(max_depth) + '.pkl')
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
     if OANDA is None and os.path.exists(path) == True:
@@ -888,26 +958,23 @@ def i_bandwalk_tree_regression(symbol, timeframe, period, shift, aud=0, cad=0,
                     down = 0
                 bandwalk_linear_regression[i] = up - down
             return bandwalk_linear_regression
-        # 高値、安値、決定木による予測値を格納する。
+
+        # バンドウォークを計算する。
         high = i_high(symbol, timeframe, shift)
         low = i_low(symbol, timeframe, shift)
         pred = i_tree_regression(symbol, timeframe, period, shift, aud=aud,
                                  cad=cad, chf=chf, eur=eur, gbp=gbp, jpy=jpy,
-                                 nzd=nzd, max_depth=max_depth)
-        # インデックスを格納する。
+                                 nzd=nzd, usd=usd, max_depth=max_depth)
         index = pred.index
-        # 高値、安値、決定木による予測値をnumpy配列に変換する。
         high = np.array(high)
         low = np.array(low)
         pred = np.array(pred)
-        # バンドウォークを計算する。
         bandwalk_tree_regression = calc_bandwalk_tree_regression(high, low,
                                                                  pred)
         a = 0.903  # 指数（正規化するために経験的に導き出した数値）
         b = 0.393  # 切片（同上）
         bandwalk_tree_regression = (bandwalk_tree_regression /
             (float(period) ** a + b))
-        # Seriesに変換する。
         bandwalk_tree_regression = pd.Series(bandwalk_tree_regression,
                                              index=index)
         bandwalk_tree_regression = bandwalk_tree_regression.fillna(0)
@@ -967,8 +1034,8 @@ def i_close(symbol, timeframe, shift):
             joblib.dump(close, path)
     return close
 
-def i_coef(symbol, timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
-           jpy=0, nzd=0):
+def i_coef(symbol, timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0,
+           gbp=0.0, jpy=0.0, nzd=0.0, usd=0.0):
     '''線形回帰による係数を返す。
     Args:
         symbol: 通貨ペア名。
@@ -982,63 +1049,52 @@ def i_coef(symbol, timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
         gbp: ポンド。
         jpy: 円。
         nzd: NZドル。
+        usd: 米ドル。
     Returns:
         線形回帰による係数。
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/tmp/i_coef_' + symbol +
         str(timeframe) + '_' + str(period) + '_' + str(shift) + str(aud) +
-        str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) +str(nzd) + '.pkl')
+        str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) + str(nzd) +
+        str(usd) + '.pkl')
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
     if OANDA is None and os.path.exists(path) == True:
         coef = joblib.load(path)
     # さもなければ計算する。
     else:
-        def calc_coef(data, period):
+        def calc_coef(x, y, period):
             clf = linear_model.LinearRegression()
-            y = data[:, 0]
-            x = data[:, 1:]
             clf.fit(x, y)
             coef = clf.coef_
             return coef
 
         close = i_close(symbol, timeframe, shift)
-        index =close.index
-        closes = pd.DataFrame(index=index)
-        closes['symbol'] = close
-
-        n_currency = aud + cad + chf + eur + gbp + nzd + jpy
+        index = close.index
+        close = np.array(close)
+        n_currency = ((
+            (aud > 0.0) + (cad > 0.0) + (chf > 0.0) + (eur > 0.0) +
+            (gbp > 0.0) + (jpy > 0.0) + (nzd > 0.0) + (usd > 0.0)) * 1)
         if n_currency == 0:
-            time = np.array(range(len(close)))
-            closes['time'] = pd.Series(time, index)
-            n = 1
+            ku_close = np.array(range(len(close)))
         else:
-            if aud == 1:
-                closes['aud'] = i_close('AUDUSD', timeframe, shift)
-            if cad == 1:
-                closes['cad'] = i_close('USDCAD', timeframe, shift)
-            if chf == 1:
-                closes['chf'] = i_close('USDCHF', timeframe, shift)
-            if eur == 1:
-                closes['eur'] = i_close('EURUSD', timeframe, shift)
-            if gbp == 1:
-                closes['gbp'] = i_close('GBPUSD', timeframe, shift)
-            if jpy == 1:
-                closes['jpy'] = i_close('USDJPY', timeframe, shift)
-            if nzd == 1:
-                closes['nzd'] = i_close('NZDUSD', timeframe, shift)
-            n = n_currency
+            ku_close = i_ku_close(timeframe, period, shift, aud=aud, cad=cad,
+                                  chf=chf, eur=eur, gbp=gbp, jpy=jpy, nzd=nzd,
+                                  usd=usd)
+            ku_close = np.array(ku_close)
+            if n_currency == 1:
+                ku_close = ku_close.reshape(len(ku_close), 1)
         # リスト内包表記も試したが、特に速度は変わらない。
-        m = len(closes)
-        closes = np.array(closes)
-        if n == 1:
-            coef = np.empty(m)
+        n = len(close)
+        if n_currency == 1:
+            coef = np.empty(n)
         else:
-            coef = np.empty([m, n])
-        for i in range(period, m):
-            data = closes[i-period:i, :]
-            coef[i] = calc_coef(data, period)
+            coef = np.empty([n, n_currency])
+        for i in range(period, n):
+            x = ku_close[i-period:i]
+            y = close[i-period:i]
+            coef[i] = calc_coef(x, y, period)
         if n == 1:
             coef = pd.Series(coef, index=index)
         else:
@@ -1252,21 +1308,21 @@ def i_kalman_filter(symbol, timeframe, period, shift):
             joblib.dump(kalman_filter, path)
     return kalman_filter
 
-def i_ku_bandwalk(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=1.0,
-                  gbp=0.0, jpy=1.0, nzd=0.0, usd=1.0):
+def i_ku_bandwalk(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0,
+                  gbp=0.0, jpy=0.0, nzd=0.0, usd=0.0):
     '''Ku-Chartによるバンドウォークを返す。
     Args:
-        timeframe: タイムフレーム。
+        timeframe: 足の種類。
         period: 期間。
         shift: シフト。
-        aud: 豪ドル（デフォルト：不使用）。
-        cad: カナダドル（デフォルト：不使用）。
-        chf: スイスフラン（デフォルト：不使用）。
-        eur: ユーロ（デフォルト：使用）。
-        gbp: ポンド（デフォルト：不使用）。
-        jpy: 円（デフォルト：使用）。
-        nzd: NZドル（デフォルト：不使用）。
-        usd: 米ドル（デフォルト：使用）。
+        aud: 豪ドル。
+        cad: カナダドル。
+        chf: スイスフラン。
+        eur: ユーロ。
+        gbp: ポンド。
+        jpy: 円。
+        nzd: NZドル。
+        usd: 米ドル。
     Returns:
         Ku-Chartによるバンドウォーク。
     '''
@@ -1326,20 +1382,20 @@ def i_ku_bandwalk(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=1.0,
             joblib.dump(ku_bandwalk, path)
     return ku_bandwalk
 
-def i_ku_close(timeframe, shift, aud=0.0, cad=0.0, chf=0.0, eur=1.0, gbp=0.0,
-               jpy=1.0, nzd=0.0, usd=1.0):
+def i_ku_close(timeframe, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0, gbp=0.0,
+               jpy=0.0, nzd=0.0, usd=0.0):
     '''Ku-Chartによる終値を返す。
     Args:
-        timeframe: タイムフレーム。
+        timeframe: 足の種類。
         shift: シフト。
-        aud: 豪ドル（デフォルト：不使用）。
-        cad: カナダドル（デフォルト：不使用）。
-        chf: スイスフラン（デフォルト：不使用）。
-        eur: ユーロ（デフォルト：使用）。
-        gbp: ポンド（デフォルト：不使用）。
-        jpy: 円（デフォルト：使用）。
-        nzd: NZドル（デフォルト：不使用）。
-        usd: 米ドル（デフォルト：使用）。
+        aud: 豪ドル。
+        cad: カナダドル。
+        chf: スイスフラン。
+        eur: ユーロ。
+        gbp: ポンド。
+        jpy: 円。
+        nzd: NZドル。
+        usd: 米ドル。
     Returns:
         Ku-Chartによる終値。
     '''
@@ -1500,21 +1556,21 @@ def i_ku_close(timeframe, shift, aud=0.0, cad=0.0, chf=0.0, eur=1.0, gbp=0.0,
             joblib.dump(ku_close, path)
     return ku_close
 
-def i_ku_zresid(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=1.0,
-                 gbp=0.0, jpy=1.0, nzd=0.0, usd=1.0):
+def i_ku_zresid(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0,
+                 gbp=0.0, jpy=0.0, nzd=0.0, usd=0.0):
     '''Ku-Chartによる終値とその予測値との標準化残差を返す。
     Args:
-        timeframe: タイムフレーム。
+        timeframe: 足の種類。
         period: 期間。
         shift: シフト。
-        aud: 豪ドル（デフォルト：不使用）。
-        cad: カナダドル（デフォルト：不使用）。
-        chf: スイスフラン（デフォルト：不使用）。
-        eur: ユーロ（デフォルト：使用）。
-        gbp: ポンド（デフォルト：不使用）。
-        jpy: 円（デフォルト：使用）。
-        nzd: NZドル（デフォルト：不使用）。
-        usd: 米ドル（デフォルト：使用）。
+        aud: 豪ドル。
+        cad: カナダドル。
+        chf: スイスフラン。
+        eur: ユーロ。
+        gbp: ポンド。
+        jpy: 円。
+        nzd: NZドル。
+        usd: 米ドル。
     Returns:
         Ku-Chartによる終値とその予測値との標準化残差を返す。
     '''
@@ -1588,8 +1644,8 @@ def i_kurt(symbol, timeframe, period, shift):
             joblib.dump(kurt, path)
     return kurt
 
-def i_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0, chf=0,
-                        eur=0, gbp=0, jpy=0, nzd=0):
+def i_linear_regression(symbol, timeframe, period, shift, aud=0.0, cad=0.0,
+                        chf=0.0, eur=0.0, gbp=0.0, jpy=0.0, nzd=0.0, usd=0.0):
     '''線形回帰による予測値を返す。
     Args:
         symbol: 通貨ペア名。
@@ -1603,59 +1659,50 @@ def i_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0, chf=0,
         gbp: ポンド。
         jpy: 円。
         nzd: NZドル。
+        usd: 米ドル。
     Returns:
         線形回帰による予測値。
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/tmp/i_linear_regression_' + symbol +
         str(timeframe) + '_' + str(period) + '_' + str(shift) + str(aud) +
-        str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) +str(nzd) + '.pkl')
+        str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) + str(nzd) +
+        str(usd) + '.pkl')
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
     if OANDA is None and os.path.exists(path) == True:
         linear_regression = joblib.load(path)
     # さもなければ計算する。
     else:
-        def calc_linear_regression(data, period):
+        def calc_linear_regression(x, y, period):
             clf = linear_model.LinearRegression()
-            y = data[:, 0]
-            x = data[:, 1:]
             clf.fit(x, y)
             pred = clf.predict(x)
             linear_regression = pred[period-1]
             return linear_regression
 
         close = i_close(symbol, timeframe, shift)
-        index =close.index
-        closes = pd.DataFrame(index=index)
-        closes['symbol'] = close
-
-        n_currency = aud + cad + chf + eur + gbp + nzd + jpy
+        index = close.index
+        close = np.array(close)
+        n_currency = ((
+            (aud > 0.0) + (cad > 0.0) + (chf > 0.0) + (eur > 0.0) +
+            (gbp > 0.0) + (jpy > 0.0) + (nzd > 0.0) + (usd > 0.0)) * 1)
         if n_currency == 0:
-            time = np.array(range(len(close)))
-            closes['time'] = pd.Series(time, index)
+            ku_close = np.array(range(len(close)))
         else:
-            if aud == 1:
-                closes['aud'] = i_close('AUDUSD', timeframe, shift)
-            if cad == 1:
-                closes['cad'] = i_close('USDCAD', timeframe, shift)
-            if chf == 1:
-                closes['chf'] = i_close('USDCHF', timeframe, shift)
-            if eur == 1:
-                closes['eur'] = i_close('EURUSD', timeframe, shift)
-            if gbp == 1:
-                closes['gbp'] = i_close('GBPUSD', timeframe, shift)
-            if jpy == 1:
-                closes['jpy'] = i_close('USDJPY', timeframe, shift)
-            if nzd == 1:
-                closes['nzd'] = i_close('NZDUSD', timeframe, shift)
+            ku_close = i_ku_close(timeframe, shift, aud=aud, cad=cad,
+                                  chf=chf, eur=eur, gbp=gbp, jpy=jpy, nzd=nzd,
+                                  usd=usd)
+            ku_close = np.array(ku_close)
+            if n_currency == 1:
+                ku_close = ku_close.reshape(len(ku_close), 1)
         # リスト内包表記も試したが、特に速度は変わらない。
-        n = len(closes)
-        closes = np.array(closes)
+        n = len(close)
         linear_regression = np.empty(n)
         for i in range(period, n):
-            data = closes[i-period:i, :]
-            linear_regression[i] = calc_linear_regression(data, period)
+            x = ku_close[i-period:i]
+            y = close[i-period:i]
+            linear_regression[i] = calc_linear_regression(x, y, period)
         linear_regression = pd.Series(linear_regression, index=index)
         linear_regression = linear_regression.fillna(method='ffill')
         linear_regression = linear_regression.fillna(method='bfill')
@@ -1825,6 +1872,53 @@ def i_open(symbol, timeframe, shift):
             joblib.dump(op, path)
     return op
 
+def i_rank(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0,
+               gbp=0.0, jpy=0.0, nzd=0.0, usd=0.0):
+    '''通貨の強弱の順位（降順）を返す。
+    Args:
+        timeframe: 足の種類。
+        period: 計算期間。
+        shift: シフト。
+        aud: 豪ドル。
+        cad: カナダドル。
+        chf: スイスフラン。
+        eur: ユーロ。
+        gbp: ポンド。
+        jpy: 円。
+        nzd: NZドル。
+        usd: 米ドル。
+    Returns:
+        通貨の強弱の順位（降順）。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_rank_' + str(timeframe) + '_' +
+        str(period) + '_' + str(shift) + '_' + str(aud) + str(cad) + str(chf) +
+        str(eur) + str(gbp) + str(jpy) + str(nzd) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        rank = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        ku_zresid =i_ku_zresid(timeframe, period, shift, aud=aud, cad=cad,
+                              chf=chf, eur=eur, gbp=gbp, jpy=jpy, nzd=nzd,
+                              usd=usd)
+        rank = ku_zresid.rank(axis=1)
+        n = len(rank.iloc[0, :])
+        array = np.array(range(1, n + 1))
+        mean = np.mean(array)
+        std = np.std(array)
+        rank = (rank - mean) / std
+        rank = rank.fillna(method='ffill')
+        rank = rank.fillna(method='bfill')
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
+                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            joblib.dump(rank, path)
+    return rank
+
 def i_return(symbol, timeframe, shift):
     '''リターンを返す。
     Args:
@@ -1949,8 +2043,9 @@ def i_std_dev(symbol, timeframe, period, shift):
             joblib.dump(std_dev, path)
     return std_dev
 
-def i_std_dev_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0,
-                                chf=0, eur=0, gbp=0, jpy=0, nzd=0):
+def i_std_dev_linear_regression(symbol, timeframe, period, shift, aud=0.0,
+                                cad=0.0, chf=0.0, eur=0.0, gbp=0.0, jpy=0.0,
+                                nzd=0.0, usd=0.0):
     '''線形回帰による予測値との標準偏差を返す。
     Args:
         symbol: 通貨ペア名。
@@ -1964,6 +2059,7 @@ def i_std_dev_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0,
         gbp: ポンド。
         jpy: 円。
         nzd: NZドル。
+        usd: 米ドル。
     Returns:
         線形回帰による予測値との標準偏差。
     '''
@@ -1971,17 +2067,15 @@ def i_std_dev_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0,
     path = (os.path.dirname(__file__) + '/tmp/i_std_dev_linear_regression_' +
         symbol + str(timeframe) + '_' + str(period) + '_' + str(shift) +
         str(aud) + str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) + 
-        str(nzd) + '.pkl')
+        str(nzd) + str(usd) + '.pkl')
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
     if OANDA is None and os.path.exists(path) == True:
         std_dev_linear_regression = joblib.load(path)
     # さもなければ計算する。
     else:
-        def calc_std_dev_linear_regression(data):
+        def calc_std_dev_linear_regression(x, y):
             clf = linear_model.LinearRegression()
-            y = data[:, 0]
-            x = data[:, 1:]
             clf.fit(x, y)
             pred = clf.predict(x)
             error = y - pred
@@ -1989,34 +2083,25 @@ def i_std_dev_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0,
 
         close = i_close(symbol, timeframe, shift)
         index = close.index
-        closes = pd.DataFrame(index=index)
-        closes['symbol'] = close
-
-        if aud + cad + chf + eur + gbp + nzd + jpy == 0:
-            time = np.array(range(len(close)))
-            closes['time'] = pd.Series(time, index)
+        close = np.array(close)
+        n_currency = ((
+            (aud > 0.0) + (cad > 0.0) + (chf > 0.0) + (eur > 0.0) +
+            (gbp > 0.0) + (jpy > 0.0) + (nzd > 0.0) + (usd > 0.0)) * 1)
+        if n_currency == 0:
+            ku_close = np.array(range(len(close)))
         else:
-            if aud == 1:
-                closes['aud'] = i_close('AUDUSD', timeframe, shift)
-            if cad == 1:
-                closes['cad'] = i_close('USDCAD', timeframe, shift)
-            if chf == 1:
-                closes['chf'] = i_close('USDCHF', timeframe, shift)
-            if eur == 1:
-                closes['eur'] = i_close('EURUSD', timeframe, shift)
-            if gbp == 1:
-                closes['gbp'] = i_close('GBPUSD', timeframe, shift)
-            if jpy == 1:
-                closes['jpy'] = i_close('USDJPY', timeframe, shift)
-            if nzd == 1:
-                closes['nzd'] = i_close('NZDUSD', timeframe, shift)
+            ku_close = i_ku_close(timeframe, shift, aud=aud, cad=cad, chf=chf,
+                                  eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
+            ku_close = np.array(ku_close)
+            if n_currency == 1:
+                ku_close = ku_close.reshape(len(ku_close), 1)
         # リスト内包表記も試したが、特に速度は変わらない。
-        n = len(closes)
-        closes = np.array(closes)
+        n = len(close)
         std_dev_linear_regression = np.empty(n)
         for i in range(period, n):
-            data = closes[i-period:i, :]
-            std_dev_linear_regression[i] = calc_std_dev_linear_regression(data)
+            x = ku_close[i-period:i]
+            y = close[i-period:i]
+            std_dev_linear_regression[i] = calc_std_dev_linear_regression(x, y)
         std_dev_linear_regression = pd.Series(std_dev_linear_regression,
                                               index=index)
         std_dev_linear_regression = std_dev_linear_regression.fillna(
@@ -2031,8 +2116,9 @@ def i_std_dev_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0,
             joblib.dump(std_dev_linear_regression, path)
     return std_dev_linear_regression
 
-def i_std_dev_tree_regression(symbol, timeframe, period, shift, aud=0, cad=0,
-                              chf=0, eur=0, gbp=0, jpy=0, nzd=0, max_depth=3):
+def i_std_dev_tree_regression(symbol, timeframe, period, shift, aud=0.0,
+                              cad=0.0, chf=0.0, eur=0.0, gbp=0.0, jpy=0.0,
+                              nzd=0.0, usd=0.0, max_depth=3):
     '''決定木による予測値との標準偏差を返す。
     Args:
         symbol: 通貨ペア名。
@@ -2046,6 +2132,7 @@ def i_std_dev_tree_regression(symbol, timeframe, period, shift, aud=0, cad=0,
         gbp: ポンド。
         jpy: 円。
         nzd: NZドル。
+        usd: 米ドル。
         max_depth: 最大の深さ。
     Returns:
         決定木による予測値との標準偏差。
@@ -2054,17 +2141,15 @@ def i_std_dev_tree_regression(symbol, timeframe, period, shift, aud=0, cad=0,
     path = (os.path.dirname(__file__) + '/tmp/i_std_dev_tree_regression_' +
         symbol + str(timeframe) + '_' + str(period) + '_' + str(shift) + '_' +
         str(aud) + str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) +
-        str(nzd) + '_' + str(max_depth) + '.pkl')
+        str(nzd) + str(usd) + '_' + str(max_depth) + '.pkl')
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
     if OANDA is None and os.path.exists(path) == True:
         std_dev_tree_regression = joblib.load(path)
     # さもなければ計算する。
     else:
-        def calc_std_dev_tree_regression(data, max_depth):
+        def calc_std_dev_tree_regression(x, y, max_depth):
             clf = tree.DecisionTreeRegressor(max_depth=max_depth)
-            y = data[:, 0]
-            x = data[:, 1:]
             clf.fit(x, y)
             pred = clf.predict(x)
             error = y - pred
@@ -2072,34 +2157,26 @@ def i_std_dev_tree_regression(symbol, timeframe, period, shift, aud=0, cad=0,
 
         close = i_close(symbol, timeframe, shift)
         index = close.index
-        closes = pd.DataFrame(index=index)
-        closes['symbol'] = close
-
-        if aud + cad + chf + eur + gbp + nzd + jpy == 0:
-            time = np.array(range(len(close)))
-            closes['time'] = pd.Series(time, index)
+        close = np.array(close)
+        n_currency = ((
+            (aud > 0.0) + (cad > 0.0) + (chf > 0.0) + (eur > 0.0) +
+            (gbp > 0.0) + (jpy > 0.0) + (nzd > 0.0) + (usd > 0.0)) * 1)
+        if n_currency == 0:
+            ku_close = np.array(range(len(close)))
         else:
-            if aud == 1:
-                closes['aud'] = i_close('AUDUSD', timeframe, shift)
-            if cad == 1:
-                closes['cad'] = i_close('USDCAD', timeframe, shift)
-            if chf == 1:
-                closes['chf'] = i_close('USDCHF', timeframe, shift)
-            if eur == 1:
-                closes['eur'] = i_close('EURUSD', timeframe, shift)
-            if gbp == 1:
-                closes['gbp'] = i_close('GBPUSD', timeframe, shift)
-            if jpy == 1:
-                closes['jpy'] = i_close('USDJPY', timeframe, shift)
-            if nzd == 1:
-                closes['nzd'] = i_close('NZDUSD', timeframe, shift)
+            ku_close = i_ku_close(timeframe, period, shift, aud=aud, cad=cad,
+                                  chf=chf, eur=eur, gbp=gbp, jpy=jpy, nzd=nzd,
+                                  usd=usd)
+            ku_close = np.array(ku_close)
+            if n_currency == 1:
+                ku_close = ku_close.reshape(len(ku_close), 1)
         # リスト内包表記も試したが、特に速度は変わらない。
-        n = len(closes)
-        closes = np.array(closes)
+        n = len(close)
         std_dev_tree_regression = np.empty(n)
         for i in range(period, n):
-            data = closes[i-period:i, :]
-            std_dev_tree_regression[i] = calc_std_dev_tree_regression(data,
+            x = ku_close[i-period:i]
+            y = close[i-period:i]
+            std_dev_tree_regression[i] = calc_std_dev_tree_regression(x, y,
                 max_depth)
         std_dev_tree_regression = pd.Series(std_dev_tree_regression,
                                             index=index)
@@ -2162,8 +2239,9 @@ def i_stop_hunting_zone(symbol, timeframe, period, shift):
             joblib.dump(stop_hunting_zone, path)
     return stop_hunting_zone
 
-def i_tree_regression(symbol, timeframe, period, shift, aud=0, cad=0, chf=0,
-                      eur=0, gbp=0, jpy=0, nzd=0, max_depth=3):
+def i_tree_regression(symbol, timeframe, period, shift, aud=0.0, cad=0.0,
+                      chf=0.0, eur=0.0, gbp=0.0, jpy=0.0, nzd=0.0, usd=0.0,
+                      max_depth=3):
     '''決定木による予測値を返す。
     Args:
         symbol: 通貨ペア名。
@@ -2177,6 +2255,7 @@ def i_tree_regression(symbol, timeframe, period, shift, aud=0, cad=0, chf=0,
         gbp: ポンド。
         jpy: 円。
         nzd: NZドル。
+        usd: 米ドル。
         max_depth: 最大の深さ。
     Returns:
         決定木による予測値。
@@ -2184,52 +2263,42 @@ def i_tree_regression(symbol, timeframe, period, shift, aud=0, cad=0, chf=0,
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/tmp/i_tree_regression_' + symbol +
         str(timeframe) + '_' + str(period) + '_' + str(shift) + '_' + str(aud) +
-        str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) + str(nzd) + '_' + 
-        str(max_depth) + '.pkl')
+        str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) + str(nzd) +
+        str(usd) + '_' + str(max_depth) + '.pkl')
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
     if OANDA is None and os.path.exists(path) == True:
         tree_regression = joblib.load(path)
     # さもなければ計算する。
     else:
-        def calc_tree_regression(data, period, max_depth):
+        def calc_tree_regression(x, y, period, max_depth):
             clf = tree.DecisionTreeRegressor(max_depth=max_depth)
-            y = data[:, 0]
-            x = data[:, 1:]
             clf.fit(x, y)
             pred = clf.predict(x)
             return pred[period-1]
 
         close = i_close(symbol, timeframe, shift)
         index = close.index
-        closes = pd.DataFrame(index=index)
-        closes['symbol'] = close
-
-        if aud + cad + chf + eur + gbp + nzd + jpy == 0:
-            time = np.array(range(len(close)))
-            closes['time'] = pd.Series(time, index)
+        close = np.array(close)
+        n_currency = ((
+            (aud > 0.0) + (cad > 0.0) + (chf > 0.0) + (eur > 0.0) +
+            (gbp > 0.0) + (jpy > 0.0) + (nzd > 0.0) + (usd > 0.0)) * 1)
+        if n_currency == 0:
+            ku_close = np.array(range(len(close)))
         else:
-            if aud == 1:
-                closes['aud'] = i_close('AUDUSD', timeframe, shift)
-            if cad == 1:
-                closes['cad'] = i_close('USDCAD', timeframe, shift)
-            if chf == 1:
-                closes['chf'] = i_close('USDCHF', timeframe, shift)
-            if eur == 1:
-                closes['eur'] = i_close('EURUSD', timeframe, shift)
-            if gbp == 1:
-                closes['gbp'] = i_close('GBPUSD', timeframe, shift)
-            if jpy == 1:
-                closes['jpy'] = i_close('USDJPY', timeframe, shift)
-            if nzd == 1:
-                closes['nzd'] = i_close('NZDUSD', timeframe, shift)
+            ku_close = i_ku_close(timeframe, period, shift, aud=aud, cad=cad,
+                                  chf=chf, eur=eur, gbp=gbp, jpy=jpy, nzd=nzd,
+                                  usd=usd)
+            ku_close = np.array(ku_close)
+            if n_currency == 1:
+                ku_close = ku_close.reshape(len(ku_close), 1)
         # リスト内包表記も試したが、特に速度は変わらない。
-        n = len(closes)
-        closes = np.array(closes)
+        n = len(close)
         tree_regression = np.empty(n)
         for i in range(period, n):
-            data = closes[i-period:i, :]
-            tree_regression[i] = calc_tree_regression(data, period, max_depth)
+            x = ku_close[i-period:i]
+            y = close[i-period:i]
+            tree_regression[i] = calc_tree_regression(x, y, period, max_depth)
         tree_regression = pd.Series(tree_regression, index=index)
         tree_regression = tree_regression.fillna(method='ffill')
         tree_regression = tree_regression.fillna(method='bfill')
@@ -2387,14 +2456,23 @@ def i_zresid(symbol, timeframe, period, shift):
             joblib.dump(zresid, path)
     return zresid
 
-def i_zresid_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0,
-                               chf=0, eur=0, gbp=0, jpy=0, nzd=0):
+def i_zresid_linear_regression(symbol, timeframe, period, shift, aud=0.0,
+                               cad=0.0, chf=0.0, eur=0.0, gbp=0.0, jpy=0.0,
+                               nzd=0.0, usd=0.0):
     '''終値とその予測値（線形回帰）との標準化残差を返す。
     Args:
         symbol: 通貨ペア名。
         timeframe: タイムフレーム。
         period: 期間。
         shift: シフト。
+        aud: 豪ドル。
+        cad: カナダドル。
+        chf: スイスフラン。
+        eur: ユーロ。
+        gbp: ポンド。
+        jpy: 円。
+        nzd: NZドル。
+        usd: 米ドル。
     Returns:
         終値とその予測値（線形回帰）との標準化残差。
     '''
@@ -2402,7 +2480,7 @@ def i_zresid_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0,
     path = (os.path.dirname(__file__) + '/tmp/i_zresid_linear_regression_' +
         symbol + str(timeframe) + '_' + str(period) + '_' + str(shift) + '_' +
         str(aud) + str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) +
-        str(nzd) + '.pkl')
+        str(nzd) + str(usd) + '.pkl')
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
     if OANDA is None and os.path.exists(path) == True:
@@ -2414,10 +2492,10 @@ def i_zresid_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0,
         # 予測値、標準誤差を格納する。
         pred = i_linear_regression(symbol, timeframe, period, shift, aud=aud,
                                    cad=cad, chf=chf, eur=eur, gbp=gbp, jpy=jpy,
-                                   nzd=nzd)
+                                   nzd=nzd, usd=usd)
         se = i_std_dev_linear_regression(symbol, timeframe, period, shift,
                                          aud=aud, cad=cad, chf=chf, eur=eur,
-                                         gbp=gbp, jpy=jpy, nzd=nzd)
+                                         gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
         # 標準化残差を計算する。
         zresid_linear_regression = (close - pred) / se
         zresid_linear_regression = zresid_linear_regression.fillna(0.0)
@@ -2431,14 +2509,23 @@ def i_zresid_linear_regression(symbol, timeframe, period, shift, aud=0, cad=0,
             joblib.dump(zresid_linear_regression, path)
     return zresid_linear_regression
 
-def i_zresid_tree_regression(symbol, timeframe, period, shift, aud=0, cad=0,
-                             chf=0, eur=0, gbp=0, jpy=0, nzd=0, max_depth=3):
+def i_zresid_tree_regression(symbol, timeframe, period, shift, aud=0.0, cad=0.0,
+                             chf=0.0, eur=0.0, gbp=0.0, jpy=0.0, nzd=0.0,
+                             usd=0.0, max_depth=3):
     '''終値とその予測値（決定木）との標準化残差を返す。
     Args:
         symbol: 通貨ペア名。
         timeframe: タイムフレーム。
         period: 期間。
         shift: シフト。
+        aud: 豪ドル。
+        cad: カナダドル。
+        chf: スイスフラン。
+        eur: ユーロ。
+        gbp: ポンド。
+        jpy: 円。
+        nzd: NZドル。
+        usd: 米ドル。
     Returns:
         終値とその予測値（決定木）との標準化残差。
     '''
@@ -2446,7 +2533,7 @@ def i_zresid_tree_regression(symbol, timeframe, period, shift, aud=0, cad=0,
     path = (os.path.dirname(__file__) + '/tmp/i_zresid_tree_regression_' +
         symbol + str(timeframe) + '_' + str(period) + '_' + str(shift) + '_' +
         str(aud) + str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) +
-        str(nzd) + '_' + str(max_depth) + '.pkl')
+        str(nzd) + str(usd) + '_' + str(max_depth) + '.pkl')
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
     if OANDA is None and os.path.exists(path) == True:
@@ -2458,10 +2545,11 @@ def i_zresid_tree_regression(symbol, timeframe, period, shift, aud=0, cad=0,
         # 予測値、標準誤差を格納する。
         pred = i_tree_regression(symbol, timeframe, period, shift, aud=aud,
                                  cad=cad, chf=chf, eur=eur, gbp=gbp, jpy=jpy,
-                                 nzd=nzd, max_depth=max_depth)
+                                 nzd=nzd, usd=usd, max_depth=max_depth)
         se = i_std_dev_tree_regression(symbol, timeframe, period, shift,aud=aud,
                                        cad=cad, chf=chf, eur=eur, gbp=gbp,
-                                       jpy=jpy, nzd=nzd, max_depth=max_depth)
+                                       jpy=jpy, nzd=nzd, usd=usd,
+                                       max_depth=max_depth)
         # 標準化残差を計算する。
         zresid_tree_regression = (close - pred) / se
         zresid_tree_regression = zresid_tree_regression.fillna(0.0)
