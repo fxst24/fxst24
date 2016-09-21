@@ -2563,36 +2563,6 @@ def i_zresid_tree_regression(symbol, timeframe, period, shift, aud=0.0, cad=0.0,
             joblib.dump(zresid_tree_regression, path)
     return zresid_tree_regression
 
-def is_trading_hours(index, market):
-    '''取引時間であるか否かを返す。
-    Args:
-        index: インデックス。
-        market: 市場
-    Returns:
-        取引時間であるか否か。
-    '''
-    # 東京時間の場合。
-    if market == 'tokyo':
-        trading_hours = ((index.hour>=2) & (index.hour<8)) * 1
-        trading_hours = pd.Series(trading_hours, index=index)
-        # 夏時間の大まかな調整。
-        trading_hours[(trading_hours.index.month>=3)
-            & (trading_hours.index.month<11)] = (((index.hour>=3)
-            & (index.hour<9))) * 1
-    # ロンドン時間の場合。
-    elif market == 'ldn':
-        trading_hours = ((index.hour>=10) & (index.hour<18)) * 1
-        trading_hours = pd.Series(trading_hours, index=index)
-        trading_hours[(trading_hours.index.hour==18)
-            & (trading_hours.index.minute<30)] = 1
-    # NY時間の場合。
-    else:
-        trading_hours = ((index.hour>=17) & (index.hour<23)) * 1
-        trading_hours = pd.Series(trading_hours, index=index)
-        trading_hours[(trading_hours.index.hour==16)
-            & (trading_hours.index.minute>=30)] = 1
-    return trading_hours
-
 def minute():
     '''現在の分を返す。
     Returns:
@@ -2690,9 +2660,9 @@ def show_backtest_result(ret, trades, timeframe, start, end, parameter_ea1,
     durations = calc_durations(ret, timeframe)
     # グラフを作成する。
     cum_ret = ret.cumsum()
-    graph = cum_ret.plot()
-    graph.set_xlabel('date')
-    graph.set_ylabel('cumulative return')
+    plt.plot(cum_ret)
+    plt.xlabel('date')
+    plt.ylabel('cumulative return')
     # レポートを作成する。
     report =  pd.DataFrame(index=[0])
     report['start'] = start.strftime('%Y.%m.%d')
@@ -2714,7 +2684,7 @@ def show_backtest_result(ret, trades, timeframe, start, end, parameter_ea1,
     if parameter_ea5 is not None:
         report['parameter_ea5'] = str(parameter_ea5)
     # グラフを出力する。
-    plt.show(graph)
+    plt.show()
     plt.close()
     # レポートを出力する。
     pd.set_option('display.width', 1000)
@@ -2736,9 +2706,9 @@ def show_walkforwardtest_result(ret, trades, timeframe, start, end):
     durations = calc_durations(ret, timeframe)
     # グラフを作成する。
     cum_ret = ret.cumsum()
-    graph = cum_ret.plot()
-    graph.set_xlabel('date')
-    graph.set_ylabel('cumulative return')
+    plt.plot(cum_ret)
+    plt.xlabel('date')
+    plt.ylabel('cumulative return')
     # レポートを作成する。
     report = pd.DataFrame(index=[0])
     report['start'] = start.strftime('%Y.%m.%d')
@@ -2750,7 +2720,7 @@ def show_walkforwardtest_result(ret, trades, timeframe, start, end):
     report['drawdowns'] = drawdowns
     report['durations'] = int(durations)
     # グラフを出力する。
-    plt.show(graph)
+    plt.show()
     plt.close()
     # レポートを出力する。
     pd.set_option('display.width', 1000)
@@ -2807,6 +2777,36 @@ def time_month(index):
     '''
     time_month = pd.Series(index.month, index=index)
     return time_month
+
+def time_market_hours(index, market):
+    '''指定した市場の時間であるか否かを返す（30分足以下で使用すること）。
+    Args:
+        index: インデックス。
+        market: 市場
+    Returns:
+        指定した市場の時間であるか否か。
+    '''
+    # 東京時間の場合。
+    if market == 'tokyo':
+        market_hours = ((index.hour>=2) & (index.hour<8)) * 1
+        market_hours = pd.Series(market_hours, index=index)
+        # 夏時間の大まかな調整。
+        market_hours[(market_hours.index.month>=3)
+            & (market_hours.index.month<11)] = (((index.hour>=3)
+            & (index.hour<9))) * 1
+    # ロンドン時間の場合。
+    elif market == 'london':
+        market_hours = ((index.hour>=10) & (index.hour<18)) * 1
+        market_hours = pd.Series(market_hours, index=index)
+        market_hours[(market_hours.index.hour==18)
+            & (market_hours.index.minute<30)] = 1
+    # NY時間の場合。
+    else:
+        market_hours = ((index.hour>=17) & (index.hour<23)) * 1
+        market_hours = pd.Series(market_hours, index=index)
+        market_hours[(market_hours.index.hour==16)
+            & (market_hours.index.minute>=30)] = 1
+    return market_hours
 
 def time_week(index):
     '''週を返す。
