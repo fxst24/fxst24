@@ -32,6 +32,22 @@ EPS = 1.0e-5
 import warnings
 warnings.simplefilter(action = 'ignore', category = RuntimeWarning)
 
+def adjust_summer_time(data, timeframe):
+    '''夏時間を大まかに調整して返す（1時間足以下のみ）。
+    Args:
+        data: データ。
+        timeframe: 足の種類。
+    Returns:
+        調整後のデータ（3-10月を夏時間と見なす）。
+    '''
+    adjusted_data = data.copy()
+    shift = int(60 / timeframe)
+    adjusted_data[(data.index.month>=3) & ((data.index.month<11))] = (
+        data.shift(-shift))
+    # NAを後のデータで補間する。
+    data = data.fillna(method='ffill')
+    return adjusted_data
+
 def ask(instrument):
     '''買値を得る。
     Args:
@@ -1632,8 +1648,8 @@ def i_kurt(symbol, timeframe, period, shift):
         kurt = joblib.load(path)
     # さもなければ計算する。
     else:
-        ret = i_return(symbol, timeframe, shift)
-        kurt = ret.rolling(window=period).kurt()
+        log_return = i_log_return(symbol, timeframe, shift)
+        kurt = log_return.rolling(window=period).kurt()
         kurt = kurt.fillna(method='ffill')
         kurt = kurt.fillna(method='bfill')
         # バックテスト、またはウォークフォワードテストのとき、保存する。
@@ -1713,6 +1729,38 @@ def i_linear_regression(symbol, timeframe, period, shift, aud=0.0, cad=0.0,
                 os.mkdir(os.path.dirname(__file__) + '/tmp')
             joblib.dump(linear_regression, path)
     return linear_regression
+
+def i_log_return(symbol, timeframe, shift):
+    '''対数リターンを返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        shift: シフト。
+    Returns:
+        対数リターン。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_log_return_' + symbol +
+        str(timeframe) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        log_return = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        close = i_close(symbol, timeframe, shift)
+        log_close = close.apply(np.log)
+        log_return = log_close - log_close.shift(1)
+        log_return = log_return.fillna(0.0)
+        log_return[(log_return==float('inf')) |
+            (log_return==float('-inf'))] = 0.0
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
+                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            joblib.dump(log_return, path)
+    return log_return
 
 def i_low(symbol, timeframe, shift):
     '''安値を返す。
@@ -1812,8 +1860,8 @@ def i_mean(symbol, timeframe, period, shift):
         mean = joblib.load(path)
     # さもなければ計算する。
     else:
-        ret = i_return(symbol, timeframe, shift)
-        mean = ret.rolling(window=period).mean()
+        log_return = i_log_return(symbol, timeframe, shift)
+        mean = log_return.rolling(window=period).mean()
         mean = mean.fillna(method='ffill')
         mean = mean.fillna(method='bfill')
         # バックテスト、またはウォークフォワードテストのとき、保存する。
@@ -1919,37 +1967,6 @@ def i_rank(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0,
             joblib.dump(rank, path)
     return rank
 
-def i_return(symbol, timeframe, shift):
-    '''リターンを返す。
-    Args:
-        symbol: 通貨ペア名。
-        timeframe: タイムフレーム。
-        shift: シフト。
-    Returns:
-        リターン。
-    '''
-    # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/tmp/i_return_' + symbol +
-        str(timeframe) + '_' + str(shift) + '.pkl')
-    # バックテスト、またはウォークフォワードテストのとき、
-    # 計算結果が保存されていれば復元する。
-    if OANDA is None and os.path.exists(path) == True:
-        ret = joblib.load(path)
-    # さもなければ計算する。
-    else:
-        close = i_close(symbol, timeframe, shift)
-        log_close = close.apply(np.log)
-        ret = log_close - log_close.shift(1)
-        ret = ret.fillna(0.0)
-        ret[(ret==float('inf')) | (ret==float('-inf'))] = 0.0
-        # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if OANDA is None:
-            # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
-            joblib.dump(ret, path)
-    return ret
-
 def i_skew(symbol, timeframe, period, shift):
     '''リターンの歪度を返す。
     Args:
@@ -1969,8 +1986,8 @@ def i_skew(symbol, timeframe, period, shift):
         skew = joblib.load(path)
     # さもなければ計算する。
     else:
-        ret = i_return(symbol, timeframe, shift)
-        skew = ret.rolling(window=period).skew()
+        log_return = i_log_return(symbol, timeframe, shift)
+        skew = log_return.rolling(window=period).skew()
         skew = skew.fillna(method='ffill')
         skew = skew.fillna(method='bfill')
         # バックテスト、またはウォークフォワードテストのとき、保存する。
@@ -2000,8 +2017,8 @@ def i_std(symbol, timeframe, period, shift):
         std = joblib.load(path)
     # さもなければ計算する。
     else:
-        ret = i_return(symbol, timeframe, shift)
-        std = ret.rolling(window=period).std()
+        log_return = i_log_return(symbol, timeframe, shift)
+        std = log_return.rolling(window=period).std()
         std = std.fillna(method='ffill')
         std = std.fillna(method='bfill')
         # バックテスト、またはウォークフォワードテストのとき、保存する。
