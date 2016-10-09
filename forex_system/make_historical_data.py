@@ -201,7 +201,7 @@ def make_historical_data(parser):
              nzdcad + nzdchf + nzdjpy + nzdusd + usdcad + usdchf + usdjpy)
         # 1分足の作成
         filename = '~/historical_data/' + symbol + '.csv'
-        temp = pd.read_csv(filename, header=None, index_col=0)
+        temp = pd.read_csv(filename, index_col=0)
         temp.index = pd.to_datetime(temp.index)
         # デューカスコピーのデータはUTC時間のようなので、UTC+2に変更する。
         temp.index = temp.index + timedelta(hours=2)

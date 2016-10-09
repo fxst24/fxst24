@@ -71,8 +71,8 @@ def backtest(args):
     ea = args[0]
     symbol = args[1]
     timeframe = int(args[2])
-    start = datetime.strptime(args[3], '%Y.%m.%d')
-    end = datetime.strptime(args[4], '%Y.%m.%d')
+    start = datetime.strptime(args[3] + ' 00:00', '%Y.%m.%d %H:%M')
+    end = datetime.strptime(args[4] + ' 23:59', '%Y.%m.%d %H:%M')
     spread = int(args[5])
     position = 2  # デフォルト値
     min_trade = 260  # デフォルト値
@@ -851,6 +851,66 @@ def i_bandwalk_linear_regression(symbol, timeframe, period, shift, aud=0.0,
             joblib.dump(bandwalk_linear_regression, path)
     return bandwalk_linear_regression
 
+def i_bandwalk_log_return(symbol, timeframe, period, shift):
+    '''バンドウォーク（対数リターン）を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: 足の種類。
+        period: 期間。
+        shift: シフト。
+    Returns:
+        バンドウォーク（対数リターン）。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_bandwalk_log_return_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        bandwalk_log_return = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        # バンドウォークを計算する関数を定義する。
+        @jit(float64[:](float64[:], float64[:]),
+            nopython=True, cache=True)
+        def calc_bandwalk_log_return(log_return, mean):
+            up = 0
+            down = 0
+            length = len(mean)
+            bandwalk_log_return = np.empty(length)
+            for i in range(length):
+                if (log_return[i] > mean[i]):
+                    up = up + 1
+                else:
+                    up = 0
+                if (log_return[i] < mean[i]):
+                    down = down + 1
+                else:
+                    down = 0
+                bandwalk_log_return[i] = up - down
+
+            return bandwalk_log_return
+
+        # バンドウォークを計算する。
+        log_return = i_log_return(symbol, timeframe, period, shift)
+        mean = i_mean(symbol, timeframe, period, shift)
+        index = mean.index
+        log_return = np.array(log_return)
+        mean = np.array(mean)
+        bandwalk_log_return = calc_bandwalk_log_return(log_return, mean)
+        a = 0.903  # 指数（正規化するために経験的に導き出した数値）
+        b = 0.393  # 切片（同上）
+        bandwalk_log_return = bandwalk_log_return / (float(period) ** a + b)
+        bandwalk_log_return = pd.Series(bandwalk_log_return, index=index)
+        bandwalk_log_return = bandwalk_log_return.fillna(0)
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
+                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            joblib.dump(bandwalk_log_return, path)
+    return bandwalk_log_return
+
 def i_bandwalk_rank(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0,
                     eur=0.0, gbp=0.0, jpy=0.0, nzd=0.0, usd=0.0):
     '''バンドウォーク（通貨の強弱の順位）を返す。
@@ -1203,6 +1263,44 @@ def i_high(symbol, timeframe, shift):
             joblib.dump(high, path)
     return high
 
+def i_highest(symbol, timeframe, period, shift):
+    '''直近高値の位置を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        period: 計算期間。
+        shift: シフト。
+    Returns:
+        直近高値の位置。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_highest_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        highest = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        def func(high):
+            period = len(high)
+            argmax = high.argmax()
+            ret = period - 1 - argmax
+            return ret
+
+        high = i_high(symbol, timeframe, shift)
+        highest = high.rolling(window=period).apply(func)
+        highest = highest.fillna(method='ffill')
+        highest = highest.fillna(method='bfill')
+        highest = highest.astype(int)
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
+                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            joblib.dump(highest, path)
+    return highest
+
 def i_hl_band(symbol, timeframe, period, shift):
     '''直近の高値、安値を返す。
     Args:
@@ -1222,10 +1320,11 @@ def i_hl_band(symbol, timeframe, period, shift):
         hl_band = joblib.load(path)
     # さもなければ計算する。
     else:
-        close = i_close(symbol, timeframe, shift)
+        high = i_high(symbol, timeframe, shift)
+        low = i_low(symbol, timeframe, shift)
         hl_band = pd.DataFrame()
-        hl_band['high'] = close.rolling(window=period).max()
-        hl_band['low'] = close.rolling(window=period).min()
+        hl_band['high'] = high.rolling(window=period).max()
+        hl_band['low'] = low.rolling(window=period).min()
         hl_band['middle'] = (hl_band['high'] + hl_band['low']) / 2
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
@@ -1630,14 +1729,14 @@ def i_ku_zresid(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0,
     return ku_zresid
 
 def i_kurt(symbol, timeframe, period, shift):
-    '''リターンの尖度を返す。
+    '''対数リターンの尖度を返す。
     Args:
         symbol: 通貨ペア名。
         timeframe: タイムフレーム。
         period: 期間。
         shift: シフト。
     Returns:
-        リターンの尖度。
+        対数リターンの尖度。
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/tmp/i_kurt_' + symbol +
@@ -1648,7 +1747,7 @@ def i_kurt(symbol, timeframe, period, shift):
         kurt = joblib.load(path)
     # さもなければ計算する。
     else:
-        log_return = i_log_return(symbol, timeframe, shift)
+        log_return = i_log_return(symbol, timeframe, period, shift)
         kurt = log_return.rolling(window=period).kurt()
         kurt = kurt.fillna(method='ffill')
         kurt = kurt.fillna(method='bfill')
@@ -1730,11 +1829,12 @@ def i_linear_regression(symbol, timeframe, period, shift, aud=0.0, cad=0.0,
             joblib.dump(linear_regression, path)
     return linear_regression
 
-def i_log_return(symbol, timeframe, shift):
+def i_log_return(symbol, timeframe, period, shift):
     '''対数リターンを返す。
     Args:
         symbol: 通貨ペア名。
-        timeframe: タイムフレーム。
+        timeframe: 足の種類。
+        period: 計算期間。
         shift: シフト。
     Returns:
         対数リターン。
@@ -1749,8 +1849,7 @@ def i_log_return(symbol, timeframe, shift):
     # さもなければ計算する。
     else:
         close = i_close(symbol, timeframe, shift)
-        log_close = close.apply(np.log)
-        log_return = log_close - log_close.shift(1)
+        log_return = np.log(close) - np.log(close.shift(period))
         log_return = log_return.fillna(0.0)
         log_return[(log_return==float('inf')) |
             (log_return==float('-inf'))] = 0.0
@@ -1810,6 +1909,44 @@ def i_low(symbol, timeframe, shift):
             joblib.dump(low, path)
     return low
 
+def i_lowest(symbol, timeframe, period, shift):
+    '''直近安値の位置を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        period: 計算期間。
+        shift: シフト。
+    Returns:
+        直近安値の位置。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_lowest_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        lowest = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        def func(low):
+            period = len(low)
+            argmin = low.argmin()
+            ret = period - 1 - argmin
+            return ret
+
+        low = i_low(symbol, timeframe, shift)
+        lowest = low.rolling(window=period).apply(func)
+        lowest = lowest.fillna(method='ffill')
+        lowest = lowest.fillna(method='bfill')
+        lowest = lowest.astype(int)
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
+                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            joblib.dump(lowest, path)
+    return lowest
+
 def i_ma(symbol, timeframe, period, shift):
     '''移動平均を返す。
     Args:
@@ -1841,15 +1978,46 @@ def i_ma(symbol, timeframe, period, shift):
             joblib.dump(ma, path)
     return ma
 
-def i_mean(symbol, timeframe, period, shift):
-    '''リターンの平均を返す。
+def i_ma_of_ma(symbol, timeframe, period, shift):
+    '''移動平均の移動平均を返す。
     Args:
         symbol: 通貨ペア名。
         timeframe: タイムフレーム。
         period: 期間。
         shift: シフト。
     Returns:
-        リターンの平均。
+        移動平均の移動平均。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_ma_of_ma_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        ma_of_ma = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        ma = i_ma(symbol, timeframe, period, shift)
+        ma_of_ma = ma.rolling(window=period).mean()
+        ma_of_ma = ma_of_ma.fillna(method='ffill')
+        ma_of_ma = ma_of_ma.fillna(method='bfill')
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
+                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            joblib.dump(ma_of_ma, path)
+    return ma_of_ma
+
+def i_mean(symbol, timeframe, period, shift):
+    '''対数リターンの平均を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        period: 期間。
+        shift: シフト。
+    Returns:
+        対数リターンの平均。
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/tmp/i_mean_' + symbol +
@@ -1860,7 +2028,7 @@ def i_mean(symbol, timeframe, period, shift):
         mean = joblib.load(path)
     # さもなければ計算する。
     else:
-        log_return = i_log_return(symbol, timeframe, shift)
+        log_return = i_log_return(symbol, timeframe, period, shift)
         mean = log_return.rolling(window=period).mean()
         mean = mean.fillna(method='ffill')
         mean = mean.fillna(method='bfill')
@@ -1920,6 +2088,57 @@ def i_open(symbol, timeframe, shift):
             joblib.dump(op, path)
     return op
 
+def i_range(symbol, timeframe, period, shift):
+    '''レンジの広さの程度を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        period: 期間。
+        shift: シフト。
+    Returns:
+        偏差の絶対値の最大値。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_range_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        rng = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        # レンジを計算する。
+        def func(high, low):
+            highest_high = np.max(high)
+            lowest_low = np.min(low)
+            ret = np.log(highest_high) - np.log(lowest_low)
+            return ret
+
+        high = i_high(symbol, timeframe, shift)
+        low = i_low(symbol, timeframe, shift)
+        index = high.index
+        n = len(high)
+        high = np.array(high)
+        low = np.array(low)
+        rng = np.empty(n)
+        for i in range(period, n):
+            rng[i] = func(high[i-period:i], low[i-period:i])
+        rng = pd.Series(rng, index=index)
+        std = i_std(symbol, timeframe, period, shift)
+        rng = rng / std
+        a = 1.61656309476
+        b = -1.35896556663
+        rng = rng / (a * np.sqrt(period) + b)
+        rng = rng.fillna(method='ffill')
+        rng = rng.fillna(method='bfill')
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
+                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            joblib.dump(rng, path)
+    return rng
+
 def i_rank(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0,
                gbp=0.0, jpy=0.0, nzd=0.0, usd=0.0):
     '''通貨の強弱の順位（降順）を返す。
@@ -1968,14 +2187,14 @@ def i_rank(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0,
     return rank
 
 def i_skew(symbol, timeframe, period, shift):
-    '''リターンの歪度を返す。
+    '''対数リターンの歪度を返す。
     Args:
         symbol: 通貨ペア名。
         timeframe: タイムフレーム。
         period: 期間。
         shift: シフト。
     Returns:
-        リターンの歪度。
+        対数リターンの歪度。
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/tmp/i_skew_' + symbol +
@@ -1986,7 +2205,7 @@ def i_skew(symbol, timeframe, period, shift):
         skew = joblib.load(path)
     # さもなければ計算する。
     else:
-        log_return = i_log_return(symbol, timeframe, shift)
+        log_return = i_log_return(symbol, timeframe, period, shift)
         skew = log_return.rolling(window=period).skew()
         skew = skew.fillna(method='ffill')
         skew = skew.fillna(method='bfill')
@@ -1998,15 +2217,159 @@ def i_skew(symbol, timeframe, period, shift):
             joblib.dump(skew, path)
     return skew
 
+def i_stationarized_close(symbol, timeframe, period, shift):
+    '''定常化した終値を返す。
+
+    定常化は終値を対数変換し、その移動平均を減じることによって行っている。
+    結果的には移動平均乖離率に近いものとなっている。
+
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: 足の種類。
+        period: 期間。
+        shift: シフト。
+
+    Returns:
+        定常化した終値。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_stationarized_close_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        stationarized_close = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        # 定常化した終値を計算する。
+        close = i_close(symbol, timeframe, shift)
+        log_close = np.log(close)
+        mean_log_close = log_close.rolling(window=period).mean()
+        stationarized_close = log_close - mean_log_close
+        stationarized_close = stationarized_close.dropna(0.0)
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
+                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            joblib.dump(stationarized_close, path)
+    return stationarized_close
+
+def i_stationarized_ma(symbol, timeframe, period, shift):
+    '''定常化した終値の移動平均を返す。
+
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: 足の種類。
+        period: 期間。
+        shift: シフト。
+
+    Returns:
+        定常化した終値の移動平均。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_stationarized_ma_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        stationarized_ma = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        # 定常化した終値の移動平均を計算する。
+        stationarized_close = i_stationarized_close(symbol, timeframe, period,
+                                                    shift)
+        stationarized_ma = stationarized_close.rolling(window=period).mean()
+        stationarized_ma = stationarized_ma.dropna(0.0)
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
+                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            joblib.dump(stationarized_ma, path)
+    return stationarized_ma
+
+def i_stationarized_std_dev(symbol, timeframe, period, shift):
+    '''定常化した終値の標準偏差を返す。
+
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: 足の種類。
+        period: 期間。
+        shift: シフト。
+
+    Returns:
+        定常化した終値の標準偏差。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_stationarized_std_dev_' +
+        symbol + str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        stationarized_std_dev = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        # 定常化した終値の標準偏差を計算する。
+        stationarized_close = i_stationarized_close(symbol, timeframe, period,
+                                                    shift)
+        stationarized_std_dev = stationarized_close.rolling(window=period).std()
+        stationarized_std_dev = stationarized_std_dev.dropna(0.0)
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
+                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            joblib.dump(stationarized_std_dev, path)
+    return stationarized_std_dev
+
+def i_stationarized_z_score(symbol, timeframe, period, shift):
+    '''定常化した終値のzスコアを返す。
+
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: 足の種類。
+        period: 期間。
+        shift: シフト。
+
+    Returns:
+        定常化した終値のzスコア。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_stationarized_z_score_' +
+        symbol + str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        stationarized_z_score = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        # 定常化した終値のzスコアを計算する。
+        stationarized_close = i_stationarized_close(symbol, timeframe, period,
+                                                    shift)
+        stationarized_ma = i_stationarized_ma(symbol, timeframe, period, shift)
+        stationarized_std_dev = i_stationarized_std_dev(symbol, timeframe,
+                                                        period, shift)
+        stationarized_z_score = ((stationarized_close - stationarized_ma) /
+            stationarized_std_dev)
+        stationarized_z_score = stationarized_z_score.dropna(0.0)
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
+                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            joblib.dump(stationarized_z_score, path)
+    return stationarized_z_score
+
 def i_std(symbol, timeframe, period, shift):
-    '''リターンの標準偏差を返す。
+    '''対数リターンの標準偏差を返す。
     Args:
         symbol: 通貨ペア名。
         timeframe: タイムフレーム。
         period: 期間。
         shift: シフト。
     Returns:
-        リターンの標準偏差。
+        対数リターンの標準偏差。
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/tmp/i_std_' + symbol +
@@ -2017,7 +2380,7 @@ def i_std(symbol, timeframe, period, shift):
         std = joblib.load(path)
     # さもなければ計算する。
     else:
-        log_return = i_log_return(symbol, timeframe, shift)
+        log_return = i_log_return(symbol, timeframe, period, shift)
         std = log_return.rolling(window=period).std()
         std = std.fillna(method='ffill')
         std = std.fillna(method='bfill')
@@ -2327,6 +2690,98 @@ def i_tree_regression(symbol, timeframe, period, shift, aud=0.0, cad=0.0,
             joblib.dump(tree_regression, path)
     return tree_regression
 
+def i_trend(symbol, timeframe, period, shift):
+    '''トレンドを返す。
+
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: 足の種類。
+        period: 期間。
+        shift: シフト。
+
+    Returns:
+        トレンド。  1以上：上昇トレンド  -1以下：下落トレンド  その他：トレンドなし
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_trend_' +
+        symbol + str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        trend = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        # トレンドを計算する。
+        close = i_close(symbol, timeframe, shift)
+        change = close - close.shift(1)
+        std = change.rolling(window=period).std()
+        trend = (close - close.shift(period)) / (std * np.sqrt(period))
+        trend = trend.dropna(0.0)
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
+                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            joblib.dump(trend, path)
+    return trend
+
+def i_trend_duration(symbol, timeframe, period, shift):
+    '''トレンドの継続期間を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        period: 期間。
+        shift: シフト。
+    Returns:
+        トレンドの継続期間。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_trend_duration_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        trend_duration = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        # トレンドの継続期間を計算する関数を定義する。
+        @jit(float64[:](float64[:]), nopython=True, cache=True)
+        def calc_trend_duration(trend):
+            up = 0
+            down = 0
+            n = len(trend)
+            trend_duration = np.empty(n)
+            for i in range(n):
+                if (trend[i] > 1.0):
+                    up = up + 1
+                else:
+                    up = 0
+                if (trend[i] < -1.0):
+                    down = down + 1
+                else:
+                    down = 0
+                trend_duration[i] = up - down
+
+            return trend_duration
+
+        # トレンドの継続期間を計算する。
+        trend = i_trend(symbol, timeframe, period, shift)
+        index = trend.index
+        trend = np.array(trend)
+        trend_duration = calc_trend_duration(trend)
+        a = 0.903  # 指数（正規化するために経験的に導き出した数値）
+        b = 0.393  # 切片（同上）
+        trend_duration = trend_duration / (float(period) ** a + b)
+        trend_duration = pd.Series(trend_duration, index=index)
+        trend_duration = trend_duration.fillna(0)
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
+                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            joblib.dump(trend_duration, path)
+    return trend_duration
+
 def i_updown(symbol, timeframe, shift):
     '''騰落を返す。
     Args:
@@ -2579,6 +3034,39 @@ def i_zresid_tree_regression(symbol, timeframe, period, shift, aud=0.0, cad=0.0,
                 os.mkdir(os.path.dirname(__file__) + '/tmp')
             joblib.dump(zresid_tree_regression, path)
     return zresid_tree_regression
+
+def i_z_score(symbol, timeframe, period, shift):
+    '''対数リターンのzスコアを返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        period: 期間。
+        shift: シフト。
+    Returns:
+        対数リターンのzスコア。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_z_score_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        z_score = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        log_return = i_log_return(symbol, timeframe, period, shift)
+        mean = i_mean(symbol, timeframe, period, shift)
+        std = i_std(symbol, timeframe, period, shift)
+        z_score = (log_return - mean) / std
+        z_score = z_score.fillna(0.0)
+        z_score[(z_score==float('inf')) | (z_score==float('-inf'))] = 0.0
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
+                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            joblib.dump(z_score, path)
+    return z_score
 
 def minute():
     '''現在の分を返す。
@@ -3016,8 +3504,8 @@ def walkforwardtest(args):
     ea = args[0]
     symbol = args[1]
     timeframe = int(args[2])
-    start = datetime.strptime(args[3], '%Y.%m.%d')
-    end = datetime.strptime(args[4], '%Y.%m.%d')
+    start = datetime.strptime(args[3] + ' 00:00', '%Y.%m.%d %H:%M')
+    end = datetime.strptime(args[4] + ' 23:59', '%Y.%m.%d %H:%M')
     spread = int(args[5])
     position = 2  # デフォルト値
     min_trade = 260  # デフォルト値

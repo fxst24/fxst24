@@ -10,6 +10,9 @@ def convert_hst2csv(parser):
           Args:
               parser: パーサー。
     '''
+    # 開始時間を記録する。
+    start_time = time.time()
+
     parser.add_argument('--audcad', type=int, default=0)
     parser.add_argument('--audchf', type=int, default=0)
     parser.add_argument('--audjpy', type=int, default=0)
@@ -219,8 +222,22 @@ def convert_hst2csv(parser):
             '2_high_price':high_price, '3_low_price':low_price,
             '4_close_price':close_price, '5_volume':volume}
         result = pd.DataFrame.from_dict(data)
-        result = result.set_index('0_datetime')
-        result.to_csv(filename_csv, header = False)
+        result.columns = ['Time (UTC)', 'Open', 'High', 'Low', 'Close', 'Volume']
+        result = result.set_index('Time (UTC)')
+        result.to_csv(filename_csv)
+
+    # 終了時間を記録する。
+    end_time = time.time()
+
+    # 実行時間を出力する。
+    if end_time - start_time < 60.0:
+        print(
+            '実行時間は',
+            int(round(end_time - start_time)), '秒です。')
+    else:
+        print(
+            '実行時間は',
+            int(round((end_time - start_time) / 60.0)), '分です。')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
