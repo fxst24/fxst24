@@ -3165,9 +3165,13 @@ def show_backtest_result(ret, trades, timeframe, start, end, parameter_ea1,
     durations = calc_durations(ret, timeframe)
     # グラフを作成する。
     cum_ret = ret.cumsum()
+    ax=plt.subplot()
     plt.plot(cum_ret)
-    plt.xlabel('date')
-    plt.ylabel('cumulative return')
+    plt.title('Backtesting')
+    plt.xlabel('Date')
+    plt.ylabel('Cumulative returns')
+    plt.text(0.05, 0.9, 'APR = ' + str(apr), transform=ax.transAxes)
+    plt.text(0.05, 0.85, 'Sharpe ratio= ' + str(sharpe), transform=ax.transAxes)
     # レポートを作成する。
     report =  pd.DataFrame(index=[0])
     report['start'] = start.strftime('%Y.%m.%d')
@@ -3211,9 +3215,13 @@ def show_walkforwardtest_result(ret, trades, timeframe, start, end):
     durations = calc_durations(ret, timeframe)
     # グラフを作成する。
     cum_ret = ret.cumsum()
+    ax=plt.subplot()
     plt.plot(cum_ret)
-    plt.xlabel('date')
-    plt.ylabel('cumulative return')
+    plt.title('Walk forward optimization')
+    plt.xlabel('Date')
+    plt.ylabel('Cumulative returns')
+    plt.text(0.05, 0.9, 'APR = ' + str(apr), transform=ax.transAxes)
+    plt.text(0.05, 0.85, 'Sharpe ratio= ' + str(sharpe), transform=ax.transAxes)
     # レポートを作成する。
     report = pd.DataFrame(index=[0])
     report['start'] = start.strftime('%Y.%m.%d')
