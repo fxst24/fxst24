@@ -1841,7 +1841,7 @@ def i_log_return(symbol, timeframe, period, shift):
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/tmp/i_log_return_' + symbol +
-        str(timeframe) + '_' + str(shift) + '.pkl')
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
     if OANDA is None and os.path.exists(path) == True:
@@ -3068,11 +3068,18 @@ def i_z_score(symbol, timeframe, period, shift):
             joblib.dump(z_score, path)
     return z_score
 
+def make_tmp_folder():
+    '''一時フォルダを作成する。
+    '''
+    path = os.path.dirname(__file__)
+    if os.path.exists(path + '/tmp') == False:
+        os.mkdir(path + '/tmp')
+
 def minute():
     '''現在の分を返す。
     Returns:
         現在の分。
-    '''    
+    '''
     minute = datetime.now().minute
     return minute
 
@@ -3107,6 +3114,13 @@ def orders_total():
     positions = OANDA.get_positions(ACCOUNT_ID)
     total = len(positions['positions'])
     return total
+
+def remove_tmp_folder():
+    '''一時フォルダを削除する。
+    '''
+    path = os.path.dirname(__file__)
+    if os.path.exists(path + '/tmp') == True:
+        shutil.rmtree(path + '/tmp')
 
 def seconds():
     '''現在の秒を返す。
