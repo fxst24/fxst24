@@ -1,9 +1,10 @@
 # coding: utf-8
+
 import forex_system as fs
 # パラメータの設定
 PERIOD = 10
-ENTRY_THRESHOLD = 1.5
-FILTER_THRESHOLD = 0.5
+ENTRY_THRESHOLD = 0.5
+FILTER_THRESHOLD = 1.0
 PARAMETER = [PERIOD, ENTRY_THRESHOLD, FILTER_THRESHOLD]
 # 最適化の設定
 START_PERIOD = 10
@@ -38,15 +39,15 @@ def strategy(parameter, symbol, timeframe, position):
     # 戦略を記述する。
     zresid1 = fs.i_zresid(symbol, timeframe, period, 1)
     bandwalk1 = fs.i_bandwalk(symbol, timeframe, period, 1)
-    stop_hunting_zone = fs.i_stop_hunting_zone(symbol, timeframe,
-        int(1440 / timeframe), 1)
-    buy_entry = (((zresid1 <= -entry_threshold) &
-        (bandwalk1 <= -filter_threshold) &
-        (stop_hunting_zone['lower'] == False)) * 1)
+    buy_entry = ((
+        (zresid1 <= -entry_threshold) &
+        (bandwalk1 <= -filter_threshold)
+        ) * 1)
     buy_exit = (zresid1 >= 0.0) * 1
-    sell_entry = (((zresid1 >= entry_threshold) &
-        (bandwalk1 >= filter_threshold) &
-        (stop_hunting_zone['upper'] == False)) * 1)
+    sell_entry = ((
+        (zresid1 >= entry_threshold) &
+        (bandwalk1 >= filter_threshold)
+        ) * 1)
     sell_exit = (zresid1 <= 0.0) * 1
     signal = fs.calc_signal(buy_entry, buy_exit, sell_entry, sell_exit,
                             position)
