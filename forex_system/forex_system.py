@@ -712,14 +712,14 @@ def i_bands(symbol, timeframe, period, deviation, shift):
     return bands
 
 def i_bandwalk(symbol, timeframe, period, shift):
-    '''バンドウォーク（移動平均）を返す。
+    '''標準化されたバンドウォークを返す。
     Args:
         symbol: 通貨ペア名。
         timeframe: タイムフレーム。
         period: 期間。
         shift: シフト。
     Returns:
-        バンドウォーク（移動平均）。
+        標準化されたバンドウォーク。
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/tmp/i_bandwalk_' + symbol +
@@ -730,28 +730,25 @@ def i_bandwalk(symbol, timeframe, period, shift):
         bandwalk = joblib.load(path)
     # さもなければ計算する。
     else:
-        # バンドウォークを計算する関数を定義する。
-        @jit(float64[:](float64[:], float64[:], float64[:]),
-            nopython=True, cache=True)
-        def calc_bandwalk(high, low, ma):
-            up = 0
-            down = 0
+        @jit(float64[:](float64[:], float64[:], float64[:]), nopython=True,
+             cache=True)
+        def func(high, low, ma):
+            above = 0
+            below = 0
             length = len(ma)
             bandwalk = np.empty(length)
             for i in range(length):
                 if (low[i] > ma[i]):
-                    up = up + 1
+                    above = above + 1
                 else:
-                    up = 0
+                    above = 0
                 if (high[i] < ma[i]):
-                    down = down + 1
+                    below = below + 1
                 else:
-                    down = 0
-                bandwalk[i] = up - down
-
+                    below = 0
+                bandwalk[i] = above - below
             return bandwalk
 
-        # バンドウォークを計算する。
         high = i_high(symbol, timeframe, shift)
         low = i_low(symbol, timeframe, shift)
         ma = i_ma(symbol, timeframe, period, shift)
@@ -759,17 +756,16 @@ def i_bandwalk(symbol, timeframe, period, shift):
         high = np.array(high)
         low = np.array(low)
         ma = np.array(ma)
-        bandwalk = calc_bandwalk(high, low, ma)
-        a = 0.903  # 指数（正規化するために経験的に導き出した数値）
-        b = 0.393  # 切片（同上）
-        bandwalk = bandwalk / (float(period) ** a + b)
+        bandwalk = func(high, low, ma)
+        a = 0.65968152052  # 傾き（標準化するために経験的に導き出した数値）
+        b = 1.95237174591  # 切片（同上）
+        bandwalk = bandwalk / (a * float(period) + b)
         bandwalk = pd.Series(bandwalk, index=index)
         bandwalk = bandwalk.fillna(0)
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(bandwalk, path)
     return bandwalk
 
@@ -1214,6 +1210,62 @@ def i_diff(symbol, timeframe, shift):
                 os.mkdir(os.path.dirname(__file__) + '/tmp')
             joblib.dump(diff, path)
     return diff
+
+def i_expansion_duration(symbol, timeframe, period, shift):
+    '''エクスパンション期間（マイナスの場合はスクイーズ期間）を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        period: 期間。
+        shift: シフト。
+    Returns:
+        エクスパンション期間（マイナスの場合はスクイーズ期間）。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/tmp/i_expansion_duration_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        expansion_duration = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        @jit(float64[:](float64[:]), nopython=True, cache=True)
+        def func(std_dev):
+            up = 0
+            down = 0
+            length = len(std_dev)
+            ret = np.empty(length)
+            ret[0] = 0
+            for i in range(1, length):
+                #if (std_dev[i] > std_dev[i-1]):
+                if (std_dev[i] > 1.0):
+                    up = up + 1
+                else:
+                    up = 0
+                #if (std_dev[i] < std_dev[i-1]):
+                if (std_dev[i] < 1.0):
+                    down = down + 1
+                else:
+                    down = 0
+                ret[i] = up - down
+            return ret
+
+        std_dev = i_zresid(symbol, timeframe, period, shift)
+        #std_dev = i_std_dev(symbol, timeframe, period, shift)
+        index = std_dev.index
+        std_dev = np.array(std_dev)
+        std_dev = np.abs(std_dev)
+        expansion_duration = func(std_dev)
+        expansion_duration = pd.Series(expansion_duration, index=index)
+        expansion_duration = expansion_duration.fillna(0)
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
+                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            joblib.dump(expansion_duration, path)
+    return expansion_duration
 
 def i_high(symbol, timeframe, shift):
     '''高値を返す。
@@ -2570,19 +2622,22 @@ def i_std_dev_tree_regression(symbol, timeframe, period, shift, aud=0.0,
             joblib.dump(std_dev_tree_regression, path)
     return std_dev_tree_regression
 
-def i_stop_hunting_zone(symbol, timeframe, period, shift):
+def i_stop_hunting_zone(symbol, timeframe, period, max_iter, pip, shift):
     '''ストップ狩りのゾーンにあるか否かを返す。
     Args:
         symbol: 通貨ペア名。
         timeframe: タイムフレーム。
         period: 計算期間。
+        max_iter: 最大繰り返し数。
+        pip: pip（ただし、MT4に準じて1=0.1pipとする）。
         shift: シフト。
     Returns:
         ストップ狩りのゾーンにあるか否か。
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/tmp/i_stop_hunting_zone_' + symbol +
-        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+        str(timeframe) + '_' + str(period) + '_' + str(max_iter) + '_' +
+        str(pip) + '_' + str(shift) + '.pkl')
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
     if OANDA is None and os.path.exists(path) == True:
@@ -2593,23 +2648,29 @@ def i_stop_hunting_zone(symbol, timeframe, period, shift):
             symbol == 'CHFJPY' or symbol == 'EURJPY' or
             symbol == 'GBPJPY' or symbol == 'NZDJPY' or
             symbol == 'USDJPY'):
-            n = 10
+            multiplier = 0.001
         else:
-            n = 1000
-        close0 = i_close(symbol, timeframe, shift)
-        hl_band1 = i_hl_band(symbol, timeframe, period, shift + 1)
-        high_ceil = np.ceil(hl_band1['high'] * n) / n
-        high_floor = np.floor(hl_band1['high'] * n) / n
-        low_ceil = np.ceil(hl_band1['low'] * n) / n
-        low_floor = np.floor(hl_band1['low'] * n) / n
-        upper = pd.Series(index=close0.index)
-        lower = pd.Series(index=close0.index)
-        upper[(close0 >= high_floor) & (close0 <= high_ceil)] = 1
-        lower[(close0 >= low_floor) & (close0 <= low_ceil)] = 1
-        stop_hunting_zone = pd.DataFrame(index=close0.index)
-        stop_hunting_zone['upper'] = upper
-        stop_hunting_zone['lower'] = lower
+            multiplier = 0.00001
+        close = i_close(symbol, timeframe, shift)
+        stop_hunting_zone = pd.DataFrame(index=close.index)
+        for i in range(max_iter):
+            hl_band = i_hl_band(symbol, timeframe, period*(i+1), shift)
+            resistance = pd.Series(index=close.index)
+            support = pd.Series(index=close.index)
+            resistance[(close >= (hl_band['high'] - (pip * multiplier))) &
+                (close <= hl_band['high'])] = 1
+            support[(close <= (hl_band['low'] + (pip * multiplier))) &
+                (close >= hl_band['low'])] = 1
+            resistance = resistance.fillna(0)
+            support = support.fillna(0)
+            if i == 0:
+                stop_hunting_zone['resistance'] = resistance
+                stop_hunting_zone['support'] = support
+            else:
+                stop_hunting_zone['resistance'] += resistance
+                stop_hunting_zone['support'] += support
         stop_hunting_zone = stop_hunting_zone.fillna(0)
+        stop_hunting_zone[stop_hunting_zone>=1] = 1
         stop_hunting_zone = stop_hunting_zone.astype(bool)
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
@@ -2892,41 +2953,37 @@ def i_volume(symbol, timeframe, shift):
             joblib.dump(volume, path)
     return volume
 
-def i_zresid(symbol, timeframe, period, shift):
-    '''終値とその予測値（移動平均）との標準化残差を返す。
+def i_zscore(symbol, timeframe, period, shift):
+    '''終値のzスコアを返す。
     Args:
         symbol: 通貨ペア名。
-        timeframe: タイムフレーム。
-        period: 期間。
+        timeframe: 足の種類。
+        period: 計算期間。
         shift: シフト。
     Returns:
-        終値とその予測値（移動平均）との標準化残差。
+        終値のzスコア。
     '''
     # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/tmp/i_zresid_' + symbol +
+    path = (os.path.dirname(__file__) + '/tmp/i_zscore_' + symbol +
         str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
     if OANDA is None and os.path.exists(path) == True:
-        zresid = joblib.load(path)
+        zscore = joblib.load(path)
     # さもなければ計算する。
     else:
-        # 終値を格納する。
         close = i_close(symbol, timeframe, shift)
-        # 予測値、標準誤差を格納する。
-        pred = i_ma(symbol, timeframe, period, shift)
-        se = i_std_dev(symbol, timeframe, period, shift)
-        # 標準化残差を計算する。
-        zresid = (close - pred) / se
-        zresid = zresid.fillna(0.0)
-        zresid[(zresid==float('inf')) | (zresid==float('-inf'))] = 0.0
+        mean = close.rolling(window=period).mean()
+        std = close.rolling(window=period).std()
+        zscore = (close - mean) / std
+        zscore = zscore.fillna(0.0)
+        zscore[(zscore==float('inf')) | (zscore==float('-inf'))] = 0.0
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
-            joblib.dump(zresid, path)
-    return zresid
+            make_tmp_folder()
+            joblib.dump(zscore, path)
+    return zscore
 
 def i_zresid_linear_regression(symbol, timeframe, period, shift, aud=0.0,
                                cad=0.0, chf=0.0, eur=0.0, gbp=0.0, jpy=0.0,
@@ -3185,7 +3242,8 @@ def show_backtest_result(ret, trades, timeframe, start, end, parameter_ea1,
     plt.xlabel('Date')
     plt.ylabel('Cumulative returns')
     plt.text(0.05, 0.9, 'APR = ' + str(apr), transform=ax.transAxes)
-    plt.text(0.05, 0.85, 'Sharpe ratio= ' + str(sharpe), transform=ax.transAxes)
+    plt.text(0.05, 0.85, 'Sharpe ratio = ' + str(sharpe),
+             transform=ax.transAxes)
     # レポートを作成する。
     report =  pd.DataFrame(index=[0])
     report['start'] = start.strftime('%Y.%m.%d')
@@ -3235,7 +3293,8 @@ def show_walkforwardtest_result(ret, trades, timeframe, start, end):
     plt.xlabel('Date')
     plt.ylabel('Cumulative returns')
     plt.text(0.05, 0.9, 'APR = ' + str(apr), transform=ax.transAxes)
-    plt.text(0.05, 0.85, 'Sharpe ratio= ' + str(sharpe), transform=ax.transAxes)
+    plt.text(0.05, 0.85, 'Sharpe ratio = ' + str(sharpe),
+             transform=ax.transAxes)
     # レポートを作成する。
     report = pd.DataFrame(index=[0])
     report['start'] = start.strftime('%Y.%m.%d')
