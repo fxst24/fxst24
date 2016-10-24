@@ -2,6 +2,7 @@
 import forex_system as fs
 import numpy as np
 import pandas as pd
+
 # パラメータの設定
 UP = 8
 DOWN = 3
