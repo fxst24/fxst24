@@ -1,5 +1,6 @@
 # coding: utf-8
 import configparser
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
 import oandapy
@@ -12,7 +13,7 @@ import time
 from datetime import datetime
 from datetime import timedelta
 from email.mime.text import MIMEText
-from numba import float64, int64, jit
+from numba import float64, jit
 from pykalman import KalmanFilter
 from scipy import optimize
 from sklearn import linear_model
@@ -706,8 +707,7 @@ def i_bands(symbol, timeframe, period, deviation, shift):
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(bands, path)
     return bands
 
@@ -769,295 +769,6 @@ def i_bandwalk(symbol, timeframe, period, shift):
             joblib.dump(bandwalk, path)
     return bandwalk
 
-def i_bandwalk_linear_regression(symbol, timeframe, period, shift, aud=0.0,
-                                 cad=0.0, chf=0.0, eur=0.0, gbp=0.0, jpy=0.0,
-                                 nzd=0.0, usd=0.0):
-    '''バンドウォーク（線形回帰）を返す。
-    Args:
-        symbol: 通貨ペア名。
-        timeframe: タイムフレーム。
-        period: 期間。
-        shift: シフト。
-        aud: 豪ドル。
-        cad: カナダドル。
-        chf: スイスフラン。
-        eur: ユーロ。
-        gbp: ポンド。
-        jpy: 円。
-        nzd: NZドル。
-        usd: 米ドル。
-    Returns:
-        バンドウォーク（線形回帰）。
-    '''
-    # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/tmp/i_bandwalk_linear_regression_' +
-        symbol + str(timeframe) + '_' + str(period) + '_' + str(shift) + '_' +
-        str(aud) + str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) +
-        str(nzd) + str(usd) + '.pkl')
-    # バックテスト、またはウォークフォワードテストのとき、
-    # 計算結果が保存されていれば復元する。
-    if OANDA is None and os.path.exists(path) == True:
-        bandwalk_linear_regression = joblib.load(path)
-    # さもなければ計算する。
-    else:
-        # バンドウォークを計算する関数を定義する。
-        @jit(float64[:](float64[:], float64[:], float64[:]),
-            nopython=True, cache=True)
-        def calc_bandwalk_linear_regression(high, low, pred):
-            up = 0
-            down = 0
-            length = len(pred)
-            bandwalk_linear_regression = np.empty(length)
-            for i in range(length):
-                if (low[i] > pred[i]):
-                    up = up + 1
-                else:
-                    up = 0
-                if (high[i] < pred[i]):
-                    down = down + 1
-                else:
-                    down = 0
-                bandwalk_linear_regression[i] = up - down
-            return bandwalk_linear_regression
-
-        # バンドウォークを計算する。
-        high = i_high(symbol, timeframe, shift)
-        low = i_low(symbol, timeframe, shift)
-        pred = i_linear_regression(symbol, timeframe, period, shift, aud=aud,
-                                   cad=cad, chf=chf, eur=eur, gbp=gbp, jpy=jpy,
-                                   nzd=nzd, usd=usd)
-        index = pred.index
-        high = np.array(high)
-        low = np.array(low)
-        pred = np.array(pred)
-        bandwalk_linear_regression = calc_bandwalk_linear_regression(high, low,
-                                                                     pred)
-        a = 0.903  # 指数（正規化するために経験的に導き出した数値）
-        b = 0.393  # 切片（同上）
-        bandwalk_linear_regression = (bandwalk_linear_regression /
-            (float(period) ** a + b))
-        bandwalk_linear_regression = pd.Series(bandwalk_linear_regression,
-                                               index=index)
-        bandwalk_linear_regression = bandwalk_linear_regression.fillna(0)
-        # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if OANDA is None:
-            # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
-            joblib.dump(bandwalk_linear_regression, path)
-    return bandwalk_linear_regression
-
-def i_bandwalk_log_return(symbol, timeframe, period, shift):
-    '''バンドウォーク（対数リターン）を返す。
-    Args:
-        symbol: 通貨ペア名。
-        timeframe: 足の種類。
-        period: 期間。
-        shift: シフト。
-    Returns:
-        バンドウォーク（対数リターン）。
-    '''
-    # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/tmp/i_bandwalk_log_return_' + symbol +
-        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
-    # バックテスト、またはウォークフォワードテストのとき、
-    # 計算結果が保存されていれば復元する。
-    if OANDA is None and os.path.exists(path) == True:
-        bandwalk_log_return = joblib.load(path)
-    # さもなければ計算する。
-    else:
-        # バンドウォークを計算する関数を定義する。
-        @jit(float64[:](float64[:], float64[:]),
-            nopython=True, cache=True)
-        def calc_bandwalk_log_return(log_return, mean):
-            up = 0
-            down = 0
-            length = len(mean)
-            bandwalk_log_return = np.empty(length)
-            for i in range(length):
-                if (log_return[i] > mean[i]):
-                    up = up + 1
-                else:
-                    up = 0
-                if (log_return[i] < mean[i]):
-                    down = down + 1
-                else:
-                    down = 0
-                bandwalk_log_return[i] = up - down
-
-            return bandwalk_log_return
-
-        # バンドウォークを計算する。
-        log_return = i_log_return(symbol, timeframe, period, shift)
-        mean = i_mean(symbol, timeframe, period, shift)
-        index = mean.index
-        log_return = np.array(log_return)
-        mean = np.array(mean)
-        bandwalk_log_return = calc_bandwalk_log_return(log_return, mean)
-        a = 0.903  # 指数（正規化するために経験的に導き出した数値）
-        b = 0.393  # 切片（同上）
-        bandwalk_log_return = bandwalk_log_return / (float(period) ** a + b)
-        bandwalk_log_return = pd.Series(bandwalk_log_return, index=index)
-        bandwalk_log_return = bandwalk_log_return.fillna(0)
-        # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if OANDA is None:
-            # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
-            joblib.dump(bandwalk_log_return, path)
-    return bandwalk_log_return
-
-def i_bandwalk_rank(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0,
-                    eur=0.0, gbp=0.0, jpy=0.0, nzd=0.0, usd=0.0):
-    '''バンドウォーク（通貨の強弱の順位）を返す。
-    Args:
-        timeframe: 足の種類。
-        period: 計算期間。
-        shift: シフト。
-        aud: 豪ドル。
-        cad: カナダドル。
-        chf: スイスフラン。
-        eur: ユーロ。
-        gbp: ポンド。
-        jpy: 円。
-        nzd: NZドル。
-        usd: 米ドル。
-    Returns:
-        バンドウォーク（通貨の強弱の順位）。
-    '''
-    # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/tmp/i_bandwalk_rank_' +
-        str(timeframe) + '_' + str(period) + '_' + str(shift) + '_' +
-        str(aud) + str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) +
-        str(nzd) + str(usd) + '.pkl')
-    # バックテスト、またはウォークフォワードテストのとき、
-    # 計算結果が保存されていれば復元する。
-    if OANDA is None and os.path.exists(path) == True:
-        bandwalk_rank = joblib.load(path)
-    # さもなければ計算する。
-    else:
-        # バンドウォークを計算する関数を定義する。
-        @jit(float64[:, :](float64[:, :], float64[:, :], int64, int64),
-             nopython=True, cache=True)
-        def calc_bandwalk_rank(rank, bandwalk_rank, m, n):
-            for j in range(n):
-                up = 0
-                down = 0
-                for i in range(m):
-                    if (rank[i][j] > 0.0):
-                        up = up + 1
-                    else:
-                        up = 0
-                    if (rank[i][j] < 0.0):
-                        down = down + 1
-                    else:
-                        down = 0
-                    bandwalk_rank[i][j] = up - down
-            return bandwalk_rank
-
-        # バンドウォークを計算する。
-        rank =i_rank(timeframe, period, shift, aud=aud, cad=cad, chf=chf,
-                     eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
-        index = rank.index
-        columns = rank.columns
-        rank = np.array(rank)
-        m = len(rank)
-        n = len(rank[0])
-        bandwalk_rank = np.empty([m, n])  # numbaは関数内部で2次元配列を作れない。
-        bandwalk_rank = calc_bandwalk_rank(rank, bandwalk_rank, m, n)
-        a = 0.903  # 指数（正規化するために経験的に導き出した数値）
-        b = 0.393  # 切片（同上）
-        bandwalk_rank = bandwalk_rank / (float(period) ** a + b)
-        bandwalk_rank = pd.DataFrame(bandwalk_rank, index=index,
-                                     columns=columns)
-        bandwalk_rank = bandwalk_rank.fillna(0)
-        # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if OANDA is None:
-            # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
-            joblib.dump(bandwalk_rank, path)
-    return bandwalk_rank
-
-def i_bandwalk_tree_regression(symbol, timeframe, period, shift, aud=0, cad=0,
-                               chf=0, eur=0, gbp=0, jpy=0, nzd=0, usd=0.0,
-                               max_depth=3):
-    '''バンドウォーク（決定木）を返す。
-    Args:
-        symbol: 通貨ペア名。
-        timeframe: タイムフレーム。
-        period: 期間。
-        shift: シフト。
-        aud: 豪ドル。
-        cad: カナダドル。
-        chf: スイスフラン。
-        eur: ユーロ。
-        gbp: ポンド。
-        jpy: 円。
-        nzd: NZドル。
-        usd: 米ドル。
-        max_depth: 最大の深さ。
-    Returns:
-        バンドウォーク（決定木）。
-    '''
-    # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/tmp/i_bandwalk_tree_regression_' +
-        symbol + str(timeframe) + '_' + str(period) + '_' + str(shift) + '_' +
-        str(aud) + str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) +
-        str(nzd) + str(usd) + '_' + str(max_depth) + '.pkl')
-    # バックテスト、またはウォークフォワードテストのとき、
-    # 計算結果が保存されていれば復元する。
-    if OANDA is None and os.path.exists(path) == True:
-        bandwalk_tree_regression = joblib.load(path)
-    # さもなければ計算する。
-    else:
-        # バンドウォークを計算する関数を定義する。
-        @jit(float64[:](float64[:], float64[:], float64[:]),
-            nopython=True, cache=True)
-        def calc_bandwalk_tree_regression(high, low, pred):
-            up = 0
-            down = 0
-            length = len(pred)
-            bandwalk_linear_regression = np.empty(length)
-            for i in range(length):
-                if (low[i] > pred[i]):
-                    up = up + 1
-                else:
-                    up = 0
-                if (high[i] < pred[i]):
-                    down = down + 1
-                else:
-                    down = 0
-                bandwalk_linear_regression[i] = up - down
-            return bandwalk_linear_regression
-
-        # バンドウォークを計算する。
-        high = i_high(symbol, timeframe, shift)
-        low = i_low(symbol, timeframe, shift)
-        pred = i_tree_regression(symbol, timeframe, period, shift, aud=aud,
-                                 cad=cad, chf=chf, eur=eur, gbp=gbp, jpy=jpy,
-                                 nzd=nzd, usd=usd, max_depth=max_depth)
-        index = pred.index
-        high = np.array(high)
-        low = np.array(low)
-        pred = np.array(pred)
-        bandwalk_tree_regression = calc_bandwalk_tree_regression(high, low,
-                                                                 pred)
-        a = 0.903  # 指数（正規化するために経験的に導き出した数値）
-        b = 0.393  # 切片（同上）
-        bandwalk_tree_regression = (bandwalk_tree_regression /
-            (float(period) ** a + b))
-        bandwalk_tree_regression = pd.Series(bandwalk_tree_regression,
-                                             index=index)
-        bandwalk_tree_regression = bandwalk_tree_regression.fillna(0)
-        # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if OANDA is None:
-            # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
-            joblib.dump(bandwalk_tree_regression, path)
-    return bandwalk_tree_regression
-
 def i_close(symbol, timeframe, shift):
     '''終値を返す。
     Args:
@@ -1101,85 +812,9 @@ def i_close(symbol, timeframe, shift):
             close = close.fillna(method='ffill')
             close = close.fillna(method='bfill')
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(close, path)
     return close
-
-def i_coef(symbol, timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0,
-           gbp=0.0, jpy=0.0, nzd=0.0, usd=0.0):
-    '''線形回帰による係数を返す。
-    Args:
-        symbol: 通貨ペア名。
-        timeframe: タイムフレーム。
-        period: 期間。
-        shift: シフト。
-        aud: 豪ドル。
-        cad: カナダドル。
-        chf: スイスフラン。
-        eur: ユーロ。
-        gbp: ポンド。
-        jpy: 円。
-        nzd: NZドル。
-        usd: 米ドル。
-    Returns:
-        線形回帰による係数。
-    '''
-    # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/tmp/i_coef_' + symbol +
-        str(timeframe) + '_' + str(period) + '_' + str(shift) + str(aud) +
-        str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) + str(nzd) +
-        str(usd) + '.pkl')
-    # バックテスト、またはウォークフォワードテストのとき、
-    # 計算結果が保存されていれば復元する。
-    if OANDA is None and os.path.exists(path) == True:
-        coef = joblib.load(path)
-    # さもなければ計算する。
-    else:
-        def calc_coef(x, y, period):
-            clf = linear_model.LinearRegression()
-            clf.fit(x, y)
-            coef = clf.coef_
-            return coef
-
-        close = i_close(symbol, timeframe, shift)
-        index = close.index
-        close = np.array(close)
-        n_currency = ((
-            (aud > 0.0) + (cad > 0.0) + (chf > 0.0) + (eur > 0.0) +
-            (gbp > 0.0) + (jpy > 0.0) + (nzd > 0.0) + (usd > 0.0)) * 1)
-        if n_currency == 0:
-            ku_close = np.array(range(len(close)))
-        else:
-            ku_close = i_ku_close(timeframe, period, shift, aud=aud, cad=cad,
-                                  chf=chf, eur=eur, gbp=gbp, jpy=jpy, nzd=nzd,
-                                  usd=usd)
-            ku_close = np.array(ku_close)
-            if n_currency == 1:
-                ku_close = ku_close.reshape(len(ku_close), 1)
-        # リスト内包表記も試したが、特に速度は変わらない。
-        n = len(close)
-        if n_currency == 1:
-            coef = np.empty(n)
-        else:
-            coef = np.empty([n, n_currency])
-        for i in range(period, n):
-            x = ku_close[i-period:i]
-            y = close[i-period:i]
-            coef[i] = calc_coef(x, y, period)
-        if n == 1:
-            coef = pd.Series(coef, index=index)
-        else:
-            coef = pd.DataFrame(coef, index=index)
-        coef = coef.fillna(method='ffill')
-        coef = coef.fillna(method='bfill')
-        # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if OANDA is None:
-            # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
-            joblib.dump(coef, path)
-    return coef
 
 def i_diff(symbol, timeframe, shift):
     '''終値の階差を返す。
@@ -1206,8 +841,7 @@ def i_diff(symbol, timeframe, shift):
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(diff, path)
     return diff
 
@@ -1251,7 +885,7 @@ def i_expansion_duration(symbol, timeframe, period, shift):
                 ret[i] = up - down
             return ret
 
-        std_dev = i_zresid(symbol, timeframe, period, shift)
+        std_dev = i_zscore(symbol, timeframe, period, shift)
         #std_dev = i_std_dev(symbol, timeframe, period, shift)
         index = std_dev.index
         std_dev = np.array(std_dev)
@@ -1262,8 +896,7 @@ def i_expansion_duration(symbol, timeframe, period, shift):
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(expansion_duration, path)
     return expansion_duration
 
@@ -1310,8 +943,7 @@ def i_high(symbol, timeframe, shift):
             high = high.fillna(method='ffill')
             high = high.fillna(method='bfill')
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(high, path)
     return high
 
@@ -1348,8 +980,7 @@ def i_highest(symbol, timeframe, period, shift):
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(highest, path)
     return highest
 
@@ -1381,8 +1012,7 @@ def i_hl_band(symbol, timeframe, period, shift):
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(hl_band, path)
     return hl_band
 
@@ -1420,8 +1050,7 @@ def i_hurst(symbol, timeframe, period, shift):
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(hurst, path)
     return hurst
 
@@ -1470,84 +1099,9 @@ def i_kalman_filter(symbol, timeframe, period, shift):
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(kalman_filter, path)
     return kalman_filter
-
-def i_ku_bandwalk(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0,
-                  gbp=0.0, jpy=0.0, nzd=0.0, usd=0.0):
-    '''Ku-Chartによるバンドウォークを返す。
-    Args:
-        timeframe: 足の種類。
-        period: 期間。
-        shift: シフト。
-        aud: 豪ドル。
-        cad: カナダドル。
-        chf: スイスフラン。
-        eur: ユーロ。
-        gbp: ポンド。
-        jpy: 円。
-        nzd: NZドル。
-        usd: 米ドル。
-    Returns:
-        Ku-Chartによるバンドウォーク。
-    '''
-    # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/tmp/i_ku_bandwalk_' + 
-        str(timeframe) + '_' + str(period) + '_' + str(shift) + '_' +
-        str(aud) + str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) +
-        str(nzd) + str(usd) + '.pkl')
-    # バックテスト、またはウォークフォワードテストのとき、
-    # 計算結果が保存されていれば復元する。
-    if OANDA is None and os.path.exists(path) == True:
-        ku_bandwalk = joblib.load(path)
-    # さもなければ計算する。
-    else:
-        # Ku-Chartによるバンドウォークを計算する関数を定義する。
-        @jit(float64[:, :](float64[:, :], float64[:, :], int64),
-             nopython=True, cache=True)   
-        def calc_ku_bandwalk(ku_close, median, n):
-            length = len(ku_close)
-            ku_bandwalk = np.empty((length, n))
-            for j in range(n):
-                up = 0
-                down = 0
-                for i in range(length):
-                    if (ku_close[i][j] > median[i][j]):
-                        up = up + 1
-                    else:
-                        up = 0
-                    if (ku_close[i][j] < median[i][j]):
-                        down = down + 1
-                    else:
-                        down = 0
-                    ku_bandwalk[i][j] = up - down
-            return ku_bandwalk
-        # Ku-Chartによるバンドウォークを計算する。
-        ku_close = i_ku_close(timeframe, shift, aud, cad, chf, eur, gbp, jpy,
-                              nzd, usd)
-        index = ku_close.index
-        columns = ku_close.columns
-        n = ((aud > EPS) + (cad > EPS) + (chf > EPS) + (eur > EPS) +
-            (gbp > EPS) + (jpy > EPS) + (nzd > EPS) + (usd > EPS))
-        median = ku_close.rolling(window=period).median()
-        ku_close = ku_close.as_matrix()
-        median = median.as_matrix()
-        ku_bandwalk = calc_ku_bandwalk(ku_close, median, n)
-        ku_bandwalk = pd.DataFrame(
-            ku_bandwalk, index=index, columns=columns)
-        ku_bandwalk = ku_bandwalk.fillna(0)
-        a = 0.903  # 指数（正規化するために経験的に導き出した数値）
-        b = 0.393  # 切片（同上）
-        ku_bandwalk = ku_bandwalk / (float(period) ** a + b)
-        # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if OANDA is None:
-            # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
-            joblib.dump(ku_bandwalk, path)
-    return ku_bandwalk
 
 def i_ku_close(timeframe, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0, gbp=0.0,
                jpy=0.0, nzd=0.0, usd=0.0):
@@ -1718,67 +1272,9 @@ def i_ku_close(timeframe, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0, gbp=0.0,
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(ku_close, path)
     return ku_close
-
-def i_ku_zresid(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0,
-                 gbp=0.0, jpy=0.0, nzd=0.0, usd=0.0):
-    '''Ku-Chartによる終値とその予測値との標準化残差を返す。
-    Args:
-        timeframe: 足の種類。
-        period: 期間。
-        shift: シフト。
-        aud: 豪ドル。
-        cad: カナダドル。
-        chf: スイスフラン。
-        eur: ユーロ。
-        gbp: ポンド。
-        jpy: 円。
-        nzd: NZドル。
-        usd: 米ドル。
-    Returns:
-        Ku-Chartによる終値とその予測値との標準化残差を返す。
-    '''
-    # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/tmp/i_ku_zresid_' + str(timeframe) +
-        '_' + str(period) + '_' + str(shift) + '_' + str(aud) + str(cad) +
-        str(chf) + str(eur) + str(gbp) + str(jpy) + str(nzd) + str(usd) +
-        '.pkl')
-    # バックテスト、またはウォークフォワードテストのとき、
-    # 計算結果が保存されていれば復元する。
-    if OANDA is None and os.path.exists(path) == True:
-        ku_zresid = joblib.load(path)
-    # さもなければ計算する。
-    else:
-        # zスコアを計算する関数を定義する。
-        @jit(float64(float64[:]), nopython=True, cache=True)
-        def calc_ku_zresid(ku_close):
-            median = np.median(ku_close)
-            period = len(ku_close)
-            std = 0.0
-            for i in range(period):
-                std = std + (ku_close[i] - median) * (ku_close[i] - median)
-            std = std / period
-            std = np.sqrt(std)
-            if std < EPS:
-                ku_z_score = 0.0
-            else:
-                ku_z_score = (ku_close[-1] - median) / std
-            return ku_z_score
-        ku_close = i_ku_close(timeframe, shift, aud, cad, chf, eur, gbp, jpy,
-                              nzd, usd)
-        ku_zresid = ku_close.rolling(window=period).apply(calc_ku_zresid)
-        ku_zresid = ku_zresid.fillna(0)
-        ku_zresid[(ku_zresid==float('inf')) | (ku_zresid==float('-inf'))] = 0.0
-        # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if OANDA is None:
-            # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
-            joblib.dump(ku_zresid, path)
-    return ku_zresid
 
 def i_kurt(symbol, timeframe, period, shift):
     '''対数リターンの尖度を返す。
@@ -1806,80 +1302,9 @@ def i_kurt(symbol, timeframe, period, shift):
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(kurt, path)
     return kurt
-
-def i_linear_regression(symbol, timeframe, period, shift, aud=0.0, cad=0.0,
-                        chf=0.0, eur=0.0, gbp=0.0, jpy=0.0, nzd=0.0, usd=0.0):
-    '''線形回帰による予測値を返す。
-    Args:
-        symbol: 通貨ペア名。
-        timeframe: タイムフレーム。
-        period: 期間。
-        shift: シフト。
-        aud: 豪ドル。
-        cad: カナダドル。
-        chf: スイスフラン。
-        eur: ユーロ。
-        gbp: ポンド。
-        jpy: 円。
-        nzd: NZドル。
-        usd: 米ドル。
-    Returns:
-        線形回帰による予測値。
-    '''
-    # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/tmp/i_linear_regression_' + symbol +
-        str(timeframe) + '_' + str(period) + '_' + str(shift) + str(aud) +
-        str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) + str(nzd) +
-        str(usd) + '.pkl')
-    # バックテスト、またはウォークフォワードテストのとき、
-    # 計算結果が保存されていれば復元する。
-    if OANDA is None and os.path.exists(path) == True:
-        linear_regression = joblib.load(path)
-    # さもなければ計算する。
-    else:
-        def calc_linear_regression(x, y, period):
-            clf = linear_model.LinearRegression()
-            clf.fit(x, y)
-            pred = clf.predict(x)
-            linear_regression = pred[period-1]
-            return linear_regression
-
-        close = i_close(symbol, timeframe, shift)
-        index = close.index
-        close = np.array(close)
-        n_currency = ((
-            (aud > 0.0) + (cad > 0.0) + (chf > 0.0) + (eur > 0.0) +
-            (gbp > 0.0) + (jpy > 0.0) + (nzd > 0.0) + (usd > 0.0)) * 1)
-        if n_currency == 0:
-            ku_close = np.array(range(len(close)))
-        else:
-            ku_close = i_ku_close(timeframe, shift, aud=aud, cad=cad,
-                                  chf=chf, eur=eur, gbp=gbp, jpy=jpy, nzd=nzd,
-                                  usd=usd)
-            ku_close = np.array(ku_close)
-            if n_currency == 1:
-                ku_close = ku_close.reshape(len(ku_close), 1)
-        # リスト内包表記も試したが、特に速度は変わらない。
-        n = len(close)
-        linear_regression = np.empty(n)
-        for i in range(period, n):
-            x = ku_close[i-period:i]
-            y = close[i-period:i]
-            linear_regression[i] = calc_linear_regression(x, y, period)
-        linear_regression = pd.Series(linear_regression, index=index)
-        linear_regression = linear_regression.fillna(method='ffill')
-        linear_regression = linear_regression.fillna(method='bfill')
-        # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if OANDA is None:
-            # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
-            joblib.dump(linear_regression, path)
-    return linear_regression
 
 def i_log_return(symbol, timeframe, period, shift):
     '''対数リターンを返す。
@@ -1908,8 +1333,7 @@ def i_log_return(symbol, timeframe, period, shift):
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(log_return, path)
     return log_return
 
@@ -1956,8 +1380,7 @@ def i_low(symbol, timeframe, shift):
             low = low.fillna(method='ffill')
             low = low.fillna(method='bfill')
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(low, path)
     return low
 
@@ -1994,8 +1417,7 @@ def i_lowest(symbol, timeframe, period, shift):
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(lowest, path)
     return lowest
 
@@ -2025,8 +1447,7 @@ def i_ma(symbol, timeframe, period, shift):
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(ma, path)
     return ma
 
@@ -2056,8 +1477,7 @@ def i_ma_of_ma(symbol, timeframe, period, shift):
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(ma_of_ma, path)
     return ma_of_ma
 
@@ -2087,8 +1507,7 @@ def i_mean(symbol, timeframe, period, shift):
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(mean, path)
     return mean
 
@@ -2135,8 +1554,7 @@ def i_open(symbol, timeframe, shift):
             op = op.fillna(method='ffill')
             op = op.fillna(method='bfill')
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(op, path)
     return op
 
@@ -2186,57 +1604,9 @@ def i_range(symbol, timeframe, period, shift):
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(rng, path)
     return rng
-
-def i_rank(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0,
-               gbp=0.0, jpy=0.0, nzd=0.0, usd=0.0):
-    '''通貨の強弱の順位（降順）を返す。
-    Args:
-        timeframe: 足の種類。
-        period: 計算期間。
-        shift: シフト。
-        aud: 豪ドル。
-        cad: カナダドル。
-        chf: スイスフラン。
-        eur: ユーロ。
-        gbp: ポンド。
-        jpy: 円。
-        nzd: NZドル。
-        usd: 米ドル。
-    Returns:
-        通貨の強弱の順位（降順）。
-    '''
-    # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/tmp/i_rank_' + str(timeframe) + '_' +
-        str(period) + '_' + str(shift) + '_' + str(aud) + str(cad) + str(chf) +
-        str(eur) + str(gbp) + str(jpy) + str(nzd) + '.pkl')
-    # バックテスト、またはウォークフォワードテストのとき、
-    # 計算結果が保存されていれば復元する。
-    if OANDA is None and os.path.exists(path) == True:
-        rank = joblib.load(path)
-    # さもなければ計算する。
-    else:
-        ku_zresid =i_ku_zresid(timeframe, period, shift, aud=aud, cad=cad,
-                              chf=chf, eur=eur, gbp=gbp, jpy=jpy, nzd=nzd,
-                              usd=usd)
-        rank = ku_zresid.rank(axis=1)
-        n = len(rank.iloc[0, :])
-        array = np.array(range(1, n + 1))
-        mean = np.mean(array)
-        std = np.std(array)
-        rank = (rank - mean) / std
-        rank = rank.fillna(method='ffill')
-        rank = rank.fillna(method='bfill')
-        # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if OANDA is None:
-            # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
-            joblib.dump(rank, path)
-    return rank
 
 def i_skew(symbol, timeframe, period, shift):
     '''対数リターンの歪度を返す。
@@ -2264,154 +1634,9 @@ def i_skew(symbol, timeframe, period, shift):
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(skew, path)
     return skew
-
-def i_stationarized_close(symbol, timeframe, period, shift):
-    '''定常化した終値を返す。
-
-    定常化は終値を対数変換し、その移動平均を減じることによって行っている。
-    結果的には移動平均乖離率に近いものとなっている。
-
-    Args:
-        symbol: 通貨ペア名。
-        timeframe: 足の種類。
-        period: 期間。
-        shift: シフト。
-
-    Returns:
-        定常化した終値。
-    '''
-    # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/tmp/i_stationarized_close_' + symbol +
-        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
-    # バックテスト、またはウォークフォワードテストのとき、
-    # 計算結果が保存されていれば復元する。
-    if OANDA is None and os.path.exists(path) == True:
-        stationarized_close = joblib.load(path)
-    # さもなければ計算する。
-    else:
-        # 定常化した終値を計算する。
-        close = i_close(symbol, timeframe, shift)
-        log_close = np.log(close)
-        mean_log_close = log_close.rolling(window=period).mean()
-        stationarized_close = log_close - mean_log_close
-        stationarized_close = stationarized_close.dropna(0.0)
-        # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if OANDA is None:
-            # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
-            joblib.dump(stationarized_close, path)
-    return stationarized_close
-
-def i_stationarized_ma(symbol, timeframe, period, shift):
-    '''定常化した終値の移動平均を返す。
-
-    Args:
-        symbol: 通貨ペア名。
-        timeframe: 足の種類。
-        period: 期間。
-        shift: シフト。
-
-    Returns:
-        定常化した終値の移動平均。
-    '''
-    # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/tmp/i_stationarized_ma_' + symbol +
-        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
-    # バックテスト、またはウォークフォワードテストのとき、
-    # 計算結果が保存されていれば復元する。
-    if OANDA is None and os.path.exists(path) == True:
-        stationarized_ma = joblib.load(path)
-    # さもなければ計算する。
-    else:
-        # 定常化した終値の移動平均を計算する。
-        stationarized_close = i_stationarized_close(symbol, timeframe, period,
-                                                    shift)
-        stationarized_ma = stationarized_close.rolling(window=period).mean()
-        stationarized_ma = stationarized_ma.dropna(0.0)
-        # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if OANDA is None:
-            # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
-            joblib.dump(stationarized_ma, path)
-    return stationarized_ma
-
-def i_stationarized_std_dev(symbol, timeframe, period, shift):
-    '''定常化した終値の標準偏差を返す。
-
-    Args:
-        symbol: 通貨ペア名。
-        timeframe: 足の種類。
-        period: 期間。
-        shift: シフト。
-
-    Returns:
-        定常化した終値の標準偏差。
-    '''
-    # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/tmp/i_stationarized_std_dev_' +
-        symbol + str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
-    # バックテスト、またはウォークフォワードテストのとき、
-    # 計算結果が保存されていれば復元する。
-    if OANDA is None and os.path.exists(path) == True:
-        stationarized_std_dev = joblib.load(path)
-    # さもなければ計算する。
-    else:
-        # 定常化した終値の標準偏差を計算する。
-        stationarized_close = i_stationarized_close(symbol, timeframe, period,
-                                                    shift)
-        stationarized_std_dev = stationarized_close.rolling(window=period).std()
-        stationarized_std_dev = stationarized_std_dev.dropna(0.0)
-        # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if OANDA is None:
-            # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
-            joblib.dump(stationarized_std_dev, path)
-    return stationarized_std_dev
-
-def i_stationarized_z_score(symbol, timeframe, period, shift):
-    '''定常化した終値のzスコアを返す。
-
-    Args:
-        symbol: 通貨ペア名。
-        timeframe: 足の種類。
-        period: 期間。
-        shift: シフト。
-
-    Returns:
-        定常化した終値のzスコア。
-    '''
-    # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/tmp/i_stationarized_z_score_' +
-        symbol + str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
-    # バックテスト、またはウォークフォワードテストのとき、
-    # 計算結果が保存されていれば復元する。
-    if OANDA is None and os.path.exists(path) == True:
-        stationarized_z_score = joblib.load(path)
-    # さもなければ計算する。
-    else:
-        # 定常化した終値のzスコアを計算する。
-        stationarized_close = i_stationarized_close(symbol, timeframe, period,
-                                                    shift)
-        stationarized_ma = i_stationarized_ma(symbol, timeframe, period, shift)
-        stationarized_std_dev = i_stationarized_std_dev(symbol, timeframe,
-                                                        period, shift)
-        stationarized_z_score = ((stationarized_close - stationarized_ma) /
-            stationarized_std_dev)
-        stationarized_z_score = stationarized_z_score.dropna(0.0)
-        # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if OANDA is None:
-            # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
-            joblib.dump(stationarized_z_score, path)
-    return stationarized_z_score
 
 def i_std(symbol, timeframe, period, shift):
     '''対数リターンの標準偏差を返す。
@@ -2439,8 +1664,7 @@ def i_std(symbol, timeframe, period, shift):
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(std, path)
     return std
 
@@ -2470,157 +1694,9 @@ def i_std_dev(symbol, timeframe, period, shift):
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(std_dev, path)
     return std_dev
-
-def i_std_dev_linear_regression(symbol, timeframe, period, shift, aud=0.0,
-                                cad=0.0, chf=0.0, eur=0.0, gbp=0.0, jpy=0.0,
-                                nzd=0.0, usd=0.0):
-    '''線形回帰による予測値との標準偏差を返す。
-    Args:
-        symbol: 通貨ペア名。
-        timeframe: タイムフレーム。
-        period: 期間。
-        shift: シフト。
-        aud: 豪ドル。
-        cad: カナダドル。
-        chf: スイスフラン。
-        eur: ユーロ。
-        gbp: ポンド。
-        jpy: 円。
-        nzd: NZドル。
-        usd: 米ドル。
-    Returns:
-        線形回帰による予測値との標準偏差。
-    '''
-    # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/tmp/i_std_dev_linear_regression_' +
-        symbol + str(timeframe) + '_' + str(period) + '_' + str(shift) +
-        str(aud) + str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) + 
-        str(nzd) + str(usd) + '.pkl')
-    # バックテスト、またはウォークフォワードテストのとき、
-    # 計算結果が保存されていれば復元する。
-    if OANDA is None and os.path.exists(path) == True:
-        std_dev_linear_regression = joblib.load(path)
-    # さもなければ計算する。
-    else:
-        def calc_std_dev_linear_regression(x, y):
-            clf = linear_model.LinearRegression()
-            clf.fit(x, y)
-            pred = clf.predict(x)
-            error = y - pred
-            return np.std(error)
-
-        close = i_close(symbol, timeframe, shift)
-        index = close.index
-        close = np.array(close)
-        n_currency = ((
-            (aud > 0.0) + (cad > 0.0) + (chf > 0.0) + (eur > 0.0) +
-            (gbp > 0.0) + (jpy > 0.0) + (nzd > 0.0) + (usd > 0.0)) * 1)
-        if n_currency == 0:
-            ku_close = np.array(range(len(close)))
-        else:
-            ku_close = i_ku_close(timeframe, shift, aud=aud, cad=cad, chf=chf,
-                                  eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
-            ku_close = np.array(ku_close)
-            if n_currency == 1:
-                ku_close = ku_close.reshape(len(ku_close), 1)
-        # リスト内包表記も試したが、特に速度は変わらない。
-        n = len(close)
-        std_dev_linear_regression = np.empty(n)
-        for i in range(period, n):
-            x = ku_close[i-period:i]
-            y = close[i-period:i]
-            std_dev_linear_regression[i] = calc_std_dev_linear_regression(x, y)
-        std_dev_linear_regression = pd.Series(std_dev_linear_regression,
-                                              index=index)
-        std_dev_linear_regression = std_dev_linear_regression.fillna(
-            method='ffill')
-        std_dev_linear_regression = std_dev_linear_regression.fillna(
-            method='bfill')
-        # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if OANDA is None:
-            # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
-            joblib.dump(std_dev_linear_regression, path)
-    return std_dev_linear_regression
-
-def i_std_dev_tree_regression(symbol, timeframe, period, shift, aud=0.0,
-                              cad=0.0, chf=0.0, eur=0.0, gbp=0.0, jpy=0.0,
-                              nzd=0.0, usd=0.0, max_depth=3):
-    '''決定木による予測値との標準偏差を返す。
-    Args:
-        symbol: 通貨ペア名。
-        timeframe: タイムフレーム。
-        period: 期間。
-        shift: シフト。
-        aud: 豪ドル。
-        cad: カナダドル。
-        chf: スイスフラン。
-        eur: ユーロ。
-        gbp: ポンド。
-        jpy: 円。
-        nzd: NZドル。
-        usd: 米ドル。
-        max_depth: 最大の深さ。
-    Returns:
-        決定木による予測値との標準偏差。
-    '''
-    # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/tmp/i_std_dev_tree_regression_' +
-        symbol + str(timeframe) + '_' + str(period) + '_' + str(shift) + '_' +
-        str(aud) + str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) +
-        str(nzd) + str(usd) + '_' + str(max_depth) + '.pkl')
-    # バックテスト、またはウォークフォワードテストのとき、
-    # 計算結果が保存されていれば復元する。
-    if OANDA is None and os.path.exists(path) == True:
-        std_dev_tree_regression = joblib.load(path)
-    # さもなければ計算する。
-    else:
-        def calc_std_dev_tree_regression(x, y, max_depth):
-            clf = tree.DecisionTreeRegressor(max_depth=max_depth)
-            clf.fit(x, y)
-            pred = clf.predict(x)
-            error = y - pred
-            return np.std(error)
-
-        close = i_close(symbol, timeframe, shift)
-        index = close.index
-        close = np.array(close)
-        n_currency = ((
-            (aud > 0.0) + (cad > 0.0) + (chf > 0.0) + (eur > 0.0) +
-            (gbp > 0.0) + (jpy > 0.0) + (nzd > 0.0) + (usd > 0.0)) * 1)
-        if n_currency == 0:
-            ku_close = np.array(range(len(close)))
-        else:
-            ku_close = i_ku_close(timeframe, period, shift, aud=aud, cad=cad,
-                                  chf=chf, eur=eur, gbp=gbp, jpy=jpy, nzd=nzd,
-                                  usd=usd)
-            ku_close = np.array(ku_close)
-            if n_currency == 1:
-                ku_close = ku_close.reshape(len(ku_close), 1)
-        # リスト内包表記も試したが、特に速度は変わらない。
-        n = len(close)
-        std_dev_tree_regression = np.empty(n)
-        for i in range(period, n):
-            x = ku_close[i-period:i]
-            y = close[i-period:i]
-            std_dev_tree_regression[i] = calc_std_dev_tree_regression(x, y,
-                max_depth)
-        std_dev_tree_regression = pd.Series(std_dev_tree_regression,
-                                            index=index)
-        std_dev_tree_regression = std_dev_tree_regression.fillna(method='ffill')
-        std_dev_tree_regression = std_dev_tree_regression.fillna(method='bfill')
-        # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if OANDA is None:
-            # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
-            joblib.dump(std_dev_tree_regression, path)
-    return std_dev_tree_regression
 
 def i_stop_hunting_zone(symbol, timeframe, period, max_iter, pip, shift):
     '''ストップ狩りのゾーンにあるか否かを返す。
@@ -2675,81 +1751,9 @@ def i_stop_hunting_zone(symbol, timeframe, period, max_iter, pip, shift):
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(stop_hunting_zone, path)
     return stop_hunting_zone
-
-def i_tree_regression(symbol, timeframe, period, shift, aud=0.0, cad=0.0,
-                      chf=0.0, eur=0.0, gbp=0.0, jpy=0.0, nzd=0.0, usd=0.0,
-                      max_depth=3):
-    '''決定木による予測値を返す。
-    Args:
-        symbol: 通貨ペア名。
-        timeframe: タイムフレーム。
-        period: 期間。
-        shift: シフト。
-        aud: 豪ドル。
-        cad: カナダドル。
-        chf: スイスフラン。
-        eur: ユーロ。
-        gbp: ポンド。
-        jpy: 円。
-        nzd: NZドル。
-        usd: 米ドル。
-        max_depth: 最大の深さ。
-    Returns:
-        決定木による予測値。
-    '''
-    # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/tmp/i_tree_regression_' + symbol +
-        str(timeframe) + '_' + str(period) + '_' + str(shift) + '_' + str(aud) +
-        str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) + str(nzd) +
-        str(usd) + '_' + str(max_depth) + '.pkl')
-    # バックテスト、またはウォークフォワードテストのとき、
-    # 計算結果が保存されていれば復元する。
-    if OANDA is None and os.path.exists(path) == True:
-        tree_regression = joblib.load(path)
-    # さもなければ計算する。
-    else:
-        def calc_tree_regression(x, y, period, max_depth):
-            clf = tree.DecisionTreeRegressor(max_depth=max_depth)
-            clf.fit(x, y)
-            pred = clf.predict(x)
-            return pred[period-1]
-
-        close = i_close(symbol, timeframe, shift)
-        index = close.index
-        close = np.array(close)
-        n_currency = ((
-            (aud > 0.0) + (cad > 0.0) + (chf > 0.0) + (eur > 0.0) +
-            (gbp > 0.0) + (jpy > 0.0) + (nzd > 0.0) + (usd > 0.0)) * 1)
-        if n_currency == 0:
-            ku_close = np.array(range(len(close)))
-        else:
-            ku_close = i_ku_close(timeframe, period, shift, aud=aud, cad=cad,
-                                  chf=chf, eur=eur, gbp=gbp, jpy=jpy, nzd=nzd,
-                                  usd=usd)
-            ku_close = np.array(ku_close)
-            if n_currency == 1:
-                ku_close = ku_close.reshape(len(ku_close), 1)
-        # リスト内包表記も試したが、特に速度は変わらない。
-        n = len(close)
-        tree_regression = np.empty(n)
-        for i in range(period, n):
-            x = ku_close[i-period:i]
-            y = close[i-period:i]
-            tree_regression[i] = calc_tree_regression(x, y, period, max_depth)
-        tree_regression = pd.Series(tree_regression, index=index)
-        tree_regression = tree_regression.fillna(method='ffill')
-        tree_regression = tree_regression.fillna(method='bfill')
-        # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if OANDA is None:
-            # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
-            joblib.dump(tree_regression, path)
-    return tree_regression
 
 def i_trend(symbol, timeframe, period, shift):
     '''トレンドを返す。
@@ -2781,8 +1785,7 @@ def i_trend(symbol, timeframe, period, shift):
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(trend, path)
     return trend
 
@@ -2838,8 +1841,7 @@ def i_trend_duration(symbol, timeframe, period, shift):
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(trend_duration, path)
     return trend_duration
 
@@ -2868,8 +1870,7 @@ def i_updown(symbol, timeframe, shift):
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(updown, path)
     return updown
 
@@ -2900,8 +1901,7 @@ def i_vix4fx(symbol, timeframe, shift):
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(vix4fx, path)
     return vix4fx
 
@@ -2948,8 +1948,7 @@ def i_volume(symbol, timeframe, shift):
             volume = volume.fillna(method='ffill')
             volume = volume.fillna(method='bfill')
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
+            make_tmp_folder()
             joblib.dump(volume, path)
     return volume
 
@@ -2985,145 +1984,89 @@ def i_zscore(symbol, timeframe, period, shift):
             joblib.dump(zscore, path)
     return zscore
 
-def i_zresid_linear_regression(symbol, timeframe, period, shift, aud=0.0,
-                               cad=0.0, chf=0.0, eur=0.0, gbp=0.0, jpy=0.0,
-                               nzd=0.0, usd=0.0):
-    '''終値とその予測値（線形回帰）との標準化残差を返す。
+def i_zresid(symbol, timeframe, period, method, shift, exp1=None, exp2=None,
+             exp3=None, exp4=None, exp5=None, exp6=None, exp7=None):
+    '''終値とその予測値との標準化残差を返す。
     Args:
         symbol: 通貨ペア名。
         timeframe: タイムフレーム。
         period: 期間。
+        method: メソッド。
         shift: シフト。
-        aud: 豪ドル。
-        cad: カナダドル。
-        chf: スイスフラン。
-        eur: ユーロ。
-        gbp: ポンド。
-        jpy: 円。
-        nzd: NZドル。
-        usd: 米ドル。
+        exp1-exp7: 説明変数となる通貨ペア（必ずexp1から指定する）。
     Returns:
-        終値とその予測値（線形回帰）との標準化残差。
+        終値とその予測値との標準化残差。
     '''
     # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/tmp/i_zresid_linear_regression_' +
-        symbol + str(timeframe) + '_' + str(period) + '_' + str(shift) + '_' +
-        str(aud) + str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) +
-        str(nzd) + str(usd) + '.pkl')
+    path = (os.path.dirname(__file__) + '/tmp/i_zresid_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + method + '_' + str(shift) +
+        '_' + str(exp1) + '_' + str(exp2) + '_' + str(exp3) + '_' + str(exp4) +
+        '_' + str(exp5) + '_' + str(exp6) + '_' + str(exp7) + '.pkl')
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
     if OANDA is None and os.path.exists(path) == True:
-        zresid_linear_regression = joblib.load(path)
+        zresid = joblib.load(path)
     # さもなければ計算する。
     else:
-        # 終値を格納する。
-        close = i_close(symbol, timeframe, shift)
-        # 予測値、標準誤差を格納する。
-        pred = i_linear_regression(symbol, timeframe, period, shift, aud=aud,
-                                   cad=cad, chf=chf, eur=eur, gbp=gbp, jpy=jpy,
-                                   nzd=nzd, usd=usd)
-        se = i_std_dev_linear_regression(symbol, timeframe, period, shift,
-                                         aud=aud, cad=cad, chf=chf, eur=eur,
-                                         gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
-        # 標準化残差を計算する。
-        zresid_linear_regression = (close - pred) / se
-        zresid_linear_regression = zresid_linear_regression.fillna(0.0)
-        zresid_linear_regression[(zresid_linear_regression==float('inf')) |
-            (zresid_linear_regression==float('-inf'))] = 0.0
-        # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if OANDA is None:
-            # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
-            joblib.dump(zresid_linear_regression, path)
-    return zresid_linear_regression
+        def func(x, y, period, clf):
+            clf.fit(x, y)
+            pred = clf.predict(x)
+            se = np.std(y - pred)
+            zresid = (y[period-1] - pred[period-1]) / se
+            return zresid
 
-def i_zresid_tree_regression(symbol, timeframe, period, shift, aud=0.0, cad=0.0,
-                             chf=0.0, eur=0.0, gbp=0.0, jpy=0.0, nzd=0.0,
-                             usd=0.0, max_depth=3):
-    '''終値とその予測値（決定木）との標準化残差を返す。
-    Args:
-        symbol: 通貨ペア名。
-        timeframe: タイムフレーム。
-        period: 期間。
-        shift: シフト。
-        aud: 豪ドル。
-        cad: カナダドル。
-        chf: スイスフラン。
-        eur: ユーロ。
-        gbp: ポンド。
-        jpy: 円。
-        nzd: NZドル。
-        usd: 米ドル。
-    Returns:
-        終値とその予測値（決定木）との標準化残差。
-    '''
-    # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/tmp/i_zresid_tree_regression_' +
-        symbol + str(timeframe) + '_' + str(period) + '_' + str(shift) + '_' +
-        str(aud) + str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) +
-        str(nzd) + str(usd) + '_' + str(max_depth) + '.pkl')
-    # バックテスト、またはウォークフォワードテストのとき、
-    # 計算結果が保存されていれば復元する。
-    if OANDA is None and os.path.exists(path) == True:
-        zresid_tree_regression = joblib.load(path)
-    # さもなければ計算する。
-    else:
-        # 終値を格納する。
         close = i_close(symbol, timeframe, shift)
-        # 予測値、標準誤差を格納する。
-        pred = i_tree_regression(symbol, timeframe, period, shift, aud=aud,
-                                 cad=cad, chf=chf, eur=eur, gbp=gbp, jpy=jpy,
-                                 nzd=nzd, usd=usd, max_depth=max_depth)
-        se = i_std_dev_tree_regression(symbol, timeframe, period, shift,aud=aud,
-                                       cad=cad, chf=chf, eur=eur, gbp=gbp,
-                                       jpy=jpy, nzd=nzd, usd=usd,
-                                       max_depth=max_depth)
-        # 標準化残差を計算する。
-        zresid_tree_regression = (close - pred) / se
-        zresid_tree_regression = zresid_tree_regression.fillna(0.0)
-        zresid_tree_regression[(zresid_tree_regression==float('inf')) |
-            (zresid_tree_regression==float('-inf'))] = 0.0
+        index = close.index
+        close = np.array(close)
+        n_exp = (((exp1 is not None) + (exp2 is not None) + (exp3 is not None) +
+            (exp4 is not None) + (exp5 is not None) + (exp6 is not None) +
+            (exp7 is not None)) * 1)
+        if n_exp == 0:
+            exp = np.array(range(len(close)))
+            exp = exp.reshape(len(exp), 1)
+        else:
+            exp = i_close(exp1, timeframe, shift)
+            if exp2 is not None:
+                temp = i_close(exp2, timeframe, shift)
+                exp = pd.concat([exp, temp], axis=1)
+            if exp3 is not None:
+                temp = i_close(exp3, timeframe, shift)
+                exp = pd.concat([exp, temp], axis=1)
+            if exp4 is not None:
+                temp = i_close(exp4, timeframe, shift)
+                exp = pd.concat([exp, temp], axis=1)
+            if exp5 is not None:
+                temp = i_close(exp5, timeframe, shift)
+                exp = pd.concat([exp, temp], axis=1)
+            if exp6 is not None:
+                temp = i_close(exp6, timeframe, shift)
+                exp = pd.concat([exp, temp], axis=1)
+            if exp7 is not None:
+                temp = i_close(exp7, timeframe, shift)
+                exp = pd.concat([exp, temp], axis=1)
+            exp = np.array(exp)
+            if n_exp == 1:
+                exp = exp.reshape(len(exp), 1)
+        n = len(close)
+        zresid = np.empty(n)
+        if method == 'linear':
+            clf = linear_model.LinearRegression()
+        elif method == 'tree':
+            max_depth = 3
+            clf = tree.DecisionTreeRegressor(max_depth=max_depth)
+        for i in range(period, n):
+            x = exp[i-period+1:i+1]
+            y = close[i-period+1:i+1]
+            zresid[i] = func(x, y, period, clf)
+        zresid = pd.Series(zresid, index=index)
+        zresid = zresid.fillna(0.0)
+        zresid[(zresid==float('inf')) | (zresid==float('-inf'))] = 0.0
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
-            joblib.dump(zresid_tree_regression, path)
-    return zresid_tree_regression
-
-def i_z_score(symbol, timeframe, period, shift):
-    '''対数リターンのzスコアを返す。
-    Args:
-        symbol: 通貨ペア名。
-        timeframe: タイムフレーム。
-        period: 期間。
-        shift: シフト。
-    Returns:
-        対数リターンのzスコア。
-    '''
-    # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/tmp/i_z_score_' + symbol +
-        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
-    # バックテスト、またはウォークフォワードテストのとき、
-    # 計算結果が保存されていれば復元する。
-    if OANDA is None and os.path.exists(path) == True:
-        z_score = joblib.load(path)
-    # さもなければ計算する。
-    else:
-        log_return = i_log_return(symbol, timeframe, period, shift)
-        mean = i_mean(symbol, timeframe, period, shift)
-        std = i_std(symbol, timeframe, period, shift)
-        z_score = (log_return - mean) / std
-        z_score = z_score.fillna(0.0)
-        z_score[(z_score==float('inf')) | (z_score==float('-inf'))] = 0.0
-        # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if OANDA is None:
-            # 一時フォルダーがなければ作成する。
-            if os.path.exists(os.path.dirname(__file__) + '/tmp') == False:
-                os.mkdir(os.path.dirname(__file__) + '/tmp')
-            joblib.dump(z_score, path)
-    return z_score
+            make_tmp_folder()
+            joblib.dump(zresid, path)
+    return zresid
 
 def make_tmp_folder():
     '''一時フォルダを作成する。
@@ -3237,6 +2180,8 @@ def show_backtest_result(ret, trades, timeframe, start, end, parameter_ea1,
     # グラフを作成する。
     cum_ret = ret.cumsum()
     ax=plt.subplot()
+    ax.set_xticklabels(cum_ret.index, rotation=45)
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
     plt.plot(cum_ret)
     plt.title('Backtesting')
     plt.xlabel('Date')
@@ -3265,6 +2210,8 @@ def show_backtest_result(ret, trades, timeframe, start, end, parameter_ea1,
     if parameter_ea5 is not None:
         report['parameter_ea5'] = str(parameter_ea5)
     # グラフを出力する。
+    plt.tight_layout()  # これを入れないとラベルがはみ出る。
+    plt.savefig('backtest.png', dpi=150)
     plt.show()
     plt.close()
     # レポートを出力する。
@@ -3288,6 +2235,8 @@ def show_walkforwardtest_result(ret, trades, timeframe, start, end):
     # グラフを作成する。
     cum_ret = ret.cumsum()
     ax=plt.subplot()
+    ax.set_xticklabels(cum_ret.index, rotation=45)
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
     plt.plot(cum_ret)
     plt.title('Walk forward optimization')
     plt.xlabel('Date')
@@ -3306,6 +2255,8 @@ def show_walkforwardtest_result(ret, trades, timeframe, start, end):
     report['drawdowns'] = drawdowns
     report['durations'] = int(durations)
     # グラフを出力する。
+    plt.tight_layout()  # これを入れないとラベルがはみ出る。
+    plt.savefig('walkforwardtest.png', dpi=150)
     plt.show()
     plt.close()
     # レポートを出力する。
