@@ -26,9 +26,12 @@ def strategy(parameter, symbol, timeframe, position):
     '''戦略を記述する。
     Args:
         parameter: パラメータ。
-        symbol: 通貨ペア名。
+        symbol: 通貨ペア。
         timeframe: 足の種類。
-        position: ポジションの設定。  0: 買いのみ。  1: 売りのみ。  2: 売買両方。
+        position: ポジションの設定。
+            0: 買いのみ。
+            1: 売りのみ。
+            2: 売買両方。
     Returns:
         シグナル。
     '''
