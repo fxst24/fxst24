@@ -2584,7 +2584,7 @@ def trade(mail, mt4, ea, symbol, timeframe, position, lots, ml, start_train,
                     elif ml == 1:
                         signal = strategy(parameter, symbol, timeframe,
                                           position, model, pred_train_std)
-                        end_row = len(signal) - 1
+                    end_row = len(signal) - 1
                     open0 = i_open(symbol, timeframe, 0)
                     price = open0[len(open0)-1]
                     # エグジット→エントリーの順に設定しないとドテンができない。
