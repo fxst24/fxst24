@@ -1,8 +1,7 @@
 # coding: utf-8
 
 import configparser
-import matplotlib.dates as mdates
-import matplotlib.pyplot as plt
+import cvxopt as opt
 import numpy as np
 import oandapy
 import os
@@ -11,8 +10,8 @@ import shutil
 import smtplib
 import threading
 import time
+from cvxopt import blas, solvers
 from datetime import datetime
-from datetime import timedelta
 from email.mime.text import MIMEText
 from numba import float64, jit
 #from pykalman import KalmanFilter
@@ -61,166 +60,6 @@ def ask(instrument):
     instruments = OANDA.get_prices(instruments=instrument)
     ask = instruments['prices'][0]['ask']
     return ask
-
-def backtest(start, end, optimization, in_sample_period, out_of_sample_period,
-             ea, symbol, timeframe, spread, position, min_trade, ml):
-    '''バックテストを行う。
-    Args:
-        start: 開始日。
-        end: 終了日。
-        optimization: 最適化。
-            0: バックテスト（最適化なし）。
-            1: バックテスト（最適化あり）。
-            2: ウォークフォワードテスト。
-
-        in_sample_period: インサンプル期間（日単位）。
-        out_of_sample_period: アウトオブサンプル期間（日単位）。
-        ml: 機械学習の設定。
-            0: 機械学習を使用しない。
-            1: 機械学習を使用する。
-        ea: EA。
-        symbol: 通貨ペア。
-        timeframe: 足の種類。
-        spread: スプレッド（1=0.1pips）。
-        position: ポジション。
-            0: 買いのみ。
-            1: 売りのみ。
-            2: 売買両方。
-        min_trade: 最低トレード数。
-    Returns:
-        リターン、トレード数、パラメータ、タイムフレーム、開始日、終了日。
-    '''
-    # パフォーマンスを計算する関数を定義する。
-    def calc_performance(parameter, strategy, symbol, timeframe, start, end,
-                         spread, position, min_trade, optimization):
-        # パフォーマンスを計算する。
-        signal = strategy(parameter, symbol, timeframe, position)
-        ret = calc_ret(symbol, timeframe, signal, spread, start, end)
-        trades = calc_trades(signal, start, end)
-        sharpe = calc_sharpe(ret, start, end)
-        # 最適化する場合、適応度の符号を逆にして返す（最適値=最小値のため）。
-        if optimization == 1:
-            years = (end - start).total_seconds() / 60 / 60 / 24 / 365
-            # 1年当たりのトレード数が最低トレード数に満たない場合、
-            # 適応度を0にする。
-            if trades / years >= min_trade:
-                fitness = sharpe
-            else:
-                fitness = 0.0
-            return -fitness
-        # 最適化しない場合、各パフォーマンスを返す。
-        else:
-            return ret, trades, signal
-
-    # パフォーマンスを計算する関数を定義する（機械学習用）。
-    def calc_performance_ml(parameter, strategy, symbol, timeframe, start, end,
-                            spread, position, model, pred_train_std):
-        # パフォーマンスを計算する。
-        signal = strategy(parameter, symbol, timeframe, position, model,
-                          pred_train_std)
-        ret = calc_ret(symbol, timeframe, signal, spread, start, end)
-        trades = calc_trades(signal, start, end)
-        sharpe = calc_sharpe(ret, start, end)
-        # 最適化する場合、適応度の符号を逆にして返す（最適値=最小値のため）。
-        if optimization == 1:
-            years = (end - start).total_seconds() / 60 / 60 / 24 / 365
-            # 1年当たりのトレード数が最低トレード数に満たない場合、
-            # 適応度を0にする。
-            if trades / years >= min_trade:
-                fitness = sharpe
-            else:
-                fitness = 0.0
-            return -fitness
-        # 最適化しない場合、各パフォーマンスを返す。
-        else:
-            return ret, trades, signal
-    # 一時フォルダを削除する。
-    remove_temp_folder()
-    # 一時フォルダを作成する。
-    make_temp_folder()
-    # 設定を格納する。
-    exec('import ' + ea + ' as ea_file')
-    strategy = eval('ea_file.strategy')
-    parameter = eval('ea_file.PARAMETER')
-    # バックテストを行う。
-    if ml == 0:
-        rranges = eval('ea_file.RRANGES')
-        if optimization == 1:  # 最適化ありの場合。
-            result = optimize.brute(calc_performance, rranges,
-                                    args=(strategy, symbol, timeframe, start,
-                                    end, spread, position, min_trade, 1),
-                                    finish=None)
-            parameter = result
-        if optimization == 0 or optimization == 1:  # 最適化あり・なし共通。
-            ret, trades, signal = calc_performance(parameter, strategy, symbol,
-                                                   timeframe, start, end,
-                                                   spread, position, min_trade,
-                                                   0)
-            return ret, trades, parameter, start, end
-        # ウォークフォワードテストを行う。
-        if optimization == 2:
-            end_test = start
-            i = 0
-            while True:
-                start_train = start + timedelta(days=out_of_sample_period*i)
-                end_train = (start_train + timedelta(days=in_sample_period)
-                    - timedelta(minutes=timeframe))
-                start_test = end_train + timedelta(minutes=timeframe)
-                end_test = (start_test + timedelta(days=out_of_sample_period)
-                    - timedelta(minutes=timeframe))
-                if end_test > end: 
-                    break
-                result = optimize.brute(
-                    calc_performance, rranges, args=(strategy, symbol,
-                    timeframe, start_train, end_train, spread, position,
-                    min_trade, 1), finish=None)
-                parameter = result
-                ret, trades, signal = (
-                    calc_performance(parameter, strategy, symbol, timeframe,
-                    start_test, end_test, spread, position, min_trade, 0))
-                if i == 0:
-                    signal_all = signal[start_test:end_test]
-                    start_all = start_test
-                else:
-                    signal_all = signal_all.append(signal[start_test:end_test])
-                end_all = end_test
-                i = i + 1
-            # 全体のパフォーマンスを計算する。
-            ret_all = calc_ret(symbol, timeframe, signal_all, spread,
-                                    start_all, end_all)
-            trades_all = calc_trades(signal_all, start_all, end_all)
-            return ret_all, trades_all, parameter, start_all, end_all
-    # 機械学習を使用したバックテストを行う。
-    if ml == 1:
-        build_model = eval('ea_file.build_model')
-        end_test = start
-        i = 0
-        while True:
-            start_train = start + timedelta(days=out_of_sample_period*i)
-            end_train = (start_train + timedelta(days=in_sample_period)
-                - timedelta(minutes=timeframe))
-            start_test = end_train + timedelta(minutes=timeframe)
-            end_test = (start_test + timedelta(days=out_of_sample_period)
-                - timedelta(minutes=timeframe))
-            if end_test > end: 
-                break
-            model, pred_train_std = build_model(symbol, timeframe,
-                                                start_train, end_train)
-            ret, trades, signal = (
-                calc_performance_ml(parameter, strategy, symbol, timeframe,
-                start_test, end_test, spread, position, model, pred_train_std))
-            if i == 0:
-                signal_all = signal[start_test:end_test]
-                start_all = start_test
-            else:
-                signal_all = signal_all.append(signal[start_test:end_test])
-            end_all = end_test
-            i = i + 1
-        # 全体のパフォーマンスを計算する。
-        ret_all = calc_ret(symbol, timeframe, signal_all, spread,
-                                start_all, end_all)
-        trades_all = calc_trades(signal_all, start_all, end_all)
-        return ret_all, trades_all, parameter, start_all, end_all
 
 def bid(instrument):
     '''売値を得る。
@@ -456,6 +295,55 @@ def calc_trades(signal, start, end):
     trades = trade[start:end].sum()
     return trades
 
+# そのうちに変数名の変更、コメントの追加を行う。
+def calc_weights(ret, portfolio):
+    '''ウェイトを計算する。
+    Args:
+        ret: リターン。
+        portfolio: ポートフォリオの最適化の設定。
+            0: 最適化を行わない（等ウェイト）。
+            1: 最適化を行う。
+    Returns:
+        ウェイト。
+    '''
+    ret = ret.T
+    n_eas = len(ret)
+    if portfolio == 1:
+        ret = np.asmatrix(ret)
+        n = 100
+        solvers.options['show_progress'] = False
+        mus = [10**(5.0 * t/n - 1.0) for t in range(n)]
+        S = opt.matrix(np.cov(ret))
+        pbar = opt.matrix(np.mean(ret, axis=1))
+        G = -opt.matrix(np.eye(n_eas))
+        h = opt.matrix(0.0, (n_eas ,1))
+        A = opt.matrix(1.0, (1, n_eas))
+        b = opt.matrix(1.0)
+        portfolios = [solvers.qp(mu*S, -pbar, G, h, A, b)['x'] for mu in mus]
+        ret = [blas.dot(pbar, x) for x in portfolios]
+        risks = [np.sqrt(blas.dot(x, S*x)) for x in portfolios]
+        m1 = np.polyfit(ret, risks, 2)
+        x1 = np.sqrt(m1[2] / m1[0])
+        weights = solvers.qp(opt.matrix(x1 * S), -pbar, G, h, A, b)['x']
+        weights = np.asarray(weights)
+        weights = weights.reshape(len(weights),)
+    else:
+        weights = np.empty(n_eas)
+        for i in range(n_eas):
+            weights[i] = 1.0 / n_eas
+    return weights
+
+def convert_minute2period(minute, timeframe):
+    '''分を計算期間に変換する。
+    Args:
+        minute: 分。
+        timeframe: 足の種類。
+    Returns:
+        計算期間。
+    '''
+    period = int(minute / timeframe)
+    return period
+    
 def convert_symbol2instrument(symbol):
     '''symbolをinstrumentに変換する。
     Args:
@@ -2246,6 +2134,46 @@ def minute():
     minute = datetime.now().minute
     return minute
 
+def optimize_params(rranges, strategy, symbol, timeframe, start, end, spread,
+                    position, min_trade):
+    '''パラメータを最適化する。
+    Args:
+        rranges: パラメータのスタート、ストップ、ステップ。
+        strategy: 戦略。
+        symbol: 通貨ペア。
+        timeframe: 足の種類。
+        start: 開始日。
+        end: 終了日。
+        spread: スプレッド。
+        position: ポジションの設定。
+            0: 買いのみ。
+            1: 売りのみ。
+            2: 売買両方。
+        min_trade: 最低トレード数。
+    Returns:
+        パラメータ。
+    '''
+    def func(parameter, strategy, symbol, timeframe, start, end, spread,
+             position, min_trade):
+        # パフォーマンスを計算する。
+        signal = strategy(parameter, symbol, timeframe, position)
+        ret = calc_ret(symbol, timeframe, signal, spread, start, end)
+        trades = calc_trades(signal, start, end)
+        sharpe = calc_sharpe(ret, start, end)
+        years = (end - start).total_seconds() / 60 / 60 / 24 / 365
+        # 1年当たりのトレード数が最低トレード数に満たない場合、
+        # 適応度を0にする。
+        if trades / years >= min_trade:
+            fitness = sharpe
+        else:
+            fitness = 0.0
+        return -fitness
+
+    parameter = optimize.brute(
+        func, rranges, args=(strategy, symbol, timeframe, start, end, spread,
+        position, min_trade), finish=None)
+    return parameter
+
 def order_close(ticket):
     '''決済注文を送信する。
     Args:
@@ -2325,67 +2253,6 @@ def send_signal2mt4(filename, signal):
     # MT4側で2を減じて調整する。
     f.write(str(int(signal.iloc[len(signal)-1] + 2)))
     f.close()
-
-def show_backtest_result(ret, trades, timeframe, start, end, parameter_ea1,
-                parameter_ea2, parameter_ea3, parameter_ea4, parameter_ea5):
-    '''バックテストの結果を表示する。
-    Args:
-        ret: リターン。
-        trades: トレード数。
-        timeframe: タイムフレーム。
-        start: 開始日。
-        end: 終了日。
-        parameter_ea1: EA1のパラメータ。
-        parameter_ea2: EA2のパラメータ。
-        parameter_ea3: EA3のパラメータ。
-        parameter_ea4: EA4のパラメータ。
-        parameter_ea5: EA5のパラメータ。
-    '''
-    apr = calc_apr(ret, start, end)
-    sharpe = calc_sharpe(ret, start, end)
-    kelly = calc_kelly(ret)
-    drawdowns = calc_drawdowns(ret)
-    durations = calc_durations(ret, timeframe)
-    # グラフを作成する。
-    cum_ret = ret.cumsum()
-    ax=plt.subplot()
-    ax.set_xticklabels(cum_ret.index, rotation=45)
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
-    plt.plot(cum_ret)
-    plt.title('Backtest')
-    plt.xlabel('Date')
-    plt.ylabel('Cumulative returns')
-    plt.text(0.05, 0.9, 'APR = ' + str(apr), transform=ax.transAxes)
-    plt.text(0.05, 0.85, 'Sharpe ratio = ' + str(sharpe),
-             transform=ax.transAxes)
-    # レポートを作成する。
-    report =  pd.DataFrame(index=[0])
-    report['start'] = start.strftime('%Y.%m.%d')
-    report['end'] = end.strftime('%Y.%m.%d')
-    report['trades'] = trades
-    report['apr'] = apr
-    report['sharpe'] = sharpe
-    report['kelly'] = kelly
-    report['drawdowns'] = drawdowns
-    report['durations'] = durations
-    if parameter_ea1 is not None:
-        report['parameter_ea1'] = str(parameter_ea1)
-    if parameter_ea2 is not None:
-        report['parameter_ea2'] = str(parameter_ea2)
-    if parameter_ea3 is not None:
-        report['parameter_ea3'] = str(parameter_ea3)
-    if parameter_ea4 is not None:
-        report['parameter_ea4'] = str(parameter_ea4)
-    if parameter_ea5 is not None:
-        report['parameter_ea5'] = str(parameter_ea5)
-    # グラフを出力する。
-    plt.tight_layout()  # これを入れないとラベルがはみ出る。
-    plt.savefig('backtest.png', dpi=150)
-    plt.show()
-    plt.close()
-    # レポートを出力する。
-    pd.set_option('display.width', 1000)
-    print(report)
 
 def time_day(index):
     '''日を返す。
