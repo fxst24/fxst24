@@ -1,7 +1,7 @@
 # coding: utf-8
+
 import argparse
 import pandas as pd
-import time
 from collections import OrderedDict
 from datetime import timedelta
 
@@ -10,8 +10,6 @@ def make_historical_data(parser):
           Args:
               parser: パーサー。
     '''
-    # 開始時間を記録する。
-    start_time = time.time()
 
     parser.add_argument('--audcad', type=int, default=0)
     parser.add_argument('--audchf', type=int, default=0)
@@ -367,23 +365,44 @@ def make_historical_data(parser):
         data1 = data1.fillna(method='bfill')
         # 重複行を削除する。
         data1 = data1[~data1.index.duplicated()]
-         # 5分、15分、30分、1時間、4時間、8時間、12時間、日の各足を作成する。
+         # 2分、3分、4分、5分、6分、10分、12分、15分、20分、30分、1時間、2時間、3時間、4時間、
+         # 6時間、8時間、12時間、日の各足を作成する。
+        data2 = data1.resample(
+            '2T', label='left', closed='left').apply(ohlcv_dict)
+        data3 = data1.resample(
+            '3T', label='left', closed='left').apply(ohlcv_dict)
+        data4 = data1.resample(
+            '4T', label='left', closed='left').apply(ohlcv_dict)
         data5 = data1.resample(
-            '5Min', label='left', closed='left').apply(ohlcv_dict)
+            '5T', label='left', closed='left').apply(ohlcv_dict)
+        data6 = data1.resample(
+            '6T', label='left', closed='left').apply(ohlcv_dict)
+        data10 = data1.resample(
+            '10T', label='left', closed='left').apply(ohlcv_dict)
+        data12 = data1.resample(
+            '12T', label='left', closed='left').apply(ohlcv_dict)
         data15 = data1.resample(
-            '15Min', label='left', closed='left').apply(ohlcv_dict)
+            '15T', label='left', closed='left').apply(ohlcv_dict)
+        data20 = data1.resample(
+            '20T', label='left', closed='left').apply(ohlcv_dict)
         data30 = data1.resample(
-            '30Min', label='left', closed='left').apply(ohlcv_dict)
+            '30T', label='left', closed='left').apply(ohlcv_dict)
         data60 = data1.resample(
-            '60Min', label='left', closed='left').apply(ohlcv_dict)
+            '60T', label='left', closed='left').apply(ohlcv_dict)
+        data120 = data1.resample(
+            '120T', label='left', closed='left').apply(ohlcv_dict)
+        data180 = data1.resample(
+            '180T', label='left', closed='left').apply(ohlcv_dict)
         data240 = data1.resample(
-            '240Min', label='left', closed='left').apply(ohlcv_dict)
+            '240T', label='left', closed='left').apply(ohlcv_dict)
+        data360 = data1.resample(
+            '360T', label='left', closed='left').apply(ohlcv_dict)
         data480 = data1.resample(
-            '480Min', label='left', closed='left').apply(ohlcv_dict)
+            '480T', label='left', closed='left').apply(ohlcv_dict)
         data720 = data1.resample(
-            '720Min', label='left', closed='left').apply(ohlcv_dict)
+            '720T', label='left', closed='left').apply(ohlcv_dict)
         data1440 = data1.resample(
-            '1440Min', label='left', closed='left').apply(ohlcv_dict)
+            '1440T', label='left', closed='left').apply(ohlcv_dict)
         # 東京時間の足を作成する。
         index = data30.index
         tokyo_hours = ((index.hour>=2) & (index.hour<8)) * 1
@@ -411,11 +430,21 @@ def make_historical_data(parser):
         data_newyork = data_newyork.resample(
             '1440Min', label='left', closed='left').apply(ohlcv_dict)
         # 欠損値を削除する。
+        data2 = data2.dropna()
+        data3 = data3.dropna()
+        data4 = data4.dropna()
         data5 = data5.dropna()
+        data6 = data6.dropna()
+        data10 = data10.dropna()
+        data12 = data12.dropna()
         data15 = data15.dropna()
+        data20 = data20.dropna()
         data30 = data30.dropna()
         data60 = data60.dropna()
+        data120 = data120.dropna()
+        data180 = data180.dropna()
         data240 = data240.dropna()
+        data360 = data360.dropna()
         data480 = data480.dropna()
         data720 = data720.dropna()
         data1440 = data1440.dropna()
@@ -424,11 +453,21 @@ def make_historical_data(parser):
         data_newyork = data_newyork.dropna()
         # 土日を削除する。
         data1 = data1[data1.index.dayofweek<5]
+        data2 = data2[data2.index.dayofweek<5]
+        data3 = data3[data3.index.dayofweek<5]
+        data4 = data4[data4.index.dayofweek<5]
         data5 = data5[data5.index.dayofweek<5]
+        data6 = data6[data6.index.dayofweek<5]
+        data10 = data10[data10.index.dayofweek<5]
+        data12 = data12[data12.index.dayofweek<5]
         data15 = data15[data15.index.dayofweek<5]
+        data20 = data20[data20.index.dayofweek<5]
         data30 = data30[data30.index.dayofweek<5]
         data60 = data60[data60.index.dayofweek<5]
+        data120 = data120[data120.index.dayofweek<5]
+        data180 = data180[data180.index.dayofweek<5]
         data240 = data240[data240.index.dayofweek<5]
+        data360 = data360[data360.index.dayofweek<5]
         data480 = data480[data480.index.dayofweek<5]
         data720 = data720[data720.index.dayofweek<5]
         data1440 = data1440[data1440.index.dayofweek<5]
@@ -437,11 +476,21 @@ def make_historical_data(parser):
         data_newyork = data_newyork[data_newyork.index.dayofweek<5]
         # ファイルを出力する。
         filename1 =  '~/historical_data/' + symbol + '1.csv'
+        filename2 =  '~/historical_data/' + symbol + '2.csv'
+        filename3 =  '~/historical_data/' + symbol + '3.csv'
+        filename4 =  '~/historical_data/' + symbol + '4.csv'
         filename5 =  '~/historical_data/' + symbol + '5.csv'
+        filename6 =  '~/historical_data/' + symbol + '6.csv'
+        filename10 =  '~/historical_data/' + symbol + '10.csv'
+        filename12 =  '~/historical_data/' + symbol + '12.csv'
         filename15 =  '~/historical_data/' + symbol + '15.csv'
+        filename20 =  '~/historical_data/' + symbol + '20.csv'
         filename30 =  '~/historical_data/' + symbol + '30.csv'
         filename60 =  '~/historical_data/' + symbol + '60.csv'
+        filename120 =  '~/historical_data/' + symbol + '120.csv'
+        filename180 =  '~/historical_data/' + symbol + '180.csv'
         filename240 =  '~/historical_data/' + symbol + '240.csv'
+        filename360 =  '~/historical_data/' + symbol + '360.csv'
         filename480 =  '~/historical_data/' + symbol + '480.csv'
         filename720 =  '~/historical_data/' + symbol + '720.csv'
         filename1440 =  '~/historical_data/' + symbol + '1440.csv'
@@ -449,28 +498,27 @@ def make_historical_data(parser):
         filename_london =  '~/historical_data/' + symbol + '_london.csv'
         filename_newyork =  '~/historical_data/' + symbol + '_newyork.csv'
         data1.to_csv(filename1)
+        data2.to_csv(filename2)
+        data3.to_csv(filename3)
+        data4.to_csv(filename4)
         data5.to_csv(filename5)
+        data6.to_csv(filename6)
+        data10.to_csv(filename10)
+        data12.to_csv(filename12)
         data15.to_csv(filename15)
+        data20.to_csv(filename20)
         data30.to_csv(filename30)
         data60.to_csv(filename60)
+        data120.to_csv(filename120)
+        data180.to_csv(filename180)
         data240.to_csv(filename240)
+        data360.to_csv(filename360)
         data480.to_csv(filename480)
         data720.to_csv(filename720)
         data1440.to_csv(filename1440)
         data_tokyo.to_csv(filename_tokyo)
         data_london.to_csv(filename_london)
         data_newyork.to_csv(filename_newyork)
-    # 終了時間を記録する。
-    end_time = time.time()
-    # 実行時間を出力する。
-    if end_time - start_time < 60.0:
-        print(
-            '実行時間は',
-            int(round(end_time - start_time)), '秒です。')
-    else:
-        print(
-            '実行時間は',
-            int(round((end_time - start_time) / 60.0)), '分です。')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
