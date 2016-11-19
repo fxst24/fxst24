@@ -320,7 +320,7 @@ if __name__ == '__main__':
                                                     start_train, end_train,
                                                     spread2, position2,
                                                     min_trade2)
-                    signal2 = strategy1(parameter2, symbol2, timeframe,
+                    signal2 = strategy2(parameter2, symbol2, timeframe,
                                         position2)
                 else:
                     model2, pred_train_std2 = build_model2(symbol2, timeframe,
@@ -336,84 +336,78 @@ if __name__ == '__main__':
                 trades_test += trades_test2
                 ret_train = pd.concat([ret_train, ret_train2], axis=1)
                 ret_test = pd.concat([ret_test, ret_test2], axis=1)
-#            # EA3のバックテストを行う。
-#            if args.ea3 is not None:
-#                if optimization == 2:
-#                    parameter3 = fs.optimize_params(rranges3, strategy3,
-#                                                    symbol3, timeframe,
-#                                                    start_train, end_train,
-#                                                    spread3, position3,
-#                                                    min_trade3)
-#                    signal3 = strategy3(parameter3, symbol3, timeframe,
-#                                        position3)
-#                else:
-#                    model3, pred_train_std3 = build_model3(symbol3, timeframe,
-#                                                           start_train,
-#                                                           end_train)
-#                    signal3 = strategy3(parameter3, symbol3, timeframe,
-#                                        position3, model3, pred_train_std3)
-#                if i == 0:
-#                    signal3_all = signal3[start_test:end_test]
-#                else:
-#                    signal3_all = signal3_all.append(
-#                        signal3[start_test:end_test])
-#                ret3 = fs.calc_ret(symbol3, timeframe, signal3, spread3,
-#                                   start_test, end_test)
-#                trades3 = fs.calc_trades(signal3, start_test, end_test)
-#                ret = pd.concat([ret, ret3], axis=1)
-#                trades += trades3
-#            # EA4のバックテストを行う。
-#            if args.ea4 is not None:
-#                if optimization == 2:
-#                    parameter4 = fs.optimize_params(rranges4, strategy4,
-#                                                    symbol4, timeframe,
-#                                                    start_train, end_train,
-#                                                    spread4, position4,
-#                                                    min_trade4)
-#                    signal4 = strategy4(parameter4, symbol4, timeframe,
-#                                        position4)
-#                else:
-#                    model4, pred_train_std4 = build_model4(symbol4, timeframe,
-#                                                           start_train,
-#                                                           end_train)
-#                    signal4 = strategy4(parameter4, symbol4, timeframe,
-#                                        position4, model4, pred_train_std4)
-#                if i == 0:
-#                    signal4_all = signal4[start_test:end_test]
-#                else:
-#                    signal4_all = signal4_all.append(
-#                        signal4[start_test:end_test])
-#                ret4 = fs.calc_ret(symbol4, timeframe, signal4, spread4,
-#                                   start_test, end_test)
-#                trades4 = fs.calc_trades(signal4, start_test, end_test)
-#                ret = pd.concat([ret, ret4], axis=1)
-#                trades += trades4
-#            # EA5のバックテストを行う。
-#            if args.ea5 is not None:
-#                if optimization == 2:
-#                    parameter5 = fs.optimize_params(rranges5, strategy5,
-#                                                    symbol5, timeframe,
-#                                                    start_train, end_train,
-#                                                    spread5, position5,
-#                                                    min_trade5)
-#                    signal5 = strategy5(parameter5, symbol5, timeframe,
-#                                        position5)
-#                else:
-#                    model5, pred_train_std5 = build_model5(symbol5, timeframe,
-#                                                           start_train,
-#                                                           end_train)
-#                    signal5 = strategy5(parameter5, symbol5, timeframe,
-#                                        position5, model5, pred_train_std5)
-#                if i == 0:
-#                    signal5_all = signal5[start_test:end_test]
-#                else:
-#                    signal5_all = signal5_all.append(
-#                        signal5[start_test:end_test])
-#                ret5 = fs.calc_ret(symbol5, timeframe, signal5, spread5,
-#                                   start_test, end_test)
-#                trades5 = fs.calc_trades(signal5, start_test, end_test)
-#                ret = pd.concat([ret, ret5], axis=1)
-#                trades += trades5
+            # EA3のバックテストを行う。
+            if args.ea3 is not None:
+                if optimization == 2:
+                    parameter3 = fs.optimize_params(rranges3, strategy3,
+                                                    symbol3, timeframe,
+                                                    start_train, end_train,
+                                                    spread3, position3,
+                                                    min_trade3)
+                    signal3 = strategy3(parameter3, symbol3, timeframe,
+                                        position3)
+                else:
+                    model3, pred_train_std3 = build_model3(symbol3, timeframe,
+                                                           start_train,
+                                                           end_train)
+                    signal3 = strategy3(parameter3, symbol3, timeframe,
+                                        position3, model3, pred_train_std3)
+                ret_train3 = fs.calc_ret(symbol3, timeframe, signal3, spread3,
+                                         start_train, end_train)
+                ret_test3 = fs.calc_ret(symbol3, timeframe, signal3, spread3,
+                                        start_test, end_test)
+                trades_test3 = fs.calc_trades(signal3, start_test, end_test)
+                trades_test += trades_test3
+                ret_train = pd.concat([ret_train, ret_train3], axis=1)
+                ret_test = pd.concat([ret_test, ret_test3], axis=1)
+            # EA4のバックテストを行う。
+            if args.ea4 is not None:
+                if optimization == 2:
+                    parameter4 = fs.optimize_params(rranges4, strategy4,
+                                                    symbol4, timeframe,
+                                                    start_train, end_train,
+                                                    spread4, position4,
+                                                    min_trade4)
+                    signal4 = strategy4(parameter4, symbol4, timeframe,
+                                        position4)
+                else:
+                    model4, pred_train_std4 = build_model4(symbol4, timeframe,
+                                                           start_train,
+                                                           end_train)
+                    signal4 = strategy4(parameter4, symbol4, timeframe,
+                                        position4, model4, pred_train_std4)
+                ret_train4 = fs.calc_ret(symbol4, timeframe, signal4, spread4,
+                                         start_train, end_train)
+                ret_test4 = fs.calc_ret(symbol4, timeframe, signal4, spread4,
+                                        start_test, end_test)
+                trades_test4 = fs.calc_trades(signal4, start_test, end_test)
+                trades_test += trades_test4
+                ret_train = pd.concat([ret_train, ret_train4], axis=1)
+                ret_test = pd.concat([ret_test, ret_test4], axis=1)
+            # EA5のバックテストを行う。
+            if args.ea5 is not None:
+                if optimization == 2:
+                    parameter5 = fs.optimize_params(rranges5, strategy5,
+                                                    symbol5, timeframe,
+                                                    start_train, end_train,
+                                                    spread5, position5,
+                                                    min_trade5)
+                    signal5 = strategy5(parameter5, symbol5, timeframe,
+                                        position5)
+                else:
+                    model5, pred_train_std5 = build_model5(symbol5, timeframe,
+                                                           start_train,
+                                                           end_train)
+                    signal5 = strategy5(parameter5, symbol5, timeframe,
+                                        position5, model5, pred_train_std5)
+                ret_train5 = fs.calc_ret(symbol5, timeframe, signal5, spread5,
+                                         start_train, end_train)
+                ret_test5 = fs.calc_ret(symbol5, timeframe, signal5, spread5,
+                                        start_test, end_test)
+                trades_test5 = fs.calc_trades(signal5, start_test, end_test)
+                trades_test += trades_test5
+                ret_train = pd.concat([ret_train, ret_train5], axis=1)
+                ret_test = pd.concat([ret_test, ret_test5], axis=1)
             ret_train = ret_train.fillna(0.0)
             ret_test = ret_test.fillna(0.0)
             # ウェイトを計算する。
