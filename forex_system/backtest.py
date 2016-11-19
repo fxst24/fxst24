@@ -304,16 +304,14 @@ if __name__ == '__main__':
                                                        start_train, end_train)
                 signal1 = strategy1(parameter1, symbol1, timeframe, position1,
                                     model1, pred_train_std1)
-            if i == 0:
-                signal1_all = signal1[start_test:end_test]
-            else:
-                signal1_all = signal1_all.append(signal1[start_test:end_test])
-            ret1 = fs.calc_ret(symbol1, timeframe, signal1, spread1,
-                               start_test, end_test)
-            trades1 = fs.calc_trades(signal1, start_test, end_test)
-            signal = signal1
-            ret = ret1
-            trades = trades1
+            ret_train1 = fs.calc_ret(symbol1, timeframe, signal1, spread1,
+                                     start_train, end_train)
+            ret_test1 = fs.calc_ret(symbol1, timeframe, signal1, spread1,
+                                    start_test, end_test)
+            trades_test1 = fs.calc_trades(signal1, start_test, end_test)
+            trades_test = trades_test1
+            ret_train = ret_train1
+            ret_test = ret_test1
             # EA2のバックテストを行う。
             if args.ea2 is not None:
                 if optimization == 2:
@@ -322,7 +320,7 @@ if __name__ == '__main__':
                                                     start_train, end_train,
                                                     spread2, position2,
                                                     min_trade2)
-                    signal2 = strategy2(parameter2, symbol2, timeframe,
+                    signal2 = strategy1(parameter2, symbol2, timeframe,
                                         position2)
                 else:
                     model2, pred_train_std2 = build_model2(symbol2, timeframe,
@@ -330,117 +328,120 @@ if __name__ == '__main__':
                                                            end_train)
                     signal2 = strategy2(parameter2, symbol2, timeframe,
                                         position2, model2, pred_train_std2)
-                if i == 0:
-                    signal2_all = signal2[start_test:end_test]
-                else:
-                    signal2_all = signal2_all.append(
-                        signal2[start_test:end_test])
-                ret2 = fs.calc_ret(symbol2, timeframe, signal2, spread2,
-                                   start_test, end_test)
-                trades2 = fs.calc_trades(signal2, start_test, end_test)
-                signal = signal.append(signal2)
-                ret = pd.concat([ret, ret2], axis=1)
-                trades += trades2
-            # EA3のバックテストを行う。
-            if args.ea3 is not None:
-                if optimization == 2:
-                    parameter3 = fs.optimize_params(rranges3, strategy3,
-                                                    symbol3, timeframe,
-                                                    start_train, end_train,
-                                                    spread3, position3,
-                                                    min_trade3)
-                    signal3 = strategy3(parameter3, symbol3, timeframe,
-                                        position3)
-                else:
-                    model3, pred_train_std3 = build_model3(symbol3, timeframe,
-                                                           start_train,
-                                                           end_train)
-                    signal3 = strategy3(parameter3, symbol3, timeframe,
-                                        position3, model3, pred_train_std3)
-                if i == 0:
-                    signal3_all = signal3[start_test:end_test]
-                else:
-                    signal3_all = signal3_all.append(
-                        signal3[start_test:end_test])
-                ret3 = fs.calc_ret(symbol3, timeframe, signal3, spread3,
-                                   start_test, end_test)
-                trades3 = fs.calc_trades(signal3, start_test, end_test)
-                ret = pd.concat([ret, ret3], axis=1)
-                trades += trades3
-            # EA4のバックテストを行う。
-            if args.ea4 is not None:
-                if optimization == 2:
-                    parameter4 = fs.optimize_params(rranges4, strategy4,
-                                                    symbol4, timeframe,
-                                                    start_train, end_train,
-                                                    spread4, position4,
-                                                    min_trade4)
-                    signal4 = strategy4(parameter4, symbol4, timeframe,
-                                        position4)
-                else:
-                    model4, pred_train_std4 = build_model4(symbol4, timeframe,
-                                                           start_train,
-                                                           end_train)
-                    signal4 = strategy4(parameter4, symbol4, timeframe,
-                                        position4, model4, pred_train_std4)
-                if i == 0:
-                    signal4_all = signal4[start_test:end_test]
-                else:
-                    signal4_all = signal4_all.append(
-                        signal4[start_test:end_test])
-                ret4 = fs.calc_ret(symbol4, timeframe, signal4, spread4,
-                                   start_test, end_test)
-                trades4 = fs.calc_trades(signal4, start_test, end_test)
-                ret = pd.concat([ret, ret4], axis=1)
-                trades += trades4
-            # EA5のバックテストを行う。
-            if args.ea5 is not None:
-                if optimization == 2:
-                    parameter5 = fs.optimize_params(rranges5, strategy5,
-                                                    symbol5, timeframe,
-                                                    start_train, end_train,
-                                                    spread5, position5,
-                                                    min_trade5)
-                    signal5 = strategy5(parameter5, symbol5, timeframe,
-                                        position5)
-                else:
-                    model5, pred_train_std5 = build_model5(symbol5, timeframe,
-                                                           start_train,
-                                                           end_train)
-                    signal5 = strategy5(parameter5, symbol5, timeframe,
-                                        position5, model5, pred_train_std5)
-                if i == 0:
-                    signal5_all = signal5[start_test:end_test]
-                else:
-                    signal5_all = signal5_all.append(
-                        signal5[start_test:end_test])
-                ret5 = fs.calc_ret(symbol5, timeframe, signal5, spread5,
-                                   start_test, end_test)
-                trades5 = fs.calc_trades(signal5, start_test, end_test)
-                ret = pd.concat([ret, ret5], axis=1)
-                trades += trades5
-            ret = ret.fillna(0.0)
+                ret_train2 = fs.calc_ret(symbol2, timeframe, signal2, spread2,
+                                         start_train, end_train)
+                ret_test2 = fs.calc_ret(symbol2, timeframe, signal2, spread2,
+                                        start_test, end_test)
+                trades_test2 = fs.calc_trades(signal2, start_test, end_test)
+                trades_test += trades_test2
+                ret_train = pd.concat([ret_train, ret_train2], axis=1)
+                ret_test = pd.concat([ret_test, ret_test2], axis=1)
+#            # EA3のバックテストを行う。
+#            if args.ea3 is not None:
+#                if optimization == 2:
+#                    parameter3 = fs.optimize_params(rranges3, strategy3,
+#                                                    symbol3, timeframe,
+#                                                    start_train, end_train,
+#                                                    spread3, position3,
+#                                                    min_trade3)
+#                    signal3 = strategy3(parameter3, symbol3, timeframe,
+#                                        position3)
+#                else:
+#                    model3, pred_train_std3 = build_model3(symbol3, timeframe,
+#                                                           start_train,
+#                                                           end_train)
+#                    signal3 = strategy3(parameter3, symbol3, timeframe,
+#                                        position3, model3, pred_train_std3)
+#                if i == 0:
+#                    signal3_all = signal3[start_test:end_test]
+#                else:
+#                    signal3_all = signal3_all.append(
+#                        signal3[start_test:end_test])
+#                ret3 = fs.calc_ret(symbol3, timeframe, signal3, spread3,
+#                                   start_test, end_test)
+#                trades3 = fs.calc_trades(signal3, start_test, end_test)
+#                ret = pd.concat([ret, ret3], axis=1)
+#                trades += trades3
+#            # EA4のバックテストを行う。
+#            if args.ea4 is not None:
+#                if optimization == 2:
+#                    parameter4 = fs.optimize_params(rranges4, strategy4,
+#                                                    symbol4, timeframe,
+#                                                    start_train, end_train,
+#                                                    spread4, position4,
+#                                                    min_trade4)
+#                    signal4 = strategy4(parameter4, symbol4, timeframe,
+#                                        position4)
+#                else:
+#                    model4, pred_train_std4 = build_model4(symbol4, timeframe,
+#                                                           start_train,
+#                                                           end_train)
+#                    signal4 = strategy4(parameter4, symbol4, timeframe,
+#                                        position4, model4, pred_train_std4)
+#                if i == 0:
+#                    signal4_all = signal4[start_test:end_test]
+#                else:
+#                    signal4_all = signal4_all.append(
+#                        signal4[start_test:end_test])
+#                ret4 = fs.calc_ret(symbol4, timeframe, signal4, spread4,
+#                                   start_test, end_test)
+#                trades4 = fs.calc_trades(signal4, start_test, end_test)
+#                ret = pd.concat([ret, ret4], axis=1)
+#                trades += trades4
+#            # EA5のバックテストを行う。
+#            if args.ea5 is not None:
+#                if optimization == 2:
+#                    parameter5 = fs.optimize_params(rranges5, strategy5,
+#                                                    symbol5, timeframe,
+#                                                    start_train, end_train,
+#                                                    spread5, position5,
+#                                                    min_trade5)
+#                    signal5 = strategy5(parameter5, symbol5, timeframe,
+#                                        position5)
+#                else:
+#                    model5, pred_train_std5 = build_model5(symbol5, timeframe,
+#                                                           start_train,
+#                                                           end_train)
+#                    signal5 = strategy5(parameter5, symbol5, timeframe,
+#                                        position5, model5, pred_train_std5)
+#                if i == 0:
+#                    signal5_all = signal5[start_test:end_test]
+#                else:
+#                    signal5_all = signal5_all.append(
+#                        signal5[start_test:end_test])
+#                ret5 = fs.calc_ret(symbol5, timeframe, signal5, spread5,
+#                                   start_test, end_test)
+#                trades5 = fs.calc_trades(signal5, start_test, end_test)
+#                ret = pd.concat([ret, ret5], axis=1)
+#                trades += trades5
+            ret_train = ret_train.fillna(0.0)
+            ret_test = ret_test.fillna(0.0)
             # ウェイトを計算する。
-            n_eas = len(ret.T)
+            n_eas = len(ret_train.T)
             if n_eas > 5:  # EA1のみの場合、行がないので列数が返されることに注意する。
-                weights = np.array([1.0])
+                weights_train = np.array([1.0])
             else:
-                weights = fs.calc_weights(ret, portfolio)
-            n = len(weights)
+                weights_train = fs.calc_weights(ret_train, portfolio)
+            n = len(weights_train)
             if n != 1:
                 for j in range(n):
-                    ret.iloc[:, j] = ret.iloc[:, j] * weights[j]
-                ret = (ret + 1.0).prod(axis=1) - 1.0
+                    ret_test.iloc[:, j] = (ret_test.iloc[:, j] *
+                        weights_train[j])
+                ret_test = (ret_test + 1.0).prod(axis=1) - 1.0
+            if i == 0:
+                ret_test_all = ret_test
+            else:
+                ret_test_all = ret_test_all.append(ret_test)
             # 各パフォーマンスを計算する。
-            apr = fs.calc_apr(ret, start_test, end_test)
-            sharpe = fs.calc_sharpe(ret, start_test, end_test)
-            kelly = fs.calc_kelly(ret)
-            drawdowns = fs.calc_drawdowns(ret)
-            durations = fs.calc_durations(ret, timeframe)
+            apr = fs.calc_apr(ret_test, start_test, end_test)
+            sharpe = fs.calc_sharpe(ret_test, start_test, end_test)
+            kelly = fs.calc_kelly(ret_test)
+            drawdowns = fs.calc_drawdowns(ret_test)
+            durations = fs.calc_durations(ret_test, timeframe)
             # レポートを作成する。
             report.iloc[i, 0] = start_test.strftime('%Y.%m.%d')
             report.iloc[i, 1] = end_test.strftime('%Y.%m.%d')
-            report.iloc[i, 2] = trades
+            report.iloc[i, 2] = trades_test
             report.iloc[i, 3] = "{0:.3f}".format(apr)
             report.iloc[i, 4] = "{0:.3f}".format(sharpe)
             report.iloc[i, 5] = "{0:.3f}".format(kelly)
@@ -456,36 +457,15 @@ if __name__ == '__main__':
                 report.iloc[i, 11] = str(parameter4)
             if parameter5 is not None:
                 report.iloc[i, 12] = str(parameter5)
-            if weights is not None:
-                report.iloc[i, 13] = str(np.round(weights, 3))
+            if weights_train is not None:
+                report.iloc[i, 13] = str(np.round(weights_train, 3))
             i += 1
         # 全体のレポートを最後に追加する。
-        ret1_all = fs.calc_ret(symbol1, timeframe, signal1, spread1, start_all,
-                               end_all)
-        ret_all = ret1_all
-        if args.ea2 is not None:
-            ret2_all = fs.calc_ret(symbol2, timeframe, signal2, spread2,
-                                   start_all, end_all)
-            ret_all = pd.concat([ret_all, ret2_all], axis=1)
-        if args.ea3 is not None:
-            ret3_all = fs.calc_ret(symbol3, timeframe, signal3, spread3,
-                                   start_all, end_all)
-            ret_all = pd.concat([ret_all, ret3_all], axis=1)
-        if args.ea4 is not None:
-            ret4_all = fs.calc_ret(symbol4, timeframe, signal4, spread4,
-                                   start_all, end_all)
-            ret_all = pd.concat([ret_all, ret4_all], axis=1)
-        if args.ea5 is not None:
-            ret5_all = fs.calc_ret(symbol5, timeframe, signal5, spread5,
-                                   start_all, end_all)
-            ret_all = pd.concat([ret_all, ret5_all], axis=1)
-        if n != 1:
-            ret_all = (ret_all + 1.0).prod(axis=1) - 1.0
-        apr = fs.calc_apr(ret_all, start_all, end_all)
-        sharpe = fs.calc_sharpe(ret_all, start_all, end_all)
-        kelly = fs.calc_kelly(ret_all)
-        drawdowns = fs.calc_drawdowns(ret_all)
-        durations = fs.calc_durations(ret_all, timeframe)
+        apr = fs.calc_apr(ret_test_all, start_all, end_all)
+        sharpe = fs.calc_sharpe(ret_test_all, start_all, end_all)
+        kelly = fs.calc_kelly(ret_test_all)
+        drawdowns = fs.calc_drawdowns(ret_test_all)
+        durations = fs.calc_durations(ret_test_all, timeframe)
         report.iloc[i, 0] = start_all.strftime('%Y.%m.%d')
         report.iloc[i, 1] = end_all.strftime('%Y.%m.%d')
         report.iloc[i, 2] = report.iloc[:, 2].sum()
@@ -504,12 +484,12 @@ if __name__ == '__main__':
             report.iloc[i, 11] = ''
         if parameter5 is not None:
             report.iloc[i, 12] = ''
-        if weights is not None:
+        if weights_train is not None:
             report.iloc[i, 13] = ''
         report = report.iloc[0:i+1, :]
         report = report.dropna(axis=1)
         # グラフを作成、出力する。
-        cum_ret = (ret_all + 1.0).cumprod() - 1.0
+        cum_ret = (ret_test_all + 1.0).cumprod() - 1.0
         ax=plt.subplot()
         ax.set_xticklabels(cum_ret.index, rotation=45)
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
