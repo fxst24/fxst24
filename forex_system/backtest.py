@@ -157,9 +157,10 @@ if __name__ == '__main__':
             parameter1 = fs.optimize_params(rranges1, strategy1, symbol1,
                                             timeframe, start, end, spread1,
                                             position1, min_trade1)
-        signal1 = strategy1(parameter1, symbol1, timeframe, position1)
-        ret1 = fs.calc_ret(symbol1, timeframe, signal1, spread1, start, end)
-        trades1 = fs.calc_trades(signal1, start, end)
+        signal1 = strategy1(parameter1, symbol1, timeframe)
+        ret1 = fs.calc_ret(symbol1, timeframe, signal1, spread1, position1,
+                           start, end)
+        trades1 = fs.calc_trades(signal1, position1, start, end)
         ret = ret1
         trades = trades1
         # EA2のバックテストを行う。
@@ -168,10 +169,10 @@ if __name__ == '__main__':
                 parameter2 = fs.optimize_params(rranges2, strategy2, symbol2,
                                                 timeframe, start, end, spread2,
                                                 position2, min_trade2)
-            signal2 = strategy2(parameter2, symbol2, timeframe, position2)
-            ret2 = fs.calc_ret(symbol2, timeframe, signal2, spread2, start,
-                               end)
-            trades2 = fs.calc_trades(signal2, start, end)
+            signal2 = strategy2(parameter2, symbol2, timeframe)
+            ret2 = fs.calc_ret(symbol2, timeframe, signal2, spread2, position2,
+                               start, end)
+            trades2 = fs.calc_trades(signal2, position2, start, end)
             ret = pd.concat([ret, ret2], axis=1)
             trades += trades2
         # EA3のバックテストを行う。
@@ -180,10 +181,10 @@ if __name__ == '__main__':
                 parameter3 = fs.optimize_params(rranges3, strategy3, symbol3,
                                                 timeframe, start, end, spread3,
                                                 position3, min_trade3)
-            signal3 = strategy3(parameter3, symbol3, timeframe, position3)
-            ret3 = fs.calc_ret(symbol3, timeframe, signal3, spread3, start,
-                               end)
-            trades3 = fs.calc_trades(signal3, start, end)
+            signal3 = strategy3(parameter3, symbol3, timeframe)
+            ret3 = fs.calc_ret(symbol3, timeframe, signal3, spread3, position3,
+                               start, end)
+            trades3 = fs.calc_trades(signal3, position3, start, end)
             ret = pd.concat([ret, ret3], axis=1)
             trades += trades3
         # EA4のバックテストを行う。
@@ -192,10 +193,10 @@ if __name__ == '__main__':
                 parameter4 = fs.optimize_params(rranges4, strategy4, symbol4,
                                                 timeframe, start, end, spread4,
                                                 position4, min_trade4)
-            signal4 = strategy4(parameter4, symbol4, timeframe, position4)
-            ret4 = fs.calc_ret(symbol4, timeframe, signal4, spread4, start,
-                               end)
-            trades4 = fs.calc_trades(signal4, start, end)
+            signal4 = strategy4(parameter4, symbol4, timeframe)
+            ret4 = fs.calc_ret(symbol4, timeframe, signal4, spread4, position4,
+                               start, end)
+            trades4 = fs.calc_trades(signal4, position4, start, end)
             ret = pd.concat([ret, ret4], axis=1)
             trades += trades4
         # EA5のバックテストを行う。
@@ -204,10 +205,10 @@ if __name__ == '__main__':
                 parameter5 = fs.optimize_params(rranges5, strategy5, symbol5,
                                                 timeframe, start, end, spread5,
                                                 position5, min_trade5)
-            signal5 = strategy5(parameter5, symbol5, timeframe, position5)
-            ret5 = fs.calc_ret(symbol5, timeframe, signal5, spread5, start,
-                               end)
-            trades5 = fs.calc_trades(signal5, start, end)
+            signal5 = strategy5(parameter5, symbol5, timeframe)
+            ret5 = fs.calc_ret(symbol5, timeframe, signal5, spread5, position5,
+                               start, end)
+            trades5 = fs.calc_trades(signal5, position5, start, end)
             ret = pd.concat([ret, ret5], axis=1)
             trades += trades5
         ret = ret.fillna(0.0)
@@ -298,17 +299,19 @@ if __name__ == '__main__':
                                                 timeframe, start_train,
                                                 end_train, spread1, position1,
                                                 min_trade1)
-                signal1 = strategy1(parameter1, symbol1, timeframe, position1)
-            else:
-                model1, pred_train_std1 = build_model1(symbol1, timeframe,
-                                                       start_train, end_train)
-                signal1 = strategy1(parameter1, symbol1, timeframe, position1,
-                                    model1, pred_train_std1)
+                signal1 = strategy1(parameter1, symbol1, timeframe)
+            elif optimization == 3:
+                model1, pred_train_std1 = build_model1(parameter1, symbol1,
+                                                       timeframe, start_train,
+                                                       end_train)
+                signal1 = strategy1(parameter1, symbol1, timeframe, model1,
+                                    pred_train_std1)
             ret_train1 = fs.calc_ret(symbol1, timeframe, signal1, spread1,
-                                     start_train, end_train)
+                                     position1, start_train, end_train)
             ret_test1 = fs.calc_ret(symbol1, timeframe, signal1, spread1,
-                                    start_test, end_test)
-            trades_test1 = fs.calc_trades(signal1, start_test, end_test)
+                                    position1, start_test, end_test)
+            trades_test1 = fs.calc_trades(signal1, position1, start_test,
+                                          end_test)
             trades_test = trades_test1
             ret_train = ret_train1
             ret_test = ret_test1
@@ -320,19 +323,20 @@ if __name__ == '__main__':
                                                     start_train, end_train,
                                                     spread2, position2,
                                                     min_trade2)
-                    signal2 = strategy2(parameter2, symbol2, timeframe,
-                                        position2)
-                else:
-                    model2, pred_train_std2 = build_model2(symbol2, timeframe,
+                    signal2 = strategy2(parameter2, symbol2, timeframe)
+                elif optimization == 3:
+                    model2, pred_train_std2 = build_model2(parameter2, symbol2,
+                                                           timeframe,
                                                            start_train,
                                                            end_train)
-                    signal2 = strategy2(parameter2, symbol2, timeframe,
-                                        position2, model2, pred_train_std2)
+                    signal2 = strategy2(parameter2, symbol2, timeframe, model2,
+                                        pred_train_std2)
                 ret_train2 = fs.calc_ret(symbol2, timeframe, signal2, spread2,
-                                         start_train, end_train)
+                                         position2, start_train, end_train)
                 ret_test2 = fs.calc_ret(symbol2, timeframe, signal2, spread2,
-                                        start_test, end_test)
-                trades_test2 = fs.calc_trades(signal2, start_test, end_test)
+                                        position2, start_test, end_test)
+                trades_test2 = fs.calc_trades(signal2, position2, start_test,
+                                              end_test)
                 trades_test += trades_test2
                 ret_train = pd.concat([ret_train, ret_train2], axis=1)
                 ret_test = pd.concat([ret_test, ret_test2], axis=1)
@@ -344,19 +348,20 @@ if __name__ == '__main__':
                                                     start_train, end_train,
                                                     spread3, position3,
                                                     min_trade3)
-                    signal3 = strategy3(parameter3, symbol3, timeframe,
-                                        position3)
-                else:
-                    model3, pred_train_std3 = build_model3(symbol3, timeframe,
+                    signal3 = strategy3(parameter3, symbol3, timeframe)
+                elif optimization == 3:
+                    model3, pred_train_std3 = build_model3(parameter3, symbol3,
+                                                           timeframe,
                                                            start_train,
                                                            end_train)
-                    signal3 = strategy3(parameter3, symbol3, timeframe,
-                                        position3, model3, pred_train_std3)
+                    signal3 = strategy3(parameter3, symbol3, timeframe, model3,
+                                        pred_train_std3)
                 ret_train3 = fs.calc_ret(symbol3, timeframe, signal3, spread3,
-                                         start_train, end_train)
+                                         position3, start_train, end_train)
                 ret_test3 = fs.calc_ret(symbol3, timeframe, signal3, spread3,
-                                        start_test, end_test)
-                trades_test3 = fs.calc_trades(signal3, start_test, end_test)
+                                        position3, start_test, end_test)
+                trades_test3 = fs.calc_trades(signal3, position3, start_test,
+                                              end_test)
                 trades_test += trades_test3
                 ret_train = pd.concat([ret_train, ret_train3], axis=1)
                 ret_test = pd.concat([ret_test, ret_test3], axis=1)
@@ -368,19 +373,20 @@ if __name__ == '__main__':
                                                     start_train, end_train,
                                                     spread4, position4,
                                                     min_trade4)
-                    signal4 = strategy4(parameter4, symbol4, timeframe,
-                                        position4)
-                else:
-                    model4, pred_train_std4 = build_model4(symbol4, timeframe,
+                    signal4 = strategy4(parameter4, symbol4, timeframe)
+                elif optimization == 3:
+                    model4, pred_train_std4 = build_model4(parameter4, symbol4,
+                                                           timeframe,
                                                            start_train,
                                                            end_train)
-                    signal4 = strategy4(parameter4, symbol4, timeframe,
-                                        position4, model4, pred_train_std4)
+                    signal4 = strategy4(parameter4, symbol4, timeframe, model4,
+                                        pred_train_std4)
                 ret_train4 = fs.calc_ret(symbol4, timeframe, signal4, spread4,
-                                         start_train, end_train)
+                                         position4, start_train, end_train)
                 ret_test4 = fs.calc_ret(symbol4, timeframe, signal4, spread4,
-                                        start_test, end_test)
-                trades_test4 = fs.calc_trades(signal4, start_test, end_test)
+                                        position4, start_test, end_test)
+                trades_test4 = fs.calc_trades(signal4, position4, start_test,
+                                              end_test)
                 trades_test += trades_test4
                 ret_train = pd.concat([ret_train, ret_train4], axis=1)
                 ret_test = pd.concat([ret_test, ret_test4], axis=1)
@@ -392,19 +398,20 @@ if __name__ == '__main__':
                                                     start_train, end_train,
                                                     spread5, position5,
                                                     min_trade5)
-                    signal5 = strategy5(parameter5, symbol5, timeframe,
-                                        position5)
-                else:
-                    model5, pred_train_std5 = build_model5(symbol5, timeframe,
+                    signal5 = strategy5(parameter5, symbol5, timeframe)
+                elif optimization == 3:
+                    model5, pred_train_std5 = build_model5(parameter5, symbol5,
+                                                           timeframe,
                                                            start_train,
                                                            end_train)
-                    signal5 = strategy5(parameter5, symbol5, timeframe,
-                                        position5, model5, pred_train_std5)
+                    signal5 = strategy5(parameter5, symbol5, timeframe, model5,
+                                        pred_train_std5)
                 ret_train5 = fs.calc_ret(symbol5, timeframe, signal5, spread5,
-                                         start_train, end_train)
+                                         position5, start_train, end_train)
                 ret_test5 = fs.calc_ret(symbol5, timeframe, signal5, spread5,
-                                        start_test, end_test)
-                trades_test5 = fs.calc_trades(signal5, start_test, end_test)
+                                        position5, start_test, end_test)
+                trades_test5 = fs.calc_trades(signal5, position5, start_test,
+                                              end_test)
                 trades_test += trades_test5
                 ret_train = pd.concat([ret_train, ret_train5], axis=1)
                 ret_test = pd.concat([ret_test, ret_test5], axis=1)

@@ -19,13 +19,12 @@ RRANGES = (
     slice(START_DOWN, END_DOWN, STEP_DOWN),
 )
 
-def strategy(parameter, symbol, timeframe, position):
+def strategy(parameter, symbol, timeframe):
     '''戦略を記述する。
     Args:
-        parameter: パラメータ。
-        symbol: 通貨ペア名。
-        timeframe: 足の種類。
-        position: ポジションの設定。  0: 買いのみ。  1: 売りのみ。  2: 売買両方。
+        parameter: パラメーター。
+        symbol: 通貨ペア。
+        timeframe: 期間。
     Returns:
         シグナル。
     '''
@@ -56,11 +55,7 @@ def strategy(parameter, symbol, timeframe, position):
     else:
         buy = pd.Series(np.zeros(len(close)), index=close.index)
         sell = pd.Series(np.zeros(len(close)), index=close.index)
-    if position == 0:
-        signal = buy
-    elif position == 1:
-        signal = sell
-    else:
-        signal = buy + sell
+    signal = buy + sell
     signal = signal.astype(int)
+
     return signal

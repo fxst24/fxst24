@@ -192,15 +192,19 @@ def calc_kelly(ret):
         kelly = mean / (std * std)
     return kelly
  
-def calc_ret(symbol, timeframe, signal, spread, start, end):
+def calc_ret(symbol, timeframe, signal, spread, position, start, end):
     '''リターンを計算する。
     Args:
-        symbol: 通貨ペア名。
-        timeframe: タイムフレーム。
+        symbol: 通貨ペア。
+        timeframe: 期間。
         signal: シグナル。
         spread: スプレッド。
-        start: 開始年月日。
-        end: 終了年月日。
+        position: ポジションの設定。
+            0: 買いのみ。
+            1: 売りのみ。
+            2: 売買両方。
+        start: 開始日。
+        end: 終了日。
     Returns:
         年率。
     '''
@@ -212,14 +216,21 @@ def calc_ret(symbol, timeframe, signal, spread, start, end):
     else:
         adjusted_spread = spread / 100000.0
     # コストを計算する。
-    temp1 = (adjusted_spread * ((signal > 0) & (signal > signal.shift(1))) *
-        (signal - signal.shift(1)))
-    temp2 = (adjusted_spread * ((signal < 0) & (signal < signal.shift(1))) *
-        (signal.shift(1) - signal))
+    adjusted_signal = signal.copy()
+    if position == 0:
+        adjusted_signal[adjusted_signal==-1] = 0
+    elif position == 1:
+        adjusted_signal[adjusted_signal==1] = 0
+    temp1 = (adjusted_spread * ((adjusted_signal > 0) &
+        (adjusted_signal > adjusted_signal.shift(1))) *
+        (adjusted_signal - adjusted_signal.shift(1)))
+    temp2 = (adjusted_spread * ((adjusted_signal < 0) &
+        (adjusted_signal < adjusted_signal.shift(1))) *
+        (adjusted_signal.shift(1) - adjusted_signal))
     cost = temp1 + temp2
     # リターンを計算する。
     op = i_open(symbol, timeframe, 0)
-    ret = ((op.shift(-1) - op) * signal - cost) / op
+    ret = ((op.shift(-1) - op) * adjusted_signal - cost) / op
     ret = ret.fillna(0.0)
     ret[(ret==float('inf')) | (ret==float('-inf'))] = 0.0
     ret = ret[start:end]
@@ -229,8 +240,8 @@ def calc_sharpe(ret, start, end):
     '''シャープレシオを計算する。
     Args:
         ret: リターン。
-        start: 開始年月日。
-        end: 終了年月日。
+        start: 開始日。
+        end: 終了日。
     Returns:
         シャープレシオ。
     '''
@@ -246,14 +257,13 @@ def calc_sharpe(ret, start, end):
         sharpe = np.sqrt(num_bar_per_year) * mean / std
     return sharpe
 
-def calc_signal(buy_entry, buy_exit, sell_entry, sell_exit, position):
+def calc_signal(buy_entry, buy_exit, sell_entry, sell_exit):
     '''シグナルを計算する。
     Args:
         buy_entry: 買いエントリー。
         buy_exit: 買いエグジット。
         sell_entry: 売りエントリー。
         sell_exit: 売りエグジット。
-        position: ポジションの設定。  0: 買いのみ。  1: 売りのみ。  2: 売買両方。
     Returns:
         シグナル。
     '''
@@ -266,29 +276,35 @@ def calc_signal(buy_entry, buy_exit, sell_entry, sell_exit, position):
     sell[sell==0] = np.nan
     sell[sell_exit==1] = 0
     sell = sell.fillna(method='ffill')
-    if position == 0:
-        signal = buy
-    elif position == 1:
-        signal = sell
-    else:
-        signal = buy + sell
+    signal = buy + sell
     signal = signal.fillna(0)
     signal = signal.astype(int)
     return signal
 
-def calc_trades(signal, start, end):
+def calc_trades(signal, position, start, end):
     '''トレード数を計算する。
     Args:
         signal: シグナル。
-        start: 開始年月日。
-        end: 終了年月日。
+        position: ポジションの設定。
+            0: 買いのみ。
+            1: 売りのみ。
+            2: 売買両方。
+        start: 開始日。
+        end: 終了日。
     Returns:
         トレード数。
     '''
-    temp1 = (((signal > 0) & (signal > signal.shift(1))) *
-        (signal - signal.shift(1)))
-    temp2 = (((signal < 0) & (signal < signal.shift(1))) *
-        (signal.shift(1) - signal))
+    adjusted_signal = signal.copy()
+    if position == 0:
+        adjusted_signal[adjusted_signal==-1] = 0
+    elif position == 1:
+        adjusted_signal[adjusted_signal==1] = 0
+    temp1 = (((adjusted_signal > 0) &
+        (adjusted_signal > adjusted_signal.shift(1))) *
+        (adjusted_signal - adjusted_signal.shift(1)))
+    temp2 = (((adjusted_signal < 0) &
+        (adjusted_signal < adjusted_signal.shift(1))) *
+        (adjusted_signal.shift(1) - adjusted_signal))
     trade = temp1 + temp2
     trade = trade.fillna(0)
     trade = trade.astype(int)
@@ -2136,9 +2152,9 @@ def minute():
 
 def optimize_params(rranges, strategy, symbol, timeframe, start, end, spread,
                     position, min_trade):
-    '''パラメータを最適化する。
+    '''パラメーターを最適化する。
     Args:
-        rranges: パラメータのスタート、ストップ、ステップ。
+        rranges: パラメーターのスタート、ストップ、ステップ。
         strategy: 戦略。
         symbol: 通貨ペア。
         timeframe: 足の種類。
@@ -2151,14 +2167,14 @@ def optimize_params(rranges, strategy, symbol, timeframe, start, end, spread,
             2: 売買両方。
         min_trade: 最低トレード数。
     Returns:
-        パラメータ。
+        パラメーター。
     '''
     def func(parameter, strategy, symbol, timeframe, start, end, spread,
              position, min_trade):
         # パフォーマンスを計算する。
-        signal = strategy(parameter, symbol, timeframe, position)
-        ret = calc_ret(symbol, timeframe, signal, spread, start, end)
-        trades = calc_trades(signal, start, end)
+        signal = strategy(parameter, symbol, timeframe)
+        ret = calc_ret(symbol, timeframe, signal, spread, position, start, end)
+        trades = calc_trades(signal, position, start, end)
         sharpe = calc_sharpe(ret, start, end)
         years = (end - start).total_seconds() / 60 / 60 / 24 / 365
         # 1年当たりのトレード数が最低トレード数に満たない場合、
@@ -2421,8 +2437,8 @@ def trade(mail, mt4, ea, symbol, timeframe, position, lots, ml, start_train,
     # 機械学習を使用する場合、モデル、学習期間での予測値の標準偏差を格納する。
     if ml == 1:
         build_model = eval('ea1.build_model')
-        model, pred_train_std = build_model(symbol, timeframe, start_train,
-                                            end_train)
+        model, pred_train_std = build_model(parameter, symbol, timeframe,
+                                            start_train, end_train)
     # トレードを行う。
     pos = 0
     ticket = 0
@@ -2446,11 +2462,14 @@ def trade(mail, mt4, ea, symbol, timeframe, position, lots, ml, start_train,
                 if history_time != pre_history_time:
                     pre_history_time = history_time
                     if ml == 0:
-                        signal = strategy(parameter, symbol, timeframe,
-                                          position)
+                        signal = strategy(parameter, symbol, timeframe)
                     elif ml == 1:
-                        signal = strategy(parameter, symbol, timeframe,
-                                          position, model, pred_train_std)
+                        signal = strategy(parameter, symbol, timeframe, model,
+                                          pred_train_std)
+                    if position == 0:
+                        signal[signal==-1] = 0
+                    elif position == 1:
+                        signal[signal==1] = 0
                     end_row = len(signal) - 1
                     open0 = i_open(symbol, timeframe, 0)
                     price = open0[len(open0)-1]
