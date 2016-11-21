@@ -2413,6 +2413,11 @@ def trade(mail, mt4, ea, symbol, timeframe, position, lots, ml, start_train,
         fromaddr = config['DEFAULT']['fromaddr']
         toaddr = config['DEFAULT']['toaddr']
         password = config['DEFAULT']['password']
+    # 機械学習を使用する場合、モデル、学習期間での予測値の標準偏差を格納する。
+    if ml == 1:
+        build_model = eval('ea1.build_model')
+        model, pred_train_std = build_model(parameter, symbol, timeframe,
+                                            start_train, end_train)
     # OANDA API用に設定する。
     if ENVIRONMENT is None:
         ENVIRONMENT = config['DEFAULT']['environment']
@@ -2434,11 +2439,6 @@ def trade(mail, mt4, ea, symbol, timeframe, position, lots, ml, start_train,
         f = open(filename, 'w')
         f.write(str(2))  # EA側で-2とするので2で初期化する。
         f.close()
-    # 機械学習を使用する場合、モデル、学習期間での予測値の標準偏差を格納する。
-    if ml == 1:
-        build_model = eval('ea1.build_model')
-        model, pred_train_std = build_model(parameter, symbol, timeframe,
-                                            start_train, end_train)
     # トレードを行う。
     pos = 0
     ticket = 0
