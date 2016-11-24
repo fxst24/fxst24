@@ -30,9 +30,9 @@ ACCOUNT_ID = None
 COUNT = 500
 # 許容誤差を設定する。
 EPS = 1.0e-5
-# Spyderのバグ（？）で警告が出るので無視する。
-import warnings
-warnings.simplefilter(action = 'ignore', category = RuntimeWarning)
+## Spyderのバグ（？）で警告が出ることがあるので無視する。
+#import warnings
+#warnings.simplefilter(action = 'ignore', category = RuntimeWarning)
 
 def adjust_summer_time(data, timeframe):
     '''夏時間を大まかに調整して返す（1時間足以下のみ）。
@@ -77,16 +77,17 @@ def calc_apr(ret, start, end):
     '''年率を計算する。
     Args:
         ret: リターン。
-        start: 開始年月日。
-        end: 終了年月日。
+        start: 開始日。
+        end: 終了日。
     Returns:
         年率。
     '''
     rate = (ret + 1.0).prod() - 1.0
     years = (end - start).total_seconds() / 60.0 / 60.0 / 24.0 / 365.0
     apr = rate / years
+
     return apr
- 
+
 def calc_drawdowns(ret):
     '''最大ドローダウン（％）を計算する。
     Args:
@@ -124,13 +125,14 @@ def calc_drawdowns(ret):
                     drawdowns = drawdown[i];
         return drawdowns
     drawdowns = func(cum_ret)
+
     return drawdowns
  
 def calc_durations(ret, timeframe):
     '''最大ドローダウン期間を計算する。
     Args:
         ret: リターン。
-        timeframe: タイムフレーム。
+        timeframe: 期間。
     Returns:
         最大ドローダウン期間。
     '''
@@ -174,6 +176,7 @@ def calc_durations(ret, timeframe):
         durations = durations / (1440 / timeframe)  # 営業日単位に変換
         return durations
     durations = int(func(cum_ret))
+
     return durations
  
 def calc_kelly(ret):
@@ -190,6 +193,7 @@ def calc_kelly(ret):
         kelly = 0.0
     else:
         kelly = mean / (std * std)
+
     return kelly
  
 def calc_ret(symbol, timeframe, signal, spread, position, start, end):
@@ -206,34 +210,34 @@ def calc_ret(symbol, timeframe, signal, spread, position, start, end):
         start: 開始日。
         end: 終了日。
     Returns:
-        年率。
+        リターン。
     '''
-    # スプレッドの単位の調整
+    # スプレッドの単位を調整する。
     if (symbol == 'AUDJPY' or symbol == 'CADJPY' or symbol == 'CHFJPY' or
         symbol == 'EURJPY' or symbol == 'GBPJPY' or symbol == 'NZDJPY' or
         symbol == 'USDJPY'):
         adjusted_spread = spread / 1000.0
     else:
         adjusted_spread = spread / 100000.0
-    # コストを計算する。
+    # シグナルを調整する。
     adjusted_signal = signal.copy()
     if position == 0:
         adjusted_signal[adjusted_signal==-1] = 0
     elif position == 1:
         adjusted_signal[adjusted_signal==1] = 0
-    temp1 = (adjusted_spread * ((adjusted_signal > 0) &
-        (adjusted_signal > adjusted_signal.shift(1))) *
-        (adjusted_signal - adjusted_signal.shift(1)))
-    temp2 = (adjusted_spread * ((adjusted_signal < 0) &
-        (adjusted_signal < adjusted_signal.shift(1))) *
-        (adjusted_signal.shift(1) - adjusted_signal))
-    cost = temp1 + temp2
+    # コストを計算する。
+    cost_buy_entry = (((adjusted_signal == 1) &
+                       (adjusted_signal.shift(1) != 1)) * adjusted_spread)
+    cost_sell_entry = (((adjusted_signal == -1) &
+                       (adjusted_signal.shift(1) != -1)) * adjusted_spread)
+    cost = cost_buy_entry + cost_sell_entry
     # リターンを計算する。
     op = i_open(symbol, timeframe, 0)
     ret = ((op.shift(-1) - op) * adjusted_signal - cost) / op
     ret = ret.fillna(0.0)
     ret[(ret==float('inf')) | (ret==float('-inf'))] = 0.0
     ret = ret[start:end]
+
     return ret
  
 def calc_sharpe(ret, start, end):
@@ -2498,7 +2502,7 @@ def trade(mail, mt4, ea, symbol, timeframe, position, lots, ml, start_train,
                         if mail == 1:
                             subject = ea
                             some_text = (symbol + 'を' + str(price) +
-                                'で売りエグジットです。')
+                                '+スプレッドで売りエグジットです。')
                             send_mail(subject, some_text, fromaddr, toaddr,
                                       host, port, password)
                         # EAにシグナルを送信する場合
@@ -2512,7 +2516,7 @@ def trade(mail, mt4, ea, symbol, timeframe, position, lots, ml, start_train,
                         if mail == 1:
                             subject = ea
                             some_text = (symbol + 'を' + str(price) +
-                                'で買いエントリーです。')
+                                '+スプレッドで買いエントリーです。')
                             send_mail(subject, some_text, fromaddr, toaddr,
                                       host, port, password)
                         # EAにシグナルを送信する場合
