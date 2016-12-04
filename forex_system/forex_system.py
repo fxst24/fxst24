@@ -13,7 +13,7 @@ import time
 from cvxopt import blas, solvers
 from datetime import datetime
 from email.mime.text import MIMEText
-from numba import float64, jit
+from numba import float64, int64, jit
 #from pykalman import KalmanFilter
 from scipy import optimize
 from sklearn import linear_model
@@ -684,8 +684,8 @@ def hour():
 def i_adj_kairi(symbol, timeframe, period, shift):
     '''調整済み移動位平均乖離率を返す。
     Args:
-        symbol: 通貨ペア名。
-        timeframe: タイムフレーム。
+        symbol: 通貨ペア。
+        timeframe: 期間。
         period: 計算期間。
         shift: シフト。
     Returns:
@@ -712,11 +712,46 @@ def i_adj_kairi(symbol, timeframe, period, shift):
             joblib.dump(adj_kairi, path)
     return adj_kairi
 
+def i_atr(symbol, timeframe, period, shift):
+    '''ATRを返す。
+    Args:
+        symbol: 通貨ペア。
+        timeframe: 期間。
+        period: 計算期間。
+        shift: シフト。
+    Returns:
+        ATR。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/temp/i_atr_' + symbol +
+            str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        atr = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        high = i_high(symbol, timeframe, shift)
+        low = i_low(symbol, timeframe, shift)
+        close = i_close(symbol, timeframe, shift)
+        temp = high - low
+        temp = pd.concat([temp, high - close.shift(1)], axis=1)
+        temp = pd.concat([temp, close.shift(1) - low], axis=1)
+        tr = temp.max(axis=1)
+        atr = pd.ewma(tr, span=period)
+        atr = atr.fillna(method='ffill')
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            make_temp_folder()
+            joblib.dump(atr, path)
+    return atr
+
 def i_bands(symbol, timeframe, period, deviation, shift):
     '''ボリンジャーバンドを返す。
     Args:
-        symbol: 通貨ペア名。
-        timeframe: タイムフレーム。
+        symbol: 通貨ペア。
+        timeframe: 期間。
         period: 計算期間。
         deviation: 標準偏差。
         shift: シフト。
@@ -767,13 +802,11 @@ def i_bandwalk(symbol, timeframe, period, shift):
         bandwalk = joblib.load(path)
     # さもなければ計算する。
     else:
-        @jit(float64[:](float64[:], float64[:], float64[:]), nopython=True,
-             cache=True)
-        def func(high, low, ma):
+        @jit(int64[:](float64[:], float64[:], float64[:], int64[:], int64),
+             nopython=True, cache=True)
+        def func(high, low, ma, ret, length):
             above = 0
             below = 0
-            length = len(ma)
-            bandwalk = np.empty(length)
             for i in range(length):
                 if (low[i] > ma[i]):
                     above = above + 1
@@ -783,8 +816,8 @@ def i_bandwalk(symbol, timeframe, period, shift):
                     below = below + 1
                 else:
                     below = 0
-                bandwalk[i] = above - below
-            return bandwalk
+                ret[i] = above - below
+            return ret
 
         high = i_high(symbol, timeframe, shift)
         low = i_low(symbol, timeframe, shift)
@@ -793,10 +826,13 @@ def i_bandwalk(symbol, timeframe, period, shift):
         high = np.array(high)
         low = np.array(low)
         ma = np.array(ma)
-        bandwalk = func(high, low, ma)
-        a = 0.65968152052  # 傾き（標準化するために経験的に導き出した数値）
-        b = 1.95237174591  # 切片（同上）
-        bandwalk = bandwalk / (a * float(period) + b)
+        length = len(ma)
+        ret = np.empty(length)
+        ret = ret.astype(np.int64)
+        temp = func(high, low, ma, ret, length)
+        a = 0.603901432072
+        b = -1.26346461557
+        bandwalk = temp / (a * period + b)
         bandwalk = pd.Series(bandwalk, index=index)
         bandwalk = bandwalk.fillna(0)
         # バックテスト、またはウォークフォワードテストのとき、保存する。
@@ -1521,9 +1557,9 @@ def i_ma_of_ma(symbol, timeframe, period, shift):
 def i_mean(symbol, timeframe, period, shift):
     '''対数リターンの平均を返す。
     Args:
-        symbol: 通貨ペア名。
-        timeframe: タイムフレーム。
-        period: 期間。
+        symbol: 通貨ペア。
+        timeframe: 期間。
+        period: 計算期間。
         shift: シフト。
     Returns:
         対数リターンの平均。
@@ -1548,11 +1584,40 @@ def i_mean(symbol, timeframe, period, shift):
             joblib.dump(mean, path)
     return mean
 
+def i_momentum(symbol, timeframe, period, shift):
+    '''モメンタムを返す。
+    Args:
+        symbol: 通貨ペア。
+        timeframe: 期間。
+        period: 計算期間。
+        shift: シフト。
+    Returns:
+        モメンタム。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/temp/i_momentum_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        momentum = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        close = i_close(symbol, timeframe, shift)
+        momentum = (close / close.shift(period)) * 100.0
+        momentum = momentum.fillna(method='ffill')
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            make_temp_folder()
+            joblib.dump(momentum, path)
+    return momentum
+
 def i_open(symbol, timeframe, shift):
     '''始値を返す。
     Args:
-        symbol: 通貨ペア名。
-        timeframe: タイムフレーム。
+        symbol: 通貨ペア。
+        timeframe: 期間。
         shift: シフト。
     Returns:
         始値。
@@ -1684,8 +1749,72 @@ def i_range_duration(symbol, timeframe, period, shift):
             joblib.dump(range_duration, path)
     return range_duration
 
-def range_ratio(symbol, timeframe, period, shift):
-    return
+def i_strength(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
+               jpy=0, nzd=0, usd=0):
+    '''通貨の強さを返す。
+    Args:
+        symbol: 通貨ペア。
+        timeframe: 期間。
+        period: 計算期間。
+        shift: シフト。
+        aud: 豪ドルの設定。
+        cad: カナダドルの設定。
+        chf: スイスフランの設定。
+        eur: ユーロの設定。
+        gbp: ポンドの設定。
+        jpy: 円の設定。
+        nzd: NZドルの設定。
+        usd: 米ドルの設定。
+    Returns:
+        通貨の強さ（-1.0〜+1.0）。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/temp/i_strength_' + str(timeframe) +
+            '_' + str(period) + '_' + str(shift) + str(aud) + str(cad) +
+            str(chf) + str(eur) + str(gbp) + str(jpy) + str(nzd) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        strength = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        temp = pd.DataFrame()
+        n = 0
+        if aud == 1:
+            temp['aud'] = i_log_return('AUDUSD', timeframe, period, shift)
+            n += 1
+        if cad == 1:
+            temp['cad'] = -i_log_return('USDCAD', timeframe, period, shift)
+            n += 1
+        if chf == 1:
+            temp['chf'] = -i_log_return('USDCHF', timeframe, period, shift)
+            n += 1
+        if eur == 1:
+            temp['eur'] = i_log_return('EURUSD', timeframe, period, shift)
+            n += 1
+        if gbp == 1:
+            temp['gbp'] = i_log_return('GBPUSD', timeframe, period, shift)
+            n += 1
+        if jpy == 1:
+            temp['jpy'] = -i_log_return('USDJPY', timeframe, period, shift)
+            n += 1
+        if nzd == 1:
+            temp['nzd'] = i_log_return('NZDUSD', timeframe, period, shift)
+            n += 1
+        if usd == 1:
+            temp['usd'] = pd.Series(np.zeros(len(temp)), index=temp.index)
+            n += 1
+        # 同値になることはほとんどないと思うが、その場合は観測順にしている点に注意。
+        strength = temp.rank(axis=1, method='first')
+        strength = strength - (n + 1) / 2
+        strength = strength / (n - (n + 1) / 2)
+        strength = strength.fillna(method='ffill')
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            make_temp_folder()
+            joblib.dump(strength, path)
+    return strength
 
 def i_skew(symbol, timeframe, period, shift):
     '''対数リターンの歪度を返す。
