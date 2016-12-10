@@ -1243,7 +1243,7 @@ def i_ku_close(timeframe, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0, gbp=0.0,
             audgbp = audusd - gbpusd
             audjpy = audusd - jpyusd
             audnzd = audusd - nzdusd
-            ku_close['aud'] = (((audcad * aud * cad) +
+            ku_close['AUD'] = (((audcad * aud * cad) +
                 (audchf * aud * chf) + (audeur * aud * eur) +
                 (audgbp * aud * gbp) + (audjpy * aud * jpy) +
                 (audnzd * aud * nzd) + (audusd * aud * usd)) /
@@ -1256,7 +1256,7 @@ def i_ku_close(timeframe, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0, gbp=0.0,
             cadgbp = cadusd - gbpusd
             cadjpy = cadusd - jpyusd
             cadnzd = cadusd - nzdusd
-            ku_close['cad'] = (((cadaud * cad * aud) +
+            ku_close['CAD'] = (((cadaud * cad * aud) +
                 (cadchf * cad * chf) + (cadeur * cad * eur) +
                 (cadgbp * cad * gbp) + (cadjpy * cad * jpy) +
                 (cadnzd * cad * nzd) + (cadusd * cad * usd)) /
@@ -1269,7 +1269,7 @@ def i_ku_close(timeframe, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0, gbp=0.0,
             chfgbp = chfusd - gbpusd
             chfjpy = chfusd - jpyusd
             chfnzd = chfusd - nzdusd
-            ku_close['chf'] = (((chfaud * chf * aud) +
+            ku_close['CHF'] = (((chfaud * chf * aud) +
                 (chfcad * chf * cad) + (chfeur * chf * eur) +
                 (chfgbp * chf * gbp) + (chfjpy * chf * jpy) +
                 (chfnzd * chf * nzd) + (chfusd * chf * usd)) /
@@ -1282,7 +1282,7 @@ def i_ku_close(timeframe, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0, gbp=0.0,
             eurgbp = eurusd - gbpusd
             eurjpy = eurusd - jpyusd
             eurnzd = eurusd - nzdusd
-            ku_close['eur'] = (((euraud * eur * aud) +
+            ku_close['EUR'] = (((euraud * eur * aud) +
                 (eurcad * eur * cad) + (eurchf * eur * chf) +
                 (eurgbp * eur * gbp) + (eurjpy * eur * jpy) +
                 (eurnzd * eur * nzd) + (eurusd * eur * usd)) /
@@ -1295,7 +1295,7 @@ def i_ku_close(timeframe, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0, gbp=0.0,
             gbpeur = gbpusd - eurusd
             gbpjpy = gbpusd - jpyusd
             gbpnzd = gbpusd - nzdusd
-            ku_close['gbp'] = (((gbpaud * gbp * aud) +
+            ku_close['GBP'] = (((gbpaud * gbp * aud) +
                 (gbpcad * gbp * cad) + (gbpchf * gbp * chf) +
                 (gbpeur * gbp * eur) + (gbpjpy * gbp * jpy) +
                 (gbpnzd * gbp * nzd) + (gbpusd * gbp * usd)) /
@@ -1308,7 +1308,7 @@ def i_ku_close(timeframe, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0, gbp=0.0,
             jpyeur = jpyusd - eurusd
             jpygbp = jpyusd - gbpusd
             jpynzd = jpyusd - nzdusd
-            ku_close['jpy'] = (((jpyaud * jpy * aud) +
+            ku_close['JPY'] = (((jpyaud * jpy * aud) +
                 (jpycad * jpy * cad) + (jpychf * jpy * chf) +
                 (jpyeur * jpy * eur) + (jpygbp * jpy * gbp) +
                 (jpynzd * jpy * nzd) + (jpyusd * jpy * usd)) /
@@ -1321,7 +1321,7 @@ def i_ku_close(timeframe, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0, gbp=0.0,
             nzdeur = nzdusd - eurusd
             nzdgbp = nzdusd - gbpusd
             nzdjpy = nzdusd - jpyusd
-            ku_close['nzd'] = (((nzdaud * nzd * aud) +
+            ku_close['NZD'] = (((nzdaud * nzd * aud) +
                 (nzdcad * nzd * cad) + (nzdchf * nzd * chf) +
                 (nzdeur * nzd * eur) + (nzdgbp * nzd * gbp) +
                 (nzdjpy * nzd * jpy) + (nzdusd * nzd * usd)) /
@@ -1335,7 +1335,7 @@ def i_ku_close(timeframe, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0, gbp=0.0,
             usdgbp = -gbpusd
             usdjpy = -jpyusd
             usdnzd = -nzdusd
-            ku_close['usd'] = (((usdaud * usd * aud) +
+            ku_close['USD'] = (((usdaud * usd * aud) +
                 (usdcad * usd * cad) + (usdchf * usd * chf) +
                 (usdeur * usd * eur) + (usdgbp * usd * gbp) +
                 (usdjpy * usd * jpy) + (usdnzd * usd * nzd)) /
@@ -1348,6 +1348,90 @@ def i_ku_close(timeframe, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0, gbp=0.0,
             make_temp_folder()
             joblib.dump(ku_close, path)
     return ku_close
+
+def i_ku_return(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0,
+                gbp=0.0, jpy=0.0, nzd=0.0, usd=0.0):
+    '''Ku-Chartによるリターンを返す。
+    Args:
+        timeframe: 期間。
+        period:計算期間。
+        shift: シフト。
+        aud: 豪ドル。
+        cad: カナダドル。
+        chf: スイスフラン。
+        eur: ユーロ。
+        gbp: ポンド。
+        jpy: 円。
+        nzd: NZドル。
+        usd: 米ドル。
+    Returns:
+        Ku-Chartによるリターン。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/temp/i_ku_return_' + str(timeframe) +
+        '_' + str(period) + '_' + str(shift) + '_' + str(aud) + str(cad) +
+        str(chf) + str(eur) + str(gbp) + str(jpy) + str(nzd) + str(usd) +
+        '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        ku_return = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        ku_close = i_ku_close(timeframe, shift, aud=aud, cad=cad, chf=chf,
+                              eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
+        ku_return = ku_close - ku_close.shift(period)
+        ku_return = ku_return.fillna(0.0)
+        ku_return[(ku_return==float('inf')) | (ku_return==float('-inf'))] = 0.0
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            make_temp_folder()
+            joblib.dump(ku_return, path)
+    return ku_return
+
+def i_ku_zscore(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0,
+                gbp=0.0, jpy=0.0, nzd=0.0, usd=0.0):
+    '''Ku-Chartによる終値のZスコアを返す。
+    Args:
+        timeframe: 期間。
+        period:計算期間。
+        shift: シフト。
+        aud: 豪ドル。
+        cad: カナダドル。
+        chf: スイスフラン。
+        eur: ユーロ。
+        gbp: ポンド。
+        jpy: 円。
+        nzd: NZドル。
+        usd: 米ドル。
+    Returns:
+        Ku-Chartによる終値のZスコア。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/temp/i_ku_zscore_' + str(timeframe) +
+        '_' + str(period) + '_' + str(shift) + '_' + str(aud) + str(cad) +
+        str(chf) + str(eur) + str(gbp) + str(jpy) + str(nzd) + str(usd) +
+        '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        ku_zscore = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        ku_close = i_ku_close(timeframe, shift, aud=aud, cad=cad, chf=chf,
+                              eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
+        mean = ku_close.rolling(window=period).mean()
+        std = ku_close.rolling(window=period).std()
+        ku_zscore = (ku_close - mean) / std
+        ku_zscore = ku_zscore.fillna(0.0)
+        ku_zscore[(ku_zscore==float('inf')) | (ku_zscore==float('-inf'))] = 0.0
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            make_temp_folder()
+            joblib.dump(ku_zscore, path)
+    return ku_zscore
 
 def i_kurt(symbol, timeframe, period, shift):
     '''対数リターンの尖度を返す。
@@ -1749,8 +1833,8 @@ def i_range_duration(symbol, timeframe, period, shift):
             joblib.dump(range_duration, path)
     return range_duration
 
-def i_strength(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
-               jpy=0, nzd=0, usd=0):
+def i_strength(timeframe, period, shift, aud=1, cad=0, chf=0, eur=1, gbp=1,
+               jpy=1, nzd=0, usd=1):
     '''通貨の強さを返す。
     Args:
         symbol: 通貨ペア。
@@ -1766,7 +1850,7 @@ def i_strength(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
         nzd: NZドルの設定。
         usd: 米ドルの設定。
     Returns:
-        通貨の強さ（-1.0〜+1.0）。
+        通貨の強さ。
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/temp/i_strength_' + str(timeframe) +
@@ -1781,33 +1865,35 @@ def i_strength(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
         temp = pd.DataFrame()
         n = 0
         if aud == 1:
-            temp['aud'] = i_log_return('AUDUSD', timeframe, period, shift)
+            temp['aud'] = i_zscore('AUDUSD', timeframe, period, shift)
             n += 1
         if cad == 1:
-            temp['cad'] = -i_log_return('USDCAD', timeframe, period, shift)
+            temp['cad'] = -i_zscore('USDCAD', timeframe, period, shift)
             n += 1
         if chf == 1:
-            temp['chf'] = -i_log_return('USDCHF', timeframe, period, shift)
+            temp['chf'] = -i_zscore('USDCHF', timeframe, period, shift)
             n += 1
         if eur == 1:
-            temp['eur'] = i_log_return('EURUSD', timeframe, period, shift)
+            temp['eur'] = i_zscore('EURUSD', timeframe, period, shift)
             n += 1
         if gbp == 1:
-            temp['gbp'] = i_log_return('GBPUSD', timeframe, period, shift)
+            temp['gbp'] = i_zscore('GBPUSD', timeframe, period, shift)
             n += 1
         if jpy == 1:
-            temp['jpy'] = -i_log_return('USDJPY', timeframe, period, shift)
+            temp['jpy'] = -i_zscore('USDJPY', timeframe, period, shift)
             n += 1
         if nzd == 1:
-            temp['nzd'] = i_log_return('NZDUSD', timeframe, period, shift)
+            temp['nzd'] = i_zscore('NZDUSD', timeframe, period, shift)
             n += 1
         if usd == 1:
             temp['usd'] = pd.Series(np.zeros(len(temp)), index=temp.index)
             n += 1
         # 同値になることはほとんどないと思うが、その場合は観測順にしている点に注意。
         strength = temp.rank(axis=1, method='first')
-        strength = strength - (n + 1) / 2
-        strength = strength / (n - (n + 1) / 2)
+        data = np.array(range(1, n+1))
+        mean = np.mean(data)
+        std = np.std(data)
+        strength = (strength - mean) / std
         strength = strength.fillna(method='ffill')
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
