@@ -830,8 +830,8 @@ def i_bandwalk(symbol, timeframe, period, shift):
         ret = np.empty(length)
         ret = ret.astype(np.int64)
         temp = func(high, low, ma, ret, length)
-        a = 0.603901432072
-        b = -1.26346461557
+        a = 0.604624026522
+        b = -1.27979200463
         bandwalk = temp / (a * period + b)
         bandwalk = pd.Series(bandwalk, index=index)
         bandwalk = bandwalk.fillna(0)
@@ -1176,182 +1176,9 @@ def i_hurst(symbol, timeframe, period, shift):
 #            joblib.dump(kalman_filter, path)
 #    return kalman_filter
 
-def i_ku_close(timeframe, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0, gbp=0.0,
-               jpy=0.0, nzd=0.0, usd=0.0):
-    '''Ku-Chartによる終値を返す。
-    Args:
-        timeframe: 足の種類。
-        shift: シフト。
-        aud: 豪ドル。
-        cad: カナダドル。
-        chf: スイスフラン。
-        eur: ユーロ。
-        gbp: ポンド。
-        jpy: 円。
-        nzd: NZドル。
-        usd: 米ドル。
-    Returns:
-        Ku-Chartによる終値。
-    '''
-    # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/temp/i_ku_close_' + str(timeframe) +
-        '_' + str(shift) + '_' + str(aud) + str(cad) + str(chf) + str(eur) +
-        str(gbp) + str(jpy) + str(nzd) + str(usd) + '.pkl')
-    # バックテスト、またはウォークフォワードテストのとき、
-    # 計算結果が保存されていれば復元する。
-    if OANDA is None and os.path.exists(path) == True:
-        ku_close = joblib.load(path)
-    # さもなければ計算する。
-    else:
-        ku_close = pd.DataFrame()
-        # 重みの合計を計算する。
-        weight_sum = aud + cad + chf + eur + gbp + jpy + nzd + usd
-        # 終値を格納する。
-        audusd = 0.0
-        cadusd = 0.0
-        chfusd = 0.0
-        eurusd = 0.0
-        gbpusd = 0.0
-        jpyusd = 0.0
-        nzdusd = 0.0
-        if aud > EPS:
-            audusd = i_close('AUDUSD', timeframe, shift)
-            audusd = audusd.apply(np.log)
-        if cad > EPS:
-            cadusd = 1 / i_close('USDCAD', timeframe, shift)
-            cadusd = cadusd.apply(np.log)
-        if chf > EPS:
-            chfusd = 1 / i_close('USDCHF', timeframe, shift)
-            chfusd = chfusd.apply(np.log)
-        if eur > EPS:
-            eurusd = i_close('EURUSD', timeframe, shift)
-            eurusd = eurusd.apply(np.log)
-        if gbp > EPS:
-            gbpusd = i_close('GBPUSD', timeframe, shift)
-            gbpusd = gbpusd.apply(np.log)
-        if jpy > EPS:
-            jpyusd = 1 / i_close('USDJPY', timeframe, shift)
-            jpyusd = jpyusd.apply(np.log)
-        if nzd > EPS:
-            nzdusd = i_close('NZDUSD', timeframe, shift)
-            nzdusd = nzdusd.apply(np.log)
-        # KU-AUDを作成する。
-        if aud > EPS:
-            audcad = audusd - cadusd
-            audchf = audusd - chfusd
-            audeur = audusd - eurusd
-            audgbp = audusd - gbpusd
-            audjpy = audusd - jpyusd
-            audnzd = audusd - nzdusd
-            ku_close['AUD'] = (((audcad * aud * cad) +
-                (audchf * aud * chf) + (audeur * aud * eur) +
-                (audgbp * aud * gbp) + (audjpy * aud * jpy) +
-                (audnzd * aud * nzd) + (audusd * aud * usd)) /
-                weight_sum * 10000.0)
-        # KU-CADを作成する。
-        if cad > EPS:
-            cadaud = cadusd - audusd
-            cadchf = cadusd - chfusd
-            cadeur = cadusd - eurusd
-            cadgbp = cadusd - gbpusd
-            cadjpy = cadusd - jpyusd
-            cadnzd = cadusd - nzdusd
-            ku_close['CAD'] = (((cadaud * cad * aud) +
-                (cadchf * cad * chf) + (cadeur * cad * eur) +
-                (cadgbp * cad * gbp) + (cadjpy * cad * jpy) +
-                (cadnzd * cad * nzd) + (cadusd * cad * usd)) /
-                weight_sum * 10000.0)
-        # KU-CHFを作成する。
-        if chf > EPS:
-            chfaud = chfusd - audusd
-            chfcad = chfusd - cadusd
-            chfeur = chfusd - eurusd
-            chfgbp = chfusd - gbpusd
-            chfjpy = chfusd - jpyusd
-            chfnzd = chfusd - nzdusd
-            ku_close['CHF'] = (((chfaud * chf * aud) +
-                (chfcad * chf * cad) + (chfeur * chf * eur) +
-                (chfgbp * chf * gbp) + (chfjpy * chf * jpy) +
-                (chfnzd * chf * nzd) + (chfusd * chf * usd)) /
-                weight_sum * 10000.0)
-        # KU-EURを作成する。
-        if eur > EPS:
-            euraud = eurusd - audusd
-            eurcad = eurusd - cadusd
-            eurchf = eurusd - chfusd
-            eurgbp = eurusd - gbpusd
-            eurjpy = eurusd - jpyusd
-            eurnzd = eurusd - nzdusd
-            ku_close['EUR'] = (((euraud * eur * aud) +
-                (eurcad * eur * cad) + (eurchf * eur * chf) +
-                (eurgbp * eur * gbp) + (eurjpy * eur * jpy) +
-                (eurnzd * eur * nzd) + (eurusd * eur * usd)) /
-                weight_sum * 10000.0)
-        # KU-GBPを作成する。
-        if gbp > EPS:
-            gbpaud = gbpusd - audusd
-            gbpcad = gbpusd - cadusd
-            gbpchf = gbpusd - chfusd
-            gbpeur = gbpusd - eurusd
-            gbpjpy = gbpusd - jpyusd
-            gbpnzd = gbpusd - nzdusd
-            ku_close['GBP'] = (((gbpaud * gbp * aud) +
-                (gbpcad * gbp * cad) + (gbpchf * gbp * chf) +
-                (gbpeur * gbp * eur) + (gbpjpy * gbp * jpy) +
-                (gbpnzd * gbp * nzd) + (gbpusd * gbp * usd)) /
-                weight_sum * 10000.0)
-        # KU-JPYを作成する。
-        if jpy > EPS:
-            jpyaud = jpyusd - audusd
-            jpycad = jpyusd - cadusd
-            jpychf = jpyusd - chfusd
-            jpyeur = jpyusd - eurusd
-            jpygbp = jpyusd - gbpusd
-            jpynzd = jpyusd - nzdusd
-            ku_close['JPY'] = (((jpyaud * jpy * aud) +
-                (jpycad * jpy * cad) + (jpychf * jpy * chf) +
-                (jpyeur * jpy * eur) + (jpygbp * jpy * gbp) +
-                (jpynzd * jpy * nzd) + (jpyusd * jpy * usd)) /
-                weight_sum * 10000.0)
-        # KU-NZDを作成する。
-        if nzd > EPS:
-            nzdaud = nzdusd - audusd
-            nzdcad = nzdusd - cadusd
-            nzdchf = nzdusd - chfusd
-            nzdeur = nzdusd - eurusd
-            nzdgbp = nzdusd - gbpusd
-            nzdjpy = nzdusd - jpyusd
-            ku_close['NZD'] = (((nzdaud * nzd * aud) +
-                (nzdcad * nzd * cad) + (nzdchf * nzd * chf) +
-                (nzdeur * nzd * eur) + (nzdgbp * nzd * gbp) +
-                (nzdjpy * nzd * jpy) + (nzdusd * nzd * usd)) /
-                weight_sum * 10000.0)
-        # KU-USDを作成する。
-        if usd > EPS:
-            usdaud = -audusd
-            usdcad = -cadusd
-            usdchf = -chfusd
-            usdeur = -eurusd
-            usdgbp = -gbpusd
-            usdjpy = -jpyusd
-            usdnzd = -nzdusd
-            ku_close['USD'] = (((usdaud * usd * aud) +
-                (usdcad * usd * cad) + (usdchf * usd * chf) +
-                (usdeur * usd * eur) + (usdgbp * usd * gbp) +
-                (usdjpy * usd * jpy) + (usdnzd * usd * nzd)) /
-                weight_sum * 10000.0)
-        ku_close = ku_close.fillna(method='ffill')
-        ku_close = ku_close.fillna(method='bfill')
-        # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if OANDA is None:
-            # 一時フォルダーがなければ作成する。
-            make_temp_folder()
-            joblib.dump(ku_close, path)
-    return ku_close
-
-def i_ku_return(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0,
-                gbp=0.0, jpy=0.0, nzd=0.0, usd=0.0):
-    '''Ku-Chartによるリターンを返す。
+def i_ku_bandwalk(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
+                  jpy=0, nzd=0, usd=0):
+    '''Ku-Powerのバンドウォークを返す。
     Args:
         timeframe: 期間。
         period:計算期間。
@@ -1365,7 +1192,164 @@ def i_ku_return(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0,
         nzd: NZドル。
         usd: 米ドル。
     Returns:
-        Ku-Chartによるリターン。
+        Ku-Powerのバンドウォーク。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/temp/i_ku_bandwalk_' +
+            str(timeframe) + '_' + str(period) + '_' + str(shift) + '_' +
+            str(aud) + str(cad) + str(chf) + str(eur) + str(gbp) + str(jpy) +
+            str(nzd) + str(usd) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        ku_bandwalk = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        @jit(int64[:, :](float64[:, :], float64[:, :], int64[:, :], int64,
+             int64), nopython=True, cache=True)
+        def func(ku_close, ku_ma, ret, m, n):
+            for j in range(n):
+                above = 0
+                below = 0
+                for i in range(m):
+                    if (ku_close[i][j] > ku_ma[i][j]):
+                        above = above + 1
+                    else:
+                        above = 0
+                    if (ku_close[i][j] < ku_ma[i][j]):
+                        below = below + 1
+                    else:
+                        below = 0
+                    ret[i][j] = above - below
+            return ret
+        ku_power = i_ku_power(timeframe, shift, aud=aud, cad=cad, chf=chf,
+                              eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
+        ku_ma = ku_power.rolling(window=period).mean()
+        index = ku_power.index
+        columns = ku_power.columns
+        ku_close = np.array(ku_power)
+        ku_ma = np.array(ku_ma)
+        m = ku_close.shape[0]
+        n = ku_close.shape[1]
+        ret = np.empty([m, n])
+        ret = ret.astype(int)
+        temp = func(ku_close, ku_ma, ret, m, n)
+        a = 0.667123147155
+        b = 1.78988517476
+        ku_bandwalk = temp / (a * period + b)
+        ku_bandwalk = pd.DataFrame(ku_bandwalk, index=index, columns=columns)
+        ku_bandwalk = ku_bandwalk.fillna(0.0)
+        ku_bandwalk[(ku_bandwalk==float('inf')) |
+                    (ku_bandwalk==float('-inf'))] = 0.0
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            make_temp_folder()
+            joblib.dump(ku_bandwalk, path)
+    return ku_bandwalk
+
+def i_ku_power(timeframe, shift, aud=0, cad=0, chf=0, eur=0, gbp=0, jpy=0,
+               nzd=0, usd=0):
+    '''Ku-Powerを返す。
+    Args:
+        timeframe: 期間。
+        shift: シフト。
+        aud: 豪ドル。
+        cad: カナダドル。
+        chf: スイスフラン。
+        eur: ユーロ。
+        gbp: ポンド。
+        jpy: 円。
+        nzd: NZドル。
+        usd: 米ドル。
+    Returns:
+        Ku-Power。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/temp/i_ku_power_' + str(timeframe) +
+        '_' + str(shift) + '_' + str(aud) + str(cad) + str(chf) + str(eur) +
+        str(gbp) + str(jpy) + str(nzd) + str(usd) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        ku_power = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        # 終値を格納する。
+        audusd = 0.0
+        cadusd = 0.0
+        chfusd = 0.0
+        eurusd = 0.0
+        gbpusd = 0.0
+        jpyusd = 0.0
+        nzdusd = 0.0
+        if aud == 1:
+            audusd = i_close('AUDUSD', timeframe, shift)
+            audusd = np.log(audusd)
+        if cad == 1:
+            cadusd = 1 / i_close('USDCAD', timeframe, shift)
+            cadusd = np.log(cadusd)
+        if chf == 1:
+            chfusd = 1 / i_close('USDCHF', timeframe, shift)
+            chfusd = np.log(chfusd)
+        if eur == 1:
+            eurusd = i_close('EURUSD', timeframe, shift)
+            eurusd = np.log(eurusd)
+        if gbp == 1:
+            gbpusd = i_close('GBPUSD', timeframe, shift)
+            gbpusd = np.log(gbpusd)
+        if jpy == 1:
+            jpyusd = 1 / i_close('USDJPY', timeframe, shift)
+            jpyusd = np.log(jpyusd)
+        if nzd == 1:
+            nzdusd = i_close('NZDUSD', timeframe, shift)
+            nzdusd = np.log(nzdusd)
+        # Ku-Powerを作成する。
+        n = aud + cad + chf + eur + gbp + jpy + nzd + usd
+        a = (audusd * aud + cadusd * cad + chfusd * chf + eurusd * eur +
+            gbpusd * gbp + jpyusd * jpy + nzdusd * nzd) / n
+        ku_power = pd.DataFrame()
+        if aud == 1:
+            ku_power['AUD'] = audusd - a
+        if cad == 1:
+            ku_power['CAD'] = cadusd - a
+        if chf == 1:
+            ku_power['CHF'] = chfusd - a
+        if eur == 1:
+            ku_power['EUR'] = eurusd - a
+        if gbp == 1:
+            ku_power['GBP'] = gbpusd - a
+        if jpy == 1:
+            ku_power['JPY'] = jpyusd - a
+        if nzd == 1:
+            ku_power['NZD'] = nzdusd - a
+        if usd == 1:
+            ku_power['USD'] = -a
+        ku_power = ku_power.fillna(method='ffill')
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            make_temp_folder()
+            joblib.dump(ku_power, path)
+    return ku_power
+
+def i_ku_return(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
+                jpy=0, nzd=0, usd=0):
+    '''Ku-Powerのリターンを返す。
+    Args:
+        timeframe: 期間。
+        period:計算期間。
+        shift: シフト。
+        aud: 豪ドル。
+        cad: カナダドル。
+        chf: スイスフラン。
+        eur: ユーロ。
+        gbp: ポンド。
+        jpy: 円。
+        nzd: NZドル。
+        usd: 米ドル。
+    Returns:
+        Ku-Powerのリターン。
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/temp/i_ku_return_' + str(timeframe) +
@@ -1378,9 +1362,9 @@ def i_ku_return(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0,
         ku_return = joblib.load(path)
     # さもなければ計算する。
     else:
-        ku_close = i_ku_close(timeframe, shift, aud=aud, cad=cad, chf=chf,
+        ku_power = i_ku_power(timeframe, shift, aud=aud, cad=cad, chf=chf,
                               eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
-        ku_return = ku_close - ku_close.shift(period)
+        ku_return = ku_power - ku_power.shift(period)
         ku_return = ku_return.fillna(0.0)
         ku_return[(ku_return==float('inf')) | (ku_return==float('-inf'))] = 0.0
         # バックテスト、またはウォークフォワードテストのとき、保存する。
@@ -1390,9 +1374,9 @@ def i_ku_return(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0,
             joblib.dump(ku_return, path)
     return ku_return
 
-def i_ku_zscore(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0,
-                gbp=0.0, jpy=0.0, nzd=0.0, usd=0.0):
-    '''Ku-Chartによる終値のZスコアを返す。
+def i_ku_zscore(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
+                jpy=0, nzd=0, usd=0):
+    '''Ku-PowerのZスコアを返す。
     Args:
         timeframe: 期間。
         period:計算期間。
@@ -1406,7 +1390,7 @@ def i_ku_zscore(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0,
         nzd: NZドル。
         usd: 米ドル。
     Returns:
-        Ku-Chartによる終値のZスコア。
+        Ku-PowerのZスコア。
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/temp/i_ku_zscore_' + str(timeframe) +
@@ -1419,11 +1403,11 @@ def i_ku_zscore(timeframe, period, shift, aud=0.0, cad=0.0, chf=0.0, eur=0.0,
         ku_zscore = joblib.load(path)
     # さもなければ計算する。
     else:
-        ku_close = i_ku_close(timeframe, shift, aud=aud, cad=cad, chf=chf,
+        ku_power = i_ku_power(timeframe, shift, aud=aud, cad=cad, chf=chf,
                               eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
-        mean = ku_close.rolling(window=period).mean()
-        std = ku_close.rolling(window=period).std()
-        ku_zscore = (ku_close - mean) / std
+        mean = ku_power.rolling(window=period).mean()
+        std = ku_power.rolling(window=period).std()
+        ku_zscore = (ku_power - mean) / std
         ku_zscore = ku_zscore.fillna(0.0)
         ku_zscore[(ku_zscore==float('inf')) | (ku_zscore==float('-inf'))] = 0.0
         # バックテスト、またはウォークフォワードテストのとき、保存する。
@@ -1833,75 +1817,6 @@ def i_range_duration(symbol, timeframe, period, shift):
             joblib.dump(range_duration, path)
     return range_duration
 
-def i_strength(timeframe, period, shift, aud=1, cad=0, chf=0, eur=1, gbp=1,
-               jpy=1, nzd=0, usd=1):
-    '''通貨の強さを返す。
-    Args:
-        symbol: 通貨ペア。
-        timeframe: 期間。
-        period: 計算期間。
-        shift: シフト。
-        aud: 豪ドルの設定。
-        cad: カナダドルの設定。
-        chf: スイスフランの設定。
-        eur: ユーロの設定。
-        gbp: ポンドの設定。
-        jpy: 円の設定。
-        nzd: NZドルの設定。
-        usd: 米ドルの設定。
-    Returns:
-        通貨の強さ。
-    '''
-    # 計算結果の保存先のパスを格納する。
-    path = (os.path.dirname(__file__) + '/temp/i_strength_' + str(timeframe) +
-            '_' + str(period) + '_' + str(shift) + str(aud) + str(cad) +
-            str(chf) + str(eur) + str(gbp) + str(jpy) + str(nzd) + '.pkl')
-    # バックテスト、またはウォークフォワードテストのとき、
-    # 計算結果が保存されていれば復元する。
-    if OANDA is None and os.path.exists(path) == True:
-        strength = joblib.load(path)
-    # さもなければ計算する。
-    else:
-        temp = pd.DataFrame()
-        n = 0
-        if aud == 1:
-            temp['aud'] = i_zscore('AUDUSD', timeframe, period, shift)
-            n += 1
-        if cad == 1:
-            temp['cad'] = -i_zscore('USDCAD', timeframe, period, shift)
-            n += 1
-        if chf == 1:
-            temp['chf'] = -i_zscore('USDCHF', timeframe, period, shift)
-            n += 1
-        if eur == 1:
-            temp['eur'] = i_zscore('EURUSD', timeframe, period, shift)
-            n += 1
-        if gbp == 1:
-            temp['gbp'] = i_zscore('GBPUSD', timeframe, period, shift)
-            n += 1
-        if jpy == 1:
-            temp['jpy'] = -i_zscore('USDJPY', timeframe, period, shift)
-            n += 1
-        if nzd == 1:
-            temp['nzd'] = i_zscore('NZDUSD', timeframe, period, shift)
-            n += 1
-        if usd == 1:
-            temp['usd'] = pd.Series(np.zeros(len(temp)), index=temp.index)
-            n += 1
-        # 同値になることはほとんどないと思うが、その場合は観測順にしている点に注意。
-        strength = temp.rank(axis=1, method='first')
-        data = np.array(range(1, n+1))
-        mean = np.mean(data)
-        std = np.std(data)
-        strength = (strength - mean) / std
-        strength = strength.fillna(method='ffill')
-        # バックテスト、またはウォークフォワードテストのとき、保存する。
-        if OANDA is None:
-            # 一時フォルダーがなければ作成する。
-            make_temp_folder()
-            joblib.dump(strength, path)
-    return strength
-
 def i_skew(symbol, timeframe, period, shift):
     '''対数リターンの歪度を返す。
     Args:
@@ -2048,6 +1963,75 @@ def i_stop_hunting_zone(symbol, timeframe, period, max_iter, pip, shift):
             make_temp_folder()
             joblib.dump(stop_hunting_zone, path)
     return stop_hunting_zone
+
+def i_strength(timeframe, period, shift, aud=1, cad=0, chf=0, eur=1, gbp=1,
+               jpy=1, nzd=0, usd=1):
+    '''通貨の強さを返す。
+    Args:
+        symbol: 通貨ペア。
+        timeframe: 期間。
+        period: 計算期間。
+        shift: シフト。
+        aud: 豪ドルの設定。
+        cad: カナダドルの設定。
+        chf: スイスフランの設定。
+        eur: ユーロの設定。
+        gbp: ポンドの設定。
+        jpy: 円の設定。
+        nzd: NZドルの設定。
+        usd: 米ドルの設定。
+    Returns:
+        通貨の強さ。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/temp/i_strength_' + str(timeframe) +
+            '_' + str(period) + '_' + str(shift) + str(aud) + str(cad) +
+            str(chf) + str(eur) + str(gbp) + str(jpy) + str(nzd) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        strength = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        temp = pd.DataFrame()
+        n = 0
+        if aud == 1:
+            temp['AUD'] = i_zscore('AUDUSD', timeframe, period, shift)
+            n += 1
+        if cad == 1:
+            temp['CAD'] = -i_zscore('USDCAD', timeframe, period, shift)
+            n += 1
+        if chf == 1:
+            temp['CHF'] = -i_zscore('USDCHF', timeframe, period, shift)
+            n += 1
+        if eur == 1:
+            temp['EUR'] = i_zscore('EURUSD', timeframe, period, shift)
+            n += 1
+        if gbp == 1:
+            temp['GBP'] = i_zscore('GBPUSD', timeframe, period, shift)
+            n += 1
+        if jpy == 1:
+            temp['JPY'] = -i_zscore('USDJPY', timeframe, period, shift)
+            n += 1
+        if nzd == 1:
+            temp['NZD'] = i_zscore('NZDUSD', timeframe, period, shift)
+            n += 1
+        if usd == 1:
+            temp['USD'] = pd.Series(np.zeros(len(temp)), index=temp.index)
+            n += 1
+        # 同値になることはほとんどないと思うが、その場合は観測順にしている点に注意。
+        strength = temp.rank(axis=1, method='first')
+        data = np.array(range(1, n+1))
+        mean = np.mean(data)
+        std = np.std(data)
+        strength = (strength - mean) / std
+        strength = strength.fillna(method='ffill')
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            make_temp_folder()
+            joblib.dump(strength, path)
+    return strength
 
 def i_trend(symbol, timeframe, period, shift):
     '''トレンドを返す。
@@ -2564,7 +2548,7 @@ def time_market_hours(index, market):
         market_hours[(market_hours.index.hour==18)
             & (market_hours.index.minute<30)] = 1
     # NY時間の場合。
-    else:
+    elif market == 'ny':
         market_hours = ((index.hour>=17) & (index.hour<23)) * 1
         market_hours = pd.Series(market_hours, index=index)
         market_hours[(market_hours.index.hour==16)
