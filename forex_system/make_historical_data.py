@@ -10,7 +10,6 @@ def make_historical_data(parser):
           Args:
               parser: パーサー。
     '''
-
     parser.add_argument('--audcad', type=int, default=0)
     parser.add_argument('--audchf', type=int, default=0)
     parser.add_argument('--audjpy', type=int, default=0)
@@ -362,7 +361,6 @@ def make_historical_data(parser):
         data1 = data.iloc[:, 0+(5*(count-1)): 5+(5*(count-1))]
         # 欠損値を補間する。
         data1 = data1.fillna(method='ffill')
-        data1 = data1.fillna(method='bfill')
         # 重複行を削除する。
         data1 = data1[~data1.index.duplicated()]
          # 2分、3分、4分、5分、6分、10分、12分、15分、20分、30分、1時間、2時間、3時間、4時間、
@@ -403,54 +401,6 @@ def make_historical_data(parser):
             '720T', label='left', closed='left').apply(ohlcv_dict)
         data1440 = data1.resample(
             '1440T', label='left', closed='left').apply(ohlcv_dict)
-        # 東京時間の足を作成する。
-        index = data30.index
-        tokyo_hours = ((index.hour>=2) & (index.hour<8)) * 1
-        tokyo_hours = pd.Series(tokyo_hours, index=index)
-        tokyo_hours[(tokyo_hours.index.month>=3)
-            & (tokyo_hours.index.month<11)] = (((index.hour>=3)
-            & (index.hour<9))) * 1
-        data_tokyo = data30[tokyo_hours==1]
-        data_tokyo = data_tokyo.resample(
-            '1440Min', label='left', closed='left').apply(ohlcv_dict)
-        # ロンドン時間の足を作成する。
-        london_hours = ((index.hour>=10) & (index.hour<18)) * 1
-        london_hours = pd.Series(london_hours, index=index)
-        london_hours[(london_hours.index.hour==18)
-            & (london_hours.index.minute<30)] = 1
-        data_london = data30[london_hours==1]
-        data_london = data_london.resample(
-            '1440Min', label='left', closed='left').apply(ohlcv_dict)
-        # ニューヨーク時間の足を作成する。
-        newyork_hours = ((index.hour>=17) & (index.hour<23)) * 1
-        newyork_hours = pd.Series(newyork_hours, index=index)
-        newyork_hours[(newyork_hours.index.hour==16)
-            & (newyork_hours.index.minute>=30)] = 1
-        data_newyork = data30[newyork_hours==1]
-        data_newyork = data_newyork.resample(
-            '1440Min', label='left', closed='left').apply(ohlcv_dict)
-        # 欠損値を削除する。
-        data2 = data2.dropna()
-        data3 = data3.dropna()
-        data4 = data4.dropna()
-        data5 = data5.dropna()
-        data6 = data6.dropna()
-        data10 = data10.dropna()
-        data12 = data12.dropna()
-        data15 = data15.dropna()
-        data20 = data20.dropna()
-        data30 = data30.dropna()
-        data60 = data60.dropna()
-        data120 = data120.dropna()
-        data180 = data180.dropna()
-        data240 = data240.dropna()
-        data360 = data360.dropna()
-        data480 = data480.dropna()
-        data720 = data720.dropna()
-        data1440 = data1440.dropna()
-        data_tokyo = data_tokyo.dropna()
-        data_london = data_london.dropna()
-        data_newyork = data_newyork.dropna()
         # 土日を削除する。
         data1 = data1[data1.index.dayofweek<5]
         data2 = data2[data2.index.dayofweek<5]
@@ -471,9 +421,6 @@ def make_historical_data(parser):
         data480 = data480[data480.index.dayofweek<5]
         data720 = data720[data720.index.dayofweek<5]
         data1440 = data1440[data1440.index.dayofweek<5]
-        data_tokyo = data_tokyo[data_tokyo.index.dayofweek<5]
-        data_london = data_london[data_london.index.dayofweek<5]
-        data_newyork = data_newyork[data_newyork.index.dayofweek<5]
         # ファイルを出力する。
         filename1 =  '~/historical_data/' + symbol + '1.csv'
         filename2 =  '~/historical_data/' + symbol + '2.csv'
@@ -494,9 +441,6 @@ def make_historical_data(parser):
         filename480 =  '~/historical_data/' + symbol + '480.csv'
         filename720 =  '~/historical_data/' + symbol + '720.csv'
         filename1440 =  '~/historical_data/' + symbol + '1440.csv'
-        filename_tokyo =  '~/historical_data/' + symbol + '_tokyo.csv'
-        filename_london =  '~/historical_data/' + symbol + '_london.csv'
-        filename_newyork =  '~/historical_data/' + symbol + '_newyork.csv'
         data1.to_csv(filename1)
         data2.to_csv(filename2)
         data3.to_csv(filename3)
@@ -516,9 +460,6 @@ def make_historical_data(parser):
         data480.to_csv(filename480)
         data720.to_csv(filename720)
         data1440.to_csv(filename1440)
-        data_tokyo.to_csv(filename_tokyo)
-        data_london.to_csv(filename_london)
-        data_newyork.to_csv(filename_newyork)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
