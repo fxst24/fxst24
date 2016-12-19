@@ -288,11 +288,12 @@ if __name__ == '__main__':
             start_test = end_train + timedelta(minutes=timeframe)
             if i == 0:
                 start_all = start_test
-            end_test = (start_test + timedelta(days=out_of_sample_period)
-                - timedelta(minutes=timeframe))
-            if end_test > end:
+            if (start_test + timedelta(days=out_of_sample_period)
+                - timedelta(minutes=timeframe)) > end:
                 end_all = end_test
                 break
+            end_test = (start_test + timedelta(days=out_of_sample_period)
+                - timedelta(minutes=timeframe))
             # EA1のバックテストを行う。
             if optimization == 2:
                 parameter1 = fs.optimize_params(rranges1, strategy1, symbol1,

@@ -272,6 +272,10 @@ def calc_signal(buy_entry, buy_exit, sell_entry, sell_exit):
         シグナル。
     '''
     # シグナルを計算する。
+    buy_entry = buy_entry.astype(int)
+    buy_exit = buy_exit.astype(int)
+    sell_entry = sell_entry.astype(int)
+    sell_exit = sell_exit.astype(int)
     buy = buy_entry.copy()
     buy[buy==0] = np.nan
     buy[buy_exit==1] = 0
@@ -784,14 +788,14 @@ def i_bands(symbol, timeframe, period, deviation, shift):
     return bands
 
 def i_bandwalk(symbol, timeframe, period, shift):
-    '''標準化されたバンドウォークを返す。
+    '''バンドウォークを返す。
     Args:
         symbol: 通貨ペア名。
         timeframe: タイムフレーム。
         period: 期間。
         shift: シフト。
     Returns:
-        標準化されたバンドウォーク。
+        バンドウォーク。
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/temp/i_bandwalk_' + symbol +
@@ -829,10 +833,7 @@ def i_bandwalk(symbol, timeframe, period, shift):
         length = len(ma)
         ret = np.empty(length)
         ret = ret.astype(np.int64)
-        temp = func(high, low, ma, ret, length)
-        a = 0.604624026522
-        b = -1.27979200463
-        bandwalk = temp / (a * period + b)
+        bandwalk = func(high, low, ma, ret, length)
         bandwalk = pd.Series(bandwalk, index=index)
         bandwalk = bandwalk.fillna(0)
         # バックテスト、またはウォークフォワードテストのとき、保存する。
@@ -841,6 +842,60 @@ def i_bandwalk(symbol, timeframe, period, shift):
             make_temp_folder()
             joblib.dump(bandwalk, path)
     return bandwalk
+
+def i_bandwalk_cl(symbol, timeframe, period, shift):
+    '''バンドウォーク（終値ベース）を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: タイムフレーム。
+        period: 期間。
+        shift: シフト。
+    Returns:
+        バンドウォーク（終値ベース）。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/temp/i_bandwalk_cl_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        bandwalk_cl = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        @jit(int64[:](float64[:], float64[:], int64[:], int64),
+             nopython=True, cache=True)
+        def func(close, ma, ret, length):
+            above = 0
+            below = 0
+            for i in range(length):
+                if (close[i] > ma[i]):
+                    above = above + 1
+                else:
+                    above = 0
+                if (close[i] < ma[i]):
+                    below = below + 1
+                else:
+                    below = 0
+                ret[i] = above - below
+            return ret
+
+        close = i_close(symbol, timeframe, shift)
+        ma = i_ma(symbol, timeframe, period, shift)
+        index = ma.index
+        close = np.array(close)
+        ma = np.array(ma)
+        length = len(ma)
+        ret = np.empty(length)
+        ret = ret.astype(np.int64)
+        bandwalk_cl = func(close, ma, ret, length)
+        bandwalk_cl = pd.Series(bandwalk_cl, index=index)
+        bandwalk_cl = bandwalk_cl.fillna(0)
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            make_temp_folder()
+            joblib.dump(bandwalk_cl, path)
+    return bandwalk_cl
 
 def i_close(symbol, timeframe, shift):
     '''終値を返す。
@@ -1233,10 +1288,7 @@ def i_ku_bandwalk(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
         n = ku_close.shape[1]
         ret = np.empty([m, n])
         ret = ret.astype(int)
-        temp = func(ku_close, ku_ma, ret, m, n)
-        a = 0.667123147155
-        b = 1.78988517476
-        ku_bandwalk = temp / (a * period + b)
+        ku_bandwalk = func(ku_close, ku_ma, ret, m, n)
         ku_bandwalk = pd.DataFrame(ku_bandwalk, index=index, columns=columns)
         ku_bandwalk = ku_bandwalk.fillna(0.0)
         ku_bandwalk[(ku_bandwalk==float('inf')) |

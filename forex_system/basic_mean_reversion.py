@@ -3,7 +3,7 @@
 import forex_system as fs
 # パラメータの設定
 MINUTE = 60
-ENTRY_THRESHOLD = 0.5
+ENTRY_THRESHOLD = 1.5
 FILTER_THRESHOLD = 1.5
 PARAMETER = [MINUTE, ENTRY_THRESHOLD, FILTER_THRESHOLD]
 # 最適化の設定
@@ -37,8 +37,11 @@ def strategy(parameter, symbol, timeframe):
     filter_threshold = float(parameter[2])
     # 戦略を記述する。
     period = fs.convert_minute2period(minute, timeframe)
+    slope = 0.605473054263
+    intercept = -0.987433743222
+    divisor = slope * period + intercept
     zscore1 = fs.i_zscore(symbol, timeframe, period, 1)
-    bandwalk1 = fs.i_bandwalk(symbol, timeframe, period, 1)
+    bandwalk1 = fs.i_bandwalk(symbol, timeframe, period, 1) / divisor
     buy_entry = ((
         (zscore1 <= -entry_threshold) &
         (bandwalk1 <= -filter_threshold)
