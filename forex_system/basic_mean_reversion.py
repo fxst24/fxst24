@@ -37,21 +37,21 @@ def strategy(parameter, symbol, timeframe):
     filter_threshold = float(parameter[2])
     # 戦略を記述する。
     period = fs.convert_minute2period(minute, timeframe)
-    slope = 0.605473054263
-    intercept = -0.987433743222
+    slope = 0.60527080848
+    intercept = -0.971875975206
     divisor = slope * period + intercept
     zscore1 = fs.i_zscore(symbol, timeframe, period, 1)
     bandwalk1 = fs.i_bandwalk(symbol, timeframe, period, 1) / divisor
-    buy_entry = ((
+    buy_entry = (
         (zscore1 <= -entry_threshold) &
         (bandwalk1 <= -filter_threshold)
-        ) * 1)
-    buy_exit = (zscore1 >= 0.0) * 1
-    sell_entry = ((
+        )
+    buy_exit = zscore1 >= 0.0
+    sell_entry = (
         (zscore1 >= entry_threshold) &
         (bandwalk1 >= filter_threshold)
-        ) * 1)
-    sell_exit = (zscore1 <= 0.0) * 1
+        )
+    sell_exit = zscore1 <= 0.0
     signal = fs.calc_signal(buy_entry, buy_exit, sell_entry, sell_exit)
 
     return signal
