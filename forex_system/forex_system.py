@@ -1421,15 +1421,15 @@ def i_ku_power(timeframe, shift, aud=0, cad=0, chf=0, eur=0, gbp=0, jpy=0,
         if aud == 1:
             audusd = i_log_close('AUDUSD', timeframe, shift)
         if cad == 1:
-            cadusd = 1 / i_log_close('USDCAD', timeframe, shift)
+            cadusd = -i_log_close('USDCAD', timeframe, shift)
         if chf == 1:
-            chfusd = 1 / i_log_close('USDCHF', timeframe, shift)
+            chfusd = -i_log_close('USDCHF', timeframe, shift)
         if eur == 1:
             eurusd = i_log_close('EURUSD', timeframe, shift)
         if gbp == 1:
             gbpusd = i_log_close('GBPUSD', timeframe, shift)
         if jpy == 1:
-            jpyusd = 1 / i_log_close('USDJPY', timeframe, shift)
+            jpyusd = -i_log_close('USDJPY', timeframe, shift)
         if nzd == 1:
             nzdusd = i_log_close('NZDUSD', timeframe, shift)
         # Ku-Powerを作成する。
