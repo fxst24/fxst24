@@ -436,7 +436,7 @@ def convert_symbol2instrument(symbol):
 def convert_timeframe2granularity(timeframe):
     '''timeframeをgranularityに変換する。
     Args:
-        timeframe: タイムフレーム。
+        timeframe: 期間。
     Returns:
         granularity。
     '''
@@ -455,6 +455,19 @@ def convert_timeframe2granularity(timeframe):
     else:
         granularity = 'D'
     return granularity
+
+def convert2annual_value_with_root_t_rule(ts, timeframe, period):
+    '''時系列データを√Tルールによって1年当たりの値に変換する。
+    Args:
+        ts: 時系列データ。
+        timeframe: 期間。
+        period: 計算期間。
+    Returns:
+        1年当たりの値。
+    '''
+    annual_value = ts * np.sqrt(60 * 24 * 260 / (timeframe * period))
+
+    return annual_value
 
 def divide_symbol(symbol):
     '''通貨ペアをベース通貨とクウォート通貨に分ける。
@@ -808,32 +821,32 @@ def i_bandwalk(symbol, timeframe, period, shift):
     else:
         @jit(int64[:](float64[:], float64[:], float64[:], int64[:], int64),
              nopython=True, cache=True)
-        def func(high, low, ma, ret, length):
+        def func(log_high, log_low, log_ma, ret, length):
             above = 0
             below = 0
             for i in range(length):
-                if (low[i] > ma[i]):
+                if (log_low[i] > log_ma[i]):
                     above = above + 1
                 else:
                     above = 0
-                if (high[i] < ma[i]):
+                if (log_high[i] < log_ma[i]):
                     below = below + 1
                 else:
                     below = 0
                 ret[i] = above - below
             return ret
 
-        high = i_high(symbol, timeframe, shift)
-        low = i_low(symbol, timeframe, shift)
-        ma = i_ma(symbol, timeframe, period, shift)
-        index = ma.index
-        high = np.array(high)
-        low = np.array(low)
-        ma = np.array(ma)
-        length = len(ma)
+        log_high = i_log_high(symbol, timeframe, shift)
+        log_low = i_log_low(symbol, timeframe, shift)
+        log_ma = i_log_ma(symbol, timeframe, period, shift)
+        index = log_ma.index
+        log_high = np.array(log_high)
+        log_low = np.array(log_low)
+        log_ma = np.array(log_ma)
+        length = len(log_ma)
         ret = np.empty(length)
         ret = ret.astype(np.int64)
-        bandwalk = func(high, low, ma, ret, length)
+        bandwalk = func(log_high, log_low, log_ma, ret, length)
         bandwalk = pd.Series(bandwalk, index=index)
         bandwalk = bandwalk.fillna(0)
         # バックテスト、またはウォークフォワードテストのとき、保存する。
@@ -862,32 +875,32 @@ def i_bandwalk_cl(symbol, timeframe, period, shift):
         bandwalk_cl = joblib.load(path)
     # さもなければ計算する。
     else:
-        @jit(int64[:](float64[:], float64[:], int64[:], int64),
-             nopython=True, cache=True)
-        def func(close, ma, ret, length):
+        @jit(int64[:](float64[:], float64[:], int64[:], int64), nopython=True,
+             cache=True)
+        def func(log_close, log_ma, ret, length):
             above = 0
             below = 0
             for i in range(length):
-                if (close[i] > ma[i]):
+                if (log_close[i] > log_ma[i]):
                     above = above + 1
                 else:
                     above = 0
-                if (close[i] < ma[i]):
+                if (log_close[i] < log_ma[i]):
                     below = below + 1
                 else:
                     below = 0
                 ret[i] = above - below
             return ret
 
-        close = i_close(symbol, timeframe, shift)
-        ma = i_ma(symbol, timeframe, period, shift)
-        index = ma.index
-        close = np.array(close)
-        ma = np.array(ma)
-        length = len(ma)
+        log_close = i_log_low(symbol, timeframe, shift)
+        log_ma = i_log_ma(symbol, timeframe, period, shift)
+        index = log_ma.index
+        log_close = np.array(log_close)
+        log_ma = np.array(log_ma)
+        length = len(log_ma)
         ret = np.empty(length)
         ret = ret.astype(np.int64)
-        bandwalk_cl = func(close, ma, ret, length)
+        bandwalk_cl = func(log_close, log_ma, ret, length)
         bandwalk_cl = pd.Series(bandwalk_cl, index=index)
         bandwalk_cl = bandwalk_cl.fillna(0)
         # バックテスト、またはウォークフォワードテストのとき、保存する。
@@ -938,7 +951,6 @@ def i_close(symbol, timeframe, shift):
             close = temp.iloc[:, 3]
             close = close.shift(shift)
             close = close.fillna(method='ffill')
-            close = close.fillna(method='bfill')
             # 一時フォルダーがなければ作成する。
             make_temp_folder()
             joblib.dump(close, path)
@@ -1231,6 +1243,36 @@ def i_hurst(symbol, timeframe, period, shift):
 #            joblib.dump(kalman_filter, path)
 #    return kalman_filter
 
+def i_kairi(symbol, timeframe, period, shift):
+    '''移動平均乖離率を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: 足の種類。
+        period: 計算期間。
+        shift: シフト。
+    Returns:
+        移動平均乖離率。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/temp/i_kairi_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        kairi = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        log_close = i_log_close(symbol, timeframe, shift)
+        mean = log_close.rolling(window=period).mean()
+        kairi = log_close - mean
+        kairi = kairi.fillna(method='ffill')
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            make_temp_folder()
+            joblib.dump(kairi, path)
+    return kairi
+
 def i_ku_bandwalk(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
                   jpy=0, nzd=0, usd=0):
     '''Ku-Powerのバンドウォークを返す。
@@ -1300,6 +1342,47 @@ def i_ku_bandwalk(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
             joblib.dump(ku_bandwalk, path)
     return ku_bandwalk
 
+def i_ku_kairi(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
+                jpy=0, nzd=0, usd=0):
+    '''Ku-PowerのZスコアを返す。
+    Args:
+        timeframe: 期間。
+        period:計算期間。
+        shift: シフト。
+        aud: 豪ドル。
+        cad: カナダドル。
+        chf: スイスフラン。
+        eur: ユーロ。
+        gbp: ポンド。
+        jpy: 円。
+        nzd: NZドル。
+        usd: 米ドル。
+    Returns:
+        Ku-PowerのZスコア。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/temp/i_ku_kairi_' + str(timeframe) +
+        '_' + str(period) + '_' + str(shift) + '_' + str(aud) + str(cad) +
+        str(chf) + str(eur) + str(gbp) + str(jpy) + str(nzd) + str(usd) +
+        '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        ku_kairi = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        ku_power = i_ku_power(timeframe, shift, aud=aud, cad=cad, chf=chf,
+                              eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
+        mean = ku_power.rolling(window=period).mean()
+        ku_kairi = ku_power - mean
+        ku_kairi = ku_kairi.fillna(method='ffill')
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            make_temp_folder()
+            joblib.dump(ku_kairi, path)
+    return ku_kairi
+
 def i_ku_power(timeframe, shift, aud=0, cad=0, chf=0, eur=0, gbp=0, jpy=0,
                nzd=0, usd=0):
     '''Ku-Powerを返す。
@@ -1336,26 +1419,19 @@ def i_ku_power(timeframe, shift, aud=0, cad=0, chf=0, eur=0, gbp=0, jpy=0,
         jpyusd = 0.0
         nzdusd = 0.0
         if aud == 1:
-            audusd = i_close('AUDUSD', timeframe, shift)
-            audusd = np.log(audusd)
+            audusd = i_log_close('AUDUSD', timeframe, shift)
         if cad == 1:
-            cadusd = 1 / i_close('USDCAD', timeframe, shift)
-            cadusd = np.log(cadusd)
+            cadusd = 1 / i_log_close('USDCAD', timeframe, shift)
         if chf == 1:
-            chfusd = 1 / i_close('USDCHF', timeframe, shift)
-            chfusd = np.log(chfusd)
+            chfusd = 1 / i_log_close('USDCHF', timeframe, shift)
         if eur == 1:
-            eurusd = i_close('EURUSD', timeframe, shift)
-            eurusd = np.log(eurusd)
+            eurusd = i_log_close('EURUSD', timeframe, shift)
         if gbp == 1:
-            gbpusd = i_close('GBPUSD', timeframe, shift)
-            gbpusd = np.log(gbpusd)
+            gbpusd = i_log_close('GBPUSD', timeframe, shift)
         if jpy == 1:
-            jpyusd = 1 / i_close('USDJPY', timeframe, shift)
-            jpyusd = np.log(jpyusd)
+            jpyusd = 1 / i_log_close('USDJPY', timeframe, shift)
         if nzd == 1:
-            nzdusd = i_close('NZDUSD', timeframe, shift)
-            nzdusd = np.log(nzdusd)
+            nzdusd = i_log_close('NZDUSD', timeframe, shift)
         # Ku-Powerを作成する。
         n = aud + cad + chf + eur + gbp + jpy + nzd + usd
         a = (audusd * aud + cadusd * cad + chfusd * chf + eurusd * eur +
@@ -1459,9 +1535,9 @@ def i_ku_zscore(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
                               eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
         mean = ku_power.rolling(window=period).mean()
         std = ku_power.rolling(window=period).std()
-        ku_zscore = (ku_power - mean) / std
-        ku_zscore = ku_zscore.fillna(0.0)
-        ku_zscore[(ku_zscore==float('inf')) | (ku_zscore==float('-inf'))] = 0.0
+        std = std.mean(axis=1)
+        ku_zscore = (ku_power - mean).div(std, axis=0)  # メモリーエラー対策。
+        ku_zscore = ku_zscore.fillna(method='ffill')
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
@@ -1499,15 +1575,156 @@ def i_kurt(symbol, timeframe, period, shift):
             joblib.dump(kurt, path)
     return kurt
 
-def i_log_return(symbol, timeframe, period, shift):
-    '''対数リターンを返す。
+def i_log_close(symbol, timeframe, shift):
+    '''対数変換した終値を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: 足の種類。
+        shift: シフト。
+    Returns:
+        対数変換した終値。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/temp/i_log_close_' + symbol +
+        str(timeframe) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        log_close = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        close = i_close(symbol, timeframe, shift)
+        log_close = np.log(close)
+        log_close = log_close.fillna(method='ffill')
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            make_temp_folder()
+            joblib.dump(log_close, path)
+    return log_close
+
+def i_log_high(symbol, timeframe, shift):
+    '''対数変換した高値を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: 足の種類。
+        shift: シフト。
+    Returns:
+        対数変換した高値。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/temp/i_log_high_' + symbol +
+        str(timeframe) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        log_high = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        high = i_high(symbol, timeframe, shift)
+        log_high = np.log(high)
+        log_high = log_high.fillna(method='ffill')
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            make_temp_folder()
+            joblib.dump(log_high, path)
+    return log_high
+
+def i_log_low(symbol, timeframe, shift):
+    '''対数変換した安値を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: 足の種類。
+        shift: シフト。
+    Returns:
+        対数変換した安値。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/temp/i_log_low_' + symbol +
+        str(timeframe) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        log_low = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        low = i_low(symbol, timeframe, shift)
+        log_low = np.log(low)
+        log_low = log_low.fillna(method='ffill')
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            make_temp_folder()
+            joblib.dump(log_low, path)
+    return log_low
+
+def i_log_ma(symbol, timeframe, period, shift):
+    '''対数変換した移動平均を返す。
     Args:
         symbol: 通貨ペア名。
         timeframe: 足の種類。
         period: 計算期間。
         shift: シフト。
     Returns:
-        対数リターン。
+        対数変換した移動平均。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/temp/i_log_ma_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        log_ma = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        log_close = i_log_close(symbol, timeframe, shift)
+        log_ma = log_close.rolling(window=period).mean()
+        log_ma = log_ma.fillna(method='ffill')
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            make_temp_folder()
+            joblib.dump(log_ma, path)
+    return log_ma
+
+def i_log_open(symbol, timeframe, shift):
+    '''対数変換した始値を返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: 足の種類。
+        shift: シフト。
+    Returns:
+        対数変換した始値。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/temp/i_log_open_' + symbol +
+        str(timeframe) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        log_open = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        op = i_open(symbol, timeframe, shift)
+        log_open = np.log(op)
+        log_open = log_open.fillna(method='ffill')
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            make_temp_folder()
+            joblib.dump(log_open, path)
+    return log_open
+
+def i_log_return(symbol, timeframe, period, shift):
+    '''対数変換したリターンを返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: 足の種類。
+        period: 計算期間。
+        shift: シフト。
+    Returns:
+        対数変換したリターン。
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/temp/i_log_return_' + symbol +
@@ -1518,11 +1735,9 @@ def i_log_return(symbol, timeframe, period, shift):
         log_return = joblib.load(path)
     # さもなければ計算する。
     else:
-        close = i_close(symbol, timeframe, shift)
-        log_return = np.log(close) - np.log(close.shift(period))
-        log_return = log_return.fillna(0.0)
-        log_return[(log_return==float('inf')) |
-            (log_return==float('-inf'))] = 0.0
+        log_close = i_log_close(symbol, timeframe, shift)
+        log_return = log_close - log_close.shift(period)
+        log_return = log_return.fillna(method='ffill')
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
@@ -2293,12 +2508,11 @@ def i_zscore(symbol, timeframe, period, shift):
         zscore = joblib.load(path)
     # さもなければ計算する。
     else:
-        close = i_close(symbol, timeframe, shift)
-        mean = close.rolling(window=period).mean()
-        std = close.rolling(window=period).std()
-        zscore = (close - mean) / std
-        zscore = zscore.fillna(0.0)
-        zscore[(zscore==float('inf')) | (zscore==float('-inf'))] = 0.0
+        log_close = i_log_close(symbol, timeframe, shift)
+        mean = log_close.rolling(window=period).mean()
+        std = log_close.rolling(window=period).std()
+        zscore = (log_close - mean) / std
+        zscore = zscore.fillna(method='ffill')
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
