@@ -1,18 +1,30 @@
 # coding: utf-8
 
+import argparse
 import forex_system as fs
 import numpy as np
 import pandas as pd
 from collections import OrderedDict
 from datetime import timedelta
+from scipy.stats import pearson3
 
 def func():
+    parser.add_argument('--mean', type=float)
+    parser.add_argument('--std', type=float)
+    parser.add_argument('--skew', type=float)
+    args = parser.parse_args()
+
+    # データが1/6分なので1分に調整（歪度は合ってる？）
+    mean = args.mean / 6
+    var = (args.std ** 2) / np.sqrt(6)
+    skew = args.skew * np.sqrt(6)
+
     usdjpy = fs.i_close('USDJPY', 1, 0)
     start = usdjpy.index[0]
     end = usdjpy.index[len(usdjpy)-1] + timedelta(seconds=59)
     index = pd.date_range(start, end, freq='10S')
     n = len(index)
-    rnd = np.random.randn(n) * 0.0001
+    rnd = pearson3.rvs(skew=skew, loc=mean, scale=var, size=n) 
     randomwalk = rnd.cumsum() + np.log(100)
     randomwalk = np.exp(randomwalk)
     randomwalk = pd.Series(randomwalk, index=index)
@@ -105,4 +117,5 @@ def func():
     randomwalk1440.to_csv('~/historical_data/RANDOM1440.csv')
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
     func()
