@@ -6,12 +6,14 @@ import numpy as np
 import oandapy
 import os
 import pandas as pd
+import requests
 import shutil
 import smtplib
 import threading
 import time
 from cvxopt import blas, solvers
 from datetime import datetime
+from datetime import timedelta
 from email.mime.text import MIMEText
 from numba import float64, int64, jit
 #from pykalman import KalmanFilter
@@ -667,7 +669,50 @@ def get_current_filename_no_ext():
     current_filename = current_filename.replace(pathname + '/', '') 
     current_filename_no_ext, ext = os.path.splitext(current_filename)
     return current_filename_no_ext
-    
+
+def get_intraday_data_from_google(symbol, timeframe):
+    '''日中足のデータをGoogleから取得する。
+      Args:
+          symbol: 銘柄。
+          timeframe: 足の種類。
+      Returns:
+          日中足のデータ。
+    '''
+
+    timeframe = timeframe * 60 + 1  # 秒に変換する（よく分からないが1を加える）。
+    google = 'http://www.google.com/finance/'
+    url = (google + 'getprices?q={0}'.format(symbol.upper()) +
+        "&i={0}&p={1}d&f=d,o,h,l,c,v".format(timeframe, 10))
+
+    # データをスクレイピングする。
+    # データは銘柄によって8行目からの場合と9行目からの場合があるようだ。
+    # 8行目の列数が少ない場合は9行目からと見なすことにする。
+    temp = requests.get(url).text.split()
+    if len(temp[7]) < 30:
+        row = 8
+    else:
+        row = 7
+    temp = [line.split(',') for line in temp[row:]]
+    temp = pd.DataFrame(temp)
+    index = temp.iloc[:, 0].apply(lambda x: datetime.fromtimestamp(int(x[1:])))
+    index = pd.to_datetime(index)
+    timeframe = int((timeframe - 1) / 60)  # 分に戻す。
+    index = index - timedelta(minutes=timeframe)
+    temp.index = index
+    temp = temp.iloc[:, 1:]
+
+    # データを整える。
+    data = pd.DataFrame(index=index,
+                        columns=['open','high','low','close','volume'])
+    data['open'] = temp.iloc[:, 3].astype(float)
+    data['high'] = temp.iloc[:, 1].astype(float)
+    data['low'] = temp.iloc[:, 2].astype(float)
+    data['close'] = temp.iloc[:, 0].astype(float)
+    data['volume'] = temp.iloc[:, 4].astype(int)
+    data.index.name = None
+
+    return data
+
 def has_event(index, timeframe, nfp=0):
     '''イベントの有無を返す。
     Args:
@@ -800,19 +845,21 @@ def i_bands(symbol, timeframe, period, deviation, shift):
             joblib.dump(bands, path)
     return bands
 
-def i_bandwalk(symbol, timeframe, period, shift):
+def i_bandwalk(symbol, timeframe, period, ma_method, shift):
     '''バンドウォークを返す。
     Args:
         symbol: 通貨ペア名。
         timeframe: タイムフレーム。
         period: 期間。
+        ma_method: 移動平均のメソッド。
         shift: シフト。
     Returns:
         バンドウォーク。
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/temp/i_bandwalk_' + symbol +
-        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+        str(timeframe) + '_' + str(period) + '_' + ma_method + '_' +
+        str(shift) + '.pkl')
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
     if OANDA is None and os.path.exists(path) == True:
@@ -821,32 +868,36 @@ def i_bandwalk(symbol, timeframe, period, shift):
     else:
         @jit(int64[:](float64[:], float64[:], float64[:], int64[:], int64),
              nopython=True, cache=True)
-        def func(log_high, log_low, log_ma, ret, length):
+        def func(high, low, ma, ret, length):
             above = 0
             below = 0
             for i in range(length):
-                if (log_low[i] > log_ma[i]):
+                if (low[i] > ma[i]):
                     above = above + 1
                 else:
                     above = 0
-                if (log_high[i] < log_ma[i]):
+                if (high[i] < ma[i]):
                     below = below + 1
                 else:
                     below = 0
                 ret[i] = above - below
             return ret
 
-        log_high = i_log_high(symbol, timeframe, shift)
-        log_low = i_log_low(symbol, timeframe, shift)
-        log_ma = i_log_ma(symbol, timeframe, period, shift)
-        index = log_ma.index
-        log_high = np.array(log_high)
-        log_low = np.array(log_low)
-        log_ma = np.array(log_ma)
-        length = len(log_ma)
+        high = i_high(symbol, timeframe, shift)
+        low = i_low(symbol, timeframe, shift)
+        close = i_close(symbol, timeframe, shift)
+        if ma_method == 'MODE_SMA':
+            ma = close.rolling(window=period).mean()
+        elif ma_method == 'MODE_EMA':
+            ma = close.ewm(span=period).mean()
+        index = ma.index
+        high = np.array(high)
+        low = np.array(low)
+        ma = np.array(ma)
+        length = len(ma)
         ret = np.empty(length)
         ret = ret.astype(np.int64)
-        bandwalk = func(log_high, log_low, log_ma, ret, length)
+        bandwalk = func(high, low, ma, ret, length)
         bandwalk = pd.Series(bandwalk, index=index)
         bandwalk = bandwalk.fillna(0)
         # バックテスト、またはウォークフォワードテストのとき、保存する。
@@ -856,19 +907,21 @@ def i_bandwalk(symbol, timeframe, period, shift):
             joblib.dump(bandwalk, path)
     return bandwalk
 
-def i_bandwalk_cl(symbol, timeframe, period, shift):
+def i_bandwalk_cl(symbol, timeframe, period, ma_method, shift):
     '''バンドウォーク（終値ベース）を返す。
     Args:
         symbol: 通貨ペア名。
         timeframe: タイムフレーム。
         period: 期間。
+        ma_method: 移動平均のメソッド。
         shift: シフト。
     Returns:
         バンドウォーク（終値ベース）。
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/temp/i_bandwalk_cl_' + symbol +
-        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+        str(timeframe) + '_' + str(period) + '_' + ma_method + '_' +
+        str(shift) + '.pkl')
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
     if OANDA is None and os.path.exists(path) == True:
@@ -892,15 +945,18 @@ def i_bandwalk_cl(symbol, timeframe, period, shift):
                 ret[i] = above - below
             return ret
 
-        log_close = i_log_low(symbol, timeframe, shift)
-        log_ma = i_log_ma(symbol, timeframe, period, shift)
-        index = log_ma.index
-        log_close = np.array(log_close)
-        log_ma = np.array(log_ma)
-        length = len(log_ma)
+        close = i_close(symbol, timeframe, shift)
+        if ma_method == 'MODE_SMA':
+            ma = close.rolling(window=period).mean()
+        elif ma_method == 'MODE_EMA':
+            ma = close.ewm(span=period).mean()
+        index = ma.index
+        close = np.array(close)
+        ma = np.array(ma)
+        length = len(ma)
         ret = np.empty(length)
         ret = ret.astype(np.int64)
-        bandwalk_cl = func(log_close, log_ma, ret, length)
+        bandwalk_cl = func(close, ma, ret, length)
         bandwalk_cl = pd.Series(bandwalk_cl, index=index)
         bandwalk_cl = bandwalk_cl.fillna(0)
         # バックテスト、またはウォークフォワードテストのとき、保存する。
@@ -909,6 +965,38 @@ def i_bandwalk_cl(symbol, timeframe, period, shift):
             make_temp_folder()
             joblib.dump(bandwalk_cl, path)
     return bandwalk_cl
+
+def i_opening_range(symbol, timeframe, shift):
+    '''日足始値からの（対数変換した）値幅を返す。
+    Args:
+        symbol: 通貨ペア。
+        timeframe: 期間。
+        shift: シフト。
+    Returns:
+        日足始値からの（対数変換した）値幅。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/temp/i_opening_range_' + symbol +
+            str(timeframe) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        opening_range = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        log_open = i_log_open(symbol, timeframe, shift)
+        log_close = i_log_close(symbol, timeframe, shift)
+        index = log_open.index
+        log_open[(time_hour(index)!=0) | (time_minute(index)!=0)] = np.nan
+        log_open = log_open.fillna(method='ffill')
+        opening_range = log_close - log_open
+        opening_range = opening_range.fillna(method='ffill')
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            make_temp_folder()
+            joblib.dump(opening_range, path)
+    return opening_range
 
 def i_close(symbol, timeframe, shift):
     '''終値を返す。
@@ -1738,6 +1826,8 @@ def i_log_return(symbol, timeframe, period, shift):
         log_close = i_log_close(symbol, timeframe, shift)
         log_return = log_close - log_close.shift(period)
         log_return = log_return.fillna(method='ffill')
+        log_return[(np.isnan(log_return)) | (log_return==float("inf")) |
+                (log_return==float("-inf"))] = 0.0
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
@@ -2303,9 +2393,9 @@ def i_strength(timeframe, period, shift, aud=1, cad=0, chf=0, eur=1, gbp=1,
 def i_trend(symbol, timeframe, period, shift):
     '''トレンドを返す。
     Args:
-        symbol: 通貨ペア名。
-        timeframe: タイムフレーム。
-        period: 期間。
+        symbol: 通貨ペア。
+        timeframe: 期間。
+        period: 計算期間。
         shift: シフト。
     Returns:
         トレンド。　1:正のトレンド。　0:トレンドなし。　-1:負のトレンド。
@@ -2334,9 +2424,9 @@ def i_trend(symbol, timeframe, period, shift):
 def i_trend_duration(symbol, timeframe, period, shift):
     '''正規化したトレンド期間を返す。
     Args:
-        symbol: 通貨ペア名。
-        timeframe: タイムフレーム。
-        period: 期間。
+        symbol: 通貨ペア。
+        timeframe: 期間。
+        period: 計算期間。
         shift: シフト。
     Returns:
         正規化したトレンド期間。
@@ -2385,8 +2475,8 @@ def i_trend_duration(symbol, timeframe, period, shift):
 def i_updown(symbol, timeframe, shift):
     '''騰落を返す。
     Args:
-        symbol: 通貨ペア名。
-        timeframe: タイムフレーム。
+        symbol: 通貨ペア。
+        timeframe: 期間。
         shift: シフト。
     Returns:
         騰落。
@@ -2414,8 +2504,8 @@ def i_updown(symbol, timeframe, shift):
 def i_vix4fx(symbol, timeframe, shift):
     '''1ヶ月当たりのボラティリティの予測値を返す。
     Args:
-        symbol: 通貨ペア名。
-        timeframe: タイムフレーム。
+        symbol: 通貨ペア。
+        timeframe: 期間。
         shift: シフト。
     Returns:
         1ヶ月当たりのボラティリティの予測値。
@@ -2441,6 +2531,37 @@ def i_vix4fx(symbol, timeframe, shift):
             make_temp_folder()
             joblib.dump(vix4fx, path)
     return vix4fx
+
+def i_volatility(symbol, timeframe, period, shift):
+    '''ボラティリティを返す。
+    Args:
+        symbol: 通貨ペア。
+        timeframe: 期間。
+        period: 計算期間。
+        shift: シフト。
+    Returns:
+        ボラティリティ。
+    '''
+    # 計算結果の保存先のパスを格納する。
+    path = (os.path.dirname(__file__) + '/temp/i_volatility_' + symbol +
+        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+    # バックテスト、またはウォークフォワードテストのとき、
+    # 計算結果が保存されていれば復元する。
+    if OANDA is None and os.path.exists(path) == True:
+        volatility = joblib.load(path)
+    # さもなければ計算する。
+    else:
+        log_return = i_log_return(symbol, timeframe, 1, shift)
+        mean = log_return.rolling(window=period).mean()
+        std = log_return.rolling(window=period).std()
+        volatility = (log_return - mean) / std
+        volatility = volatility.fillna(method='ffill')
+        # バックテスト、またはウォークフォワードテストのとき、保存する。
+        if OANDA is None:
+            # 一時フォルダーがなければ作成する。
+            make_temp_folder()
+            joblib.dump(volatility, path)
+    return volatility
 
 def i_volume(symbol, timeframe, shift):
     '''出来高を返す。
@@ -2489,30 +2610,37 @@ def i_volume(symbol, timeframe, shift):
             joblib.dump(volume, path)
     return volume
 
-def i_zscore(symbol, timeframe, period, shift):
+def i_zscore(symbol, timeframe, period, ma_method, shift):
     '''終値のzスコアを返す。
     Args:
         symbol: 通貨ペア名。
         timeframe: 足の種類。
         period: 計算期間。
+        ma_method: 移動平均のメソッド。
         shift: シフト。
     Returns:
         終値のzスコア。
     '''
     # 計算結果の保存先のパスを格納する。
     path = (os.path.dirname(__file__) + '/temp/i_zscore_' + symbol +
-        str(timeframe) + '_' + str(period) + '_' + str(shift) + '.pkl')
+        str(timeframe) + '_' + str(period) + '_' + ma_method + '_' +
+        str(shift) + '.pkl')
     # バックテスト、またはウォークフォワードテストのとき、
     # 計算結果が保存されていれば復元する。
     if OANDA is None and os.path.exists(path) == True:
         zscore = joblib.load(path)
     # さもなければ計算する。
     else:
-        log_close = i_log_close(symbol, timeframe, shift)
-        mean = log_close.rolling(window=period).mean()
-        std = log_close.rolling(window=period).std()
-        zscore = (log_close - mean) / std
+        close = i_close(symbol, timeframe, shift)
+        if ma_method == 'MODE_SMA':
+            mean = close.rolling(window=period).mean()
+            std = close.rolling(window=period).std()
+        elif ma_method == 'MODE_EMA':
+            mean = close.ewm(span=period).mean()
+            std = close.ewm(span=period).std()
+        zscore = (close - mean) / std
         zscore = zscore.fillna(method='ffill')
+        zscore[(zscore==float('inf')) | (zscore==float('-inf'))] = 0.0
         # バックテスト、またはウォークフォワードテストのとき、保存する。
         if OANDA is None:
             # 一時フォルダーがなければ作成する。
