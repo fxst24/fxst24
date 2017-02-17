@@ -2426,6 +2426,29 @@ def i_strength(timeframe, period, shift, aud=1, cad=0, chf=0, eur=1, gbp=1,
             joblib.dump(strength, path)
     return strength
 
+def i_trange(symbol, timeframe, shift):
+    '''TRANGEを返す。
+    Args:
+        symbol: 通貨ペア。
+        timeframe: 足の種類。
+        shift: シフト。
+    Returns:
+        TRANGE。
+    '''
+    pkl_file_path = create_pkl_file_path()  # 必ず最初に置く。
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        high = i_high(symbol, timeframe, shift)
+        low = i_low(symbol, timeframe, shift)
+        close = i_close(symbol, timeframe, shift)
+        temp = high - low
+        temp = pd.concat([temp, high - close.shift(1)], axis=1)
+        temp = pd.concat([temp, close.shift(1) - low], axis=1)
+        ret = temp.max(axis=1)
+        fill_invalidate_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
 def i_trend(symbol, timeframe, period, shift):
     '''トレンドを返す。
     Args:
@@ -2683,6 +2706,28 @@ def i_zscore(symbol, timeframe, period, ma_method, shift):
             make_temp_folder()
             joblib.dump(zscore, path)
     return zscore
+
+def i_zscore2(symbol, timeframe, period, ma_method, shift):
+    '''終値のzスコアを返す。
+    Args:
+        symbol: 通貨ペア名。
+        timeframe: 足の種類。
+        period: 計算期間。
+        ma_method: 移動平均のメソッド。
+        shift: シフト。
+    Returns:
+        終値のzスコア。
+    '''
+    pkl_file_path = create_pkl_file_path()  # 必ず最初に置く。
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        close = i_close(symbol, timeframe, shift)
+        diff = i_diff(symbol, timeframe, shift)
+        std = diff.rolling(window=period).std()
+        ret = (close - close.shift(period)) / (std * np.sqrt(period))
+        fill_invalidate_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
 
 def i_zresid(symbol, timeframe, period, method, shift, exp1=None, exp2=None,
              exp3=None, exp4=None, exp5=None, exp6=None, exp7=None):
