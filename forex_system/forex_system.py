@@ -486,7 +486,12 @@ def create_pkl_file_path():
     size = len(ls)
     arg_values = ''
     for i in range(size):
-        arg_values += '_' + str(ls[size-1-i])
+        if len(str(ls[size-1-i])) < 30:
+            arg_values += '_' + str(ls[size-1-i])
+        # 名前が長すぎる場合はindexと仮定する。
+        else:
+            arg_values += '_index'
+            
     arg_values += '.pkl'
     pkl_file_path = dir_name + func_name + arg_values
     return pkl_file_path
@@ -740,28 +745,6 @@ def get_intraday_data_from_google(symbol, timeframe):
 
     return data
 
-def has_event(index, timeframe, nfp=0):
-    '''イベントの有無を返す。
-    Args:
-        index: インデックス。
-        timeframe: 足の種類。
-    Returns:
-        イベントの有無。
-    '''
-    event = pd.Series(index=index)
-    week = time_week(index)
-    day_of_week = time_day_of_week(index)
-    hour = time_hour(index)
-    minute = time_minute(index)
-    # 非農業部門雇用者数
-    if nfp == 1:
-        m = int(np.floor(30 / timeframe) * timeframe)
-        h = int(np.floor(15 / (timeframe / 60)) * (timeframe / 60))
-        event[(week==1) & (day_of_week==5) & (hour==h) & (minute==m)] = 1
-    event = event.fillna(0)
-    event = event.astype(int)
-    return event
-
 def hour():
     '''現在の時を返す。
     Returns:
@@ -894,6 +877,7 @@ def i_bandwalk_cl(symbol, timeframe, period, ma_method, shift):
         fill_invalidate_data(ret)
         ret = ret.astype(int)
         save_pkl(ret, pkl_file_path)
+    return ret
 
 def i_close(symbol, timeframe, shift):
     '''終値を返す。
@@ -932,6 +916,70 @@ def i_close(symbol, timeframe, shift):
             ret = ret.shift(shift)
             fill_invalidate_data(ret)
             save_pkl(ret, pkl_file_path)
+    return ret
+
+def i_event(index, timeframe, before, after):
+    '''イベントの有無を返す（1時間未満の足でのみ使用する）。
+    Args:
+        index: インデックス。
+        timeframe: 足の種類。
+        before: イベントの前の時間（分単位）。
+        after: イベントの後の時間（分単位）。
+    Returns:
+        イベントの有無。
+            1: 有。
+            0:無。
+    '''
+    pkl_file_path = create_pkl_file_path()  # 必ず最初に置く。
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        temp = pd.Series(index=index)
+        day_of_week = time_day_of_week(index)
+        hour = time_hour(index)
+        minute = time_minute(index)
+        b = int(before / timeframe)
+        a = int(after / timeframe)
+        # Mon 00:00
+        temp[(day_of_week==1) & (hour==0) & (minute==0)] = 1
+        # Tue 16:00
+        temp[(day_of_week==2) & (hour==16) & (minute==0)] = 1
+        # Wen 10:30
+        temp[(day_of_week==3) & (hour==10) & (minute==30)] = 1
+        # Thu 03:30
+        temp[(day_of_week==4) & (hour==3) & (minute==30)] = 1
+        # Thu 10:30   
+        temp[(day_of_week==4) & (hour==10) & (minute==30)] = 1
+        # Thu 14:30
+        temp[(day_of_week==4) & (hour==14) & (minute==30)] = 1
+        # Thu 14:35
+        temp[(day_of_week==4) & (hour==14) & (minute==35)] = 1
+        # Thu 15:30
+        temp[(day_of_week==4) & (hour==15) & (minute==30)] = 1
+        # Thu 16:00
+        temp[(day_of_week==4) & (hour==16) & (minute==0)] = 1
+        # Fri 14:30
+        temp[(day_of_week==5) & (hour==14) & (minute==30)] = 1
+        # Fri 14:35
+        temp[(day_of_week==5) & (hour==14) & (minute==35)] = 1
+        # Fri 15:30
+        temp[(day_of_week==5) & (hour==15) & (minute==30)] = 1
+        # Fri 15:40
+        temp[(day_of_week==5) & (hour==15) & (minute==40)] = 1
+        # Fri 16:00
+        temp[(day_of_week==5) & (hour==16) & (minute==0)] = 1
+        # Fri 16:55
+        temp[(day_of_week==5) & (hour==16) & (minute==55)] = 1
+        temp = temp.fillna(0)
+        ret = temp.copy()
+        for i in range(b):
+            ret += temp.shift(-i-1)
+        for i in range(a):
+            ret += temp.shift(i+1)    
+        ret = ret.fillna(0)
+        ret[ret>1] = 1
+        fill_invalidate_data(ret)
+        ret = ret.astype(int)
+        save_pkl(ret, pkl_file_path)
     return ret
 
 def i_high(symbol, timeframe, shift):
