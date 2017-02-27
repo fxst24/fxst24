@@ -361,13 +361,9 @@ def calc_trades(signal, position, start, end):
         adjusted_signal[adjusted_signal==-1] = 0
     elif position == 1:
         adjusted_signal[adjusted_signal==1] = 0
-    temp1 = (((adjusted_signal > 0) &
-        (adjusted_signal > adjusted_signal.shift(1))) *
-        (adjusted_signal - adjusted_signal.shift(1)))
-    temp2 = (((adjusted_signal < 0) &
-        (adjusted_signal < adjusted_signal.shift(1))) *
-        (adjusted_signal.shift(1) - adjusted_signal))
-    trade = temp1 + temp2
+    buy_trade = (adjusted_signal.shift(1) != 1) & (adjusted_signal == 1)
+    sell_trade = (adjusted_signal.shift(1) != -1) & (adjusted_signal == -1)
+    trade = buy_trade | sell_trade
     trade = trade.fillna(0)
     trade = trade.astype(int)
     trades = trade[start:end].sum()
