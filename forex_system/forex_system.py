@@ -264,21 +264,30 @@ def calc_sharpe(ret, start, end):
         sharpe = np.sqrt(num_bar_per_year) * mean / std
     return sharpe
 
-def calc_signal(buy_entry, buy_exit, sell_entry, sell_exit):
+def calc_signal(trading_rules):
     '''シグナルを計算する。
     Args:
-        buy_entry: 買いエントリー。
-        buy_exit: 買いエグジット。
-        sell_entry: 売りエントリー。
-        sell_exit: 売りエグジット。
+        trading_rules: トレードルール。
     Returns:
         シグナル。
     '''
     # シグナルを計算する。
-    buy_entry = buy_entry.astype(int)
-    buy_exit = buy_exit.astype(int)
-    sell_entry = sell_entry.astype(int)
-    sell_exit = sell_exit.astype(int)
+    symbol = trading_rules[0]
+    timeframe = int(trading_rules[1])
+    buy_entry = trading_rules[2].astype(int)
+    buy_exit = trading_rules[3].astype(int)
+    sell_entry = trading_rules[4].astype(int)
+    sell_exit = trading_rules[5].astype(int)
+    lots = trading_rules[6]
+    sl = trading_rules[7]
+    tp = trading_rules[8]
+
+    # 後で不要なnanをなくすために先頭に0を入れておく。
+    buy_entry.iloc[0] = 0
+    buy_exit.iloc[0] = 0
+    sell_entry.iloc[0] = 0
+    sell_exit.iloc[0] = 0
+
     buy = buy_entry.copy()
     buy[buy==0] = np.nan
     buy[buy_exit==1] = 0
@@ -290,7 +299,51 @@ def calc_signal(buy_entry, buy_exit, sell_entry, sell_exit):
     signal = buy + sell
     signal = signal.fillna(0)
     signal = signal.astype(int)
-    return signal
+    if sl != 0 or tp != 0:
+        # pipsの単位を調整する。
+        if (symbol == 'AUDJPY' or symbol == 'CADJPY' or symbol == 'CHFJPY' or
+            symbol == 'EURJPY' or symbol == 'GBPJPY' or symbol == 'NZDJPY' or
+            symbol == 'USDJPY'):
+            adj_sl = sl / 100.0
+            adj_tp = tp / 100.0
+        else:
+            adj_sl = sl / 10000.0
+            adj_tp = tp / 10000.0
+        op = i_open(symbol, timeframe, 0)
+        cl = i_close(symbol, timeframe, 0)
+        buy_price = pd.Series(index=op.index)
+        sell_price = pd.Series(index=op.index)
+        buy_price[(signal==1) & (signal.shift(1)!=1)] = op.copy()
+        sell_price[(signal==-1) & (signal.shift(1)!=-1)] = op.copy()
+        buy_price[(signal!=1) & (signal.shift(1)==1)] = 0.0
+        sell_price[(signal!=-1) & (signal.shift(1)==-1)] = 0.0
+        buy_price.iloc[0] = 0.0
+        sell_price.iloc[0] = 0.0
+        buy_price = buy_price.fillna(method='ffill')
+        sell_price = sell_price.fillna(method='ffill')
+        buy_pl = cl * (signal == 1) - buy_price
+        sell_pl = sell_price - cl * (signal==-1)
+        if sl != 0:
+            buy_exit[(buy_pl.shift(2)>-adj_sl) &
+                     (buy_pl.shift(1)<=-adj_sl)] = 1
+            sell_exit[(sell_pl.shift(2)>-adj_sl) &
+                      (sell_pl.shift(1)<=-adj_sl)] = 1
+        if tp != 0:
+            buy_exit[(buy_pl.shift(2)<adj_tp) & (buy_pl.shift(1)>=adj_tp)] = 1
+            sell_exit[(sell_pl.shift(2)<adj_tp) &
+                      (sell_pl.shift(1)>=adj_tp)] = 1
+        buy = buy_entry.copy()
+        buy[buy==0] = np.nan
+        buy[buy_exit==1] = 0
+        buy = buy.fillna(method='ffill')
+        sell = -sell_entry.copy()
+        sell[sell==0] = np.nan
+        sell[sell_exit==1] = 0
+        sell = sell.fillna(method='ffill')
+        signal = buy + sell
+        signal = signal.fillna(0)
+        signal = signal.astype(int)
+    return signal, lots
 
 def calc_trades(signal, position, start, end):
     '''トレード数を計算する。
@@ -1655,7 +1708,7 @@ def optimize_params(rranges, strategy, symbol, timeframe, start, end, spread,
     def func(parameter, strategy, symbol, timeframe, start, end, spread,
              position, min_trade):
         # パフォーマンスを計算する。
-        signal = strategy(parameter, symbol, timeframe)
+        signal, lots = calc_signal(strategy(parameter, symbol, timeframe))
         ret = calc_ret(symbol, timeframe, signal, spread, position, start, end)
         trades = calc_trades(signal, position, start, end)
         sharpe = calc_sharpe(ret, start, end)
@@ -1870,7 +1923,7 @@ def time_week(index):
     time_week = (np.ceil(day / 7)).astype(int)
     return time_week
 
-def trade(mail, mt4, ea, symbol, timeframe, position, lots, ml, start_train,
+def trade(mail, mt4, ea, symbol, timeframe, position, ml, start_train,
           end_train):
     '''トレードを行う。
     Args:
@@ -1887,7 +1940,6 @@ def trade(mail, mt4, ea, symbol, timeframe, position, lots, ml, start_train,
             0: 買いのみ。
             1: 売りのみ。
             2: 売買両方。
-        lots: ロット数。
         ml: 機械学習の設定。
             0: 機械学習を使用しない。
             1:機械学習を使用する。
@@ -1968,10 +2020,12 @@ def trade(mail, mt4, ea, symbol, timeframe, position, lots, ml, start_train,
                 if history_time != pre_history_time:
                     pre_history_time = history_time
                     if ml == 0:
-                        signal = strategy(parameter, symbol, timeframe)
+                        signal, lots = calc_signal(strategy(parameter, symbol,
+                                                            timeframe))
                     elif ml == 1:
-                        signal = strategy(parameter, symbol, timeframe, model,
-                                          pred_train_std)
+                        signal, lots = calc_signal(strategy(parameter, symbol,
+                                                            timeframe, model,
+                                                            pred_train_std))
                     if position == 0:
                         signal[signal==-1] = 0
                     elif position == 1:

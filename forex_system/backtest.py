@@ -157,7 +157,8 @@ if __name__ == '__main__':
             parameter1 = fs.optimize_params(rranges1, strategy1, symbol1,
                                             timeframe, start, end, spread1,
                                             position1, min_trade1)
-        signal1 = strategy1(parameter1, symbol1, timeframe)
+        signal1, lots1 = fs.calc_signal(strategy1(parameter1, symbol1,
+                                                  timeframe))
         ret1 = fs.calc_ret(symbol1, timeframe, signal1, spread1, position1,
                            start, end)
         trades1 = fs.calc_trades(signal1, position1, start, end)
@@ -169,7 +170,8 @@ if __name__ == '__main__':
                 parameter2 = fs.optimize_params(rranges2, strategy2, symbol2,
                                                 timeframe, start, end, spread2,
                                                 position2, min_trade2)
-            signal2 = strategy2(parameter2, symbol2, timeframe)
+            signal2, lots2 = fs.calc_signal(strategy2(parameter2, symbol2,
+                                                      timeframe))
             ret2 = fs.calc_ret(symbol2, timeframe, signal2, spread2, position2,
                                start, end)
             trades2 = fs.calc_trades(signal2, position2, start, end)
@@ -181,7 +183,8 @@ if __name__ == '__main__':
                 parameter3 = fs.optimize_params(rranges3, strategy3, symbol3,
                                                 timeframe, start, end, spread3,
                                                 position3, min_trade3)
-            signal3 = strategy3(parameter3, symbol3, timeframe)
+            signal3, lots3 = fs.calc_signal(strategy3(parameter3, symbol3,
+                                                      timeframe))
             ret3 = fs.calc_ret(symbol3, timeframe, signal3, spread3, position3,
                                start, end)
             trades3 = fs.calc_trades(signal3, position3, start, end)
@@ -193,7 +196,8 @@ if __name__ == '__main__':
                 parameter4 = fs.optimize_params(rranges4, strategy4, symbol4,
                                                 timeframe, start, end, spread4,
                                                 position4, min_trade4)
-            signal4 = strategy4(parameter4, symbol4, timeframe)
+            signal4, lots4 = fs.calc_signal(strategy4(parameter4, symbol4,
+                                                      timeframe))
             ret4 = fs.calc_ret(symbol4, timeframe, signal4, spread4, position4,
                                start, end)
             trades4 = fs.calc_trades(signal4, position4, start, end)
@@ -205,7 +209,8 @@ if __name__ == '__main__':
                 parameter5 = fs.optimize_params(rranges5, strategy5, symbol5,
                                                 timeframe, start, end, spread5,
                                                 position5, min_trade5)
-            signal5 = strategy5(parameter5, symbol5, timeframe)
+            signal5, lots5 = fs.calc_signal(strategy5(parameter5, symbol5,
+                                                      timeframe))
             ret5 = fs.calc_ret(symbol5, timeframe, signal5, spread5, position5,
                                start, end)
             trades5 = fs.calc_trades(signal5, position5, start, end)
@@ -233,23 +238,23 @@ if __name__ == '__main__':
         report.iloc[0, 0] = start.strftime('%Y.%m.%d')
         report.iloc[0, 1] = end.strftime('%Y.%m.%d')
         report.iloc[0, 2] = trades
-        report.iloc[0, 3] = "{0:.3f}".format(apr)
-        report.iloc[0, 4] = "{0:.3f}".format(sharpe)
-        report.iloc[0, 5] = "{0:.3f}".format(kelly)
-        report.iloc[0, 6] = "{0:.3f}".format(drawdowns)
+        report.iloc[0, 3] = np.round(apr, 3)
+        report.iloc[0, 4] = np.round(sharpe, 3)
+        report.iloc[0, 5] = np.round(kelly, 3)
+        report.iloc[0, 6] = np.round(drawdowns, 3)
         report.iloc[0, 7] = durations
         if parameter1 is not None:
-            report.iloc[0, 8] = str(parameter1)
+            report.iloc[0, 8] = np.round(parameter1, 3)
         if parameter2 is not None:
-            report.iloc[0, 9] = str(parameter2)
+            report.iloc[0, 9] = np.round(parameter2, 3)
         if parameter3 is not None:
-            report.iloc[0, 10] = str(parameter3)
+            report.iloc[0, 10] = np.round(parameter3, 3)
         if parameter4 is not None:
-            report.iloc[0, 11] = str(parameter4)
+            report.iloc[0, 11] = np.round(parameter4, 3)
         if parameter5 is not None:
-            report.iloc[0, 12] = str(parameter5)
+            report.iloc[0, 12] = np.round(parameter5, 3)
         if weights is not None:
-            report.iloc[0, 13] = str(np.round(weights, 3))
+            report.iloc[0, 13] = np.round(weights, 3)
         report = report.dropna(axis=1)
         # グラフを作成、出力する。
         cum_ret = (ret + 1.0).cumprod() - 1.0
@@ -300,13 +305,15 @@ if __name__ == '__main__':
                                                 timeframe, start_train,
                                                 end_train, spread1, position1,
                                                 min_trade1)
-                signal1 = strategy1(parameter1, symbol1, timeframe)
+                signal1, lots1 = fs.calc_signal(strategy1(parameter1, symbol1,
+                                                          timeframe))
             elif optimization == 3:
                 model1, pred_train_std1 = build_model1(parameter1, symbol1,
                                                        timeframe, start_train,
                                                        end_train)
-                signal1 = strategy1(parameter1, symbol1, timeframe, model1,
-                                    pred_train_std1)
+                signal1, lots1 = fs.calc_signal(strategy1(parameter1, symbol1,
+                                                          timeframe, model1,
+                                                          pred_train_std1))
             ret_train1 = fs.calc_ret(symbol1, timeframe, signal1, spread1,
                                      position1, start_train, end_train)
             ret_test1 = fs.calc_ret(symbol1, timeframe, signal1, spread1,
@@ -324,14 +331,19 @@ if __name__ == '__main__':
                                                     start_train, end_train,
                                                     spread2, position2,
                                                     min_trade2)
-                    signal2 = strategy2(parameter2, symbol2, timeframe)
+                    signal2, lots2 = fs.calc_signal(strategy2(parameter2,
+                                                              symbol2,
+                                                              timeframe))
                 elif optimization == 3:
                     model2, pred_train_std2 = build_model2(parameter2, symbol2,
                                                            timeframe,
                                                            start_train,
                                                            end_train)
-                    signal2 = strategy2(parameter2, symbol2, timeframe, model2,
-                                        pred_train_std2)
+                    signal2, lots2 = fs.calc_signal(strategy2(parameter2,
+                                                              symbol2,
+                                                              timeframe,
+                                                              model2,
+                                                              pred_train_std2))
                 ret_train2 = fs.calc_ret(symbol2, timeframe, signal2, spread2,
                                          position2, start_train, end_train)
                 ret_test2 = fs.calc_ret(symbol2, timeframe, signal2, spread2,
@@ -349,14 +361,19 @@ if __name__ == '__main__':
                                                     start_train, end_train,
                                                     spread3, position3,
                                                     min_trade3)
-                    signal3 = strategy3(parameter3, symbol3, timeframe)
+                    signal3, lots3 = fs.calc_signal(strategy3(parameter3,
+                                                              symbol3,
+                                                              timeframe))
                 elif optimization == 3:
                     model3, pred_train_std3 = build_model3(parameter3, symbol3,
                                                            timeframe,
                                                            start_train,
                                                            end_train)
-                    signal3 = strategy3(parameter3, symbol3, timeframe, model3,
-                                        pred_train_std3)
+                    signal3, lots3 = fs.calc_signal(strategy3(parameter3,
+                                                              symbol3,
+                                                              timeframe,
+                                                              model3,
+                                                              pred_train_std3))
                 ret_train3 = fs.calc_ret(symbol3, timeframe, signal3, spread3,
                                          position3, start_train, end_train)
                 ret_test3 = fs.calc_ret(symbol3, timeframe, signal3, spread3,
@@ -374,14 +391,19 @@ if __name__ == '__main__':
                                                     start_train, end_train,
                                                     spread4, position4,
                                                     min_trade4)
-                    signal4 = strategy4(parameter4, symbol4, timeframe)
+                    signal4, lots4 = fs.calc_signal(strategy4(parameter4,
+                                                              symbol4,
+                                                              timeframe))
                 elif optimization == 3:
                     model4, pred_train_std4 = build_model4(parameter4, symbol4,
                                                            timeframe,
                                                            start_train,
                                                            end_train)
-                    signal4 = strategy4(parameter4, symbol4, timeframe, model4,
-                                        pred_train_std4)
+                    signal4, lots4 = fs.calc_signal(strategy4(parameter4,
+                                                              symbol4,
+                                                              timeframe,
+                                                              model4,
+                                                              pred_train_std4))
                 ret_train4 = fs.calc_ret(symbol4, timeframe, signal4, spread4,
                                          position4, start_train, end_train)
                 ret_test4 = fs.calc_ret(symbol4, timeframe, signal4, spread4,
@@ -399,14 +421,19 @@ if __name__ == '__main__':
                                                     start_train, end_train,
                                                     spread5, position5,
                                                     min_trade5)
-                    signal5 = strategy5(parameter5, symbol5, timeframe)
+                    signal5, lots5 = fs.calc_signal(strategy5(parameter5,
+                                                              symbol5,
+                                                              timeframe))
                 elif optimization == 3:
                     model5, pred_train_std5 = build_model5(parameter5, symbol5,
                                                            timeframe,
                                                            start_train,
                                                            end_train)
-                    signal5 = strategy5(parameter5, symbol5, timeframe, model5,
-                                        pred_train_std5)
+                    signal5, lots5 = fs.calc_signal(strategy5(parameter5,
+                                                              symbol5,
+                                                              timeframe,
+                                                              model5,
+                                                              pred_train_std5))
                 ret_train5 = fs.calc_ret(symbol5, timeframe, signal5, spread5,
                                          position5, start_train, end_train)
                 ret_test5 = fs.calc_ret(symbol5, timeframe, signal5, spread5,
@@ -444,23 +471,23 @@ if __name__ == '__main__':
             report.iloc[i, 0] = start_test.strftime('%Y.%m.%d')
             report.iloc[i, 1] = end_test.strftime('%Y.%m.%d')
             report.iloc[i, 2] = trades_test
-            report.iloc[i, 3] = "{0:.3f}".format(apr)
-            report.iloc[i, 4] = "{0:.3f}".format(sharpe)
-            report.iloc[i, 5] = "{0:.3f}".format(kelly)
-            report.iloc[i, 6] = "{0:.3f}".format(drawdowns)
+            report.iloc[i, 3] = np.round(apr, 3)
+            report.iloc[i, 4] = np.round(sharpe, 3)
+            report.iloc[i, 5] = np.round(kelly, 3)
+            report.iloc[i, 6] = np.round(drawdowns, 3)
             report.iloc[i, 7] = durations
             if parameter1 is not None:
-                report.iloc[i, 8] = str(parameter1)
+                report.iloc[i, 8] = np.round(parameter1, 3)
             if parameter2 is not None:
-                report.iloc[i, 9] = str(parameter2)
+                report.iloc[i, 9] = np.round(parameter1, 3)
             if parameter3 is not None:
-                report.iloc[i, 10] = str(parameter3)
+                report.iloc[i, 10] = np.round(parameter1, 3)
             if parameter4 is not None:
-                report.iloc[i, 11] = str(parameter4)
+                report.iloc[i, 11] = np.round(parameter1, 3)
             if parameter5 is not None:
-                report.iloc[i, 12] = str(parameter5)
+                report.iloc[i, 12] = np.round(parameter1, 3)
             if weights_train is not None:
-                report.iloc[i, 13] = str(np.round(weights_train, 3))
+                report.iloc[i, 13] = np.round(weights_train, 3)
             i += 1
         # 全体のレポートを最後に追加する。
         apr = fs.calc_apr(ret_test_all, start_all, end_all)
@@ -471,10 +498,10 @@ if __name__ == '__main__':
         report.iloc[i, 0] = start_all.strftime('%Y.%m.%d')
         report.iloc[i, 1] = end_all.strftime('%Y.%m.%d')
         report.iloc[i, 2] = report.iloc[:, 2].sum()
-        report.iloc[i, 3] = "{0:.3f}".format(apr)
-        report.iloc[i, 4] = "{0:.3f}".format(sharpe)
-        report.iloc[i, 5] = "{0:.3f}".format(kelly)
-        report.iloc[i, 6] = "{0:.3f}".format(drawdowns)
+        report.iloc[i, 3] = np.round(apr, 3)
+        report.iloc[i, 4] = np.round(sharpe, 3)
+        report.iloc[i, 5] = np.round(kelly, 3)
+        report.iloc[i, 6] = np.round(drawdowns, 3)
         report.iloc[i, 7] = durations
         if parameter1 is not None:
             report.iloc[i, 8] = ''
