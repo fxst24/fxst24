@@ -741,8 +741,10 @@ def fill_invalidate_data(data):
     Args:
         data: データ。
     '''
-    data = data.fillna(method='ffill')
-    data[(np.isnan(data)) | (data==float("inf")) | (data==float("-inf"))] = 0.0
+    ret = data.copy()
+    ret = ret.fillna(method='ffill')
+    ret[(np.isnan(ret)) | (ret==float("inf")) | (ret==float("-inf"))] = 0.0
+    return ret
 
 def get_current_filename_no_ext():
     '''拡張子なしの現在のファイル名を返す。
@@ -827,7 +829,7 @@ def i_atr(symbol, timeframe, period, shift):
         temp = pd.concat([temp, close.shift(1) - low], axis=1)
         tr = temp.max(axis=1)
         ret = tr.rolling(window=period).mean()
-        fill_invalidate_data(ret)
+        ret = fill_invalidate_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
@@ -878,7 +880,7 @@ def i_bandwalk(symbol, timeframe, period, ma_method, shift):
         ret = ret.astype(np.int64)
         ret = func(high, low, ma, ret, length)
         ret = pd.Series(ret, index=index)
-        fill_invalidate_data(ret)
+        ret = fill_invalidate_data(ret)
         ret = ret.astype(int)
         save_pkl(ret, pkl_file_path)
     return ret
@@ -927,7 +929,7 @@ def i_bandwalk_cl(symbol, timeframe, period, ma_method, shift):
         ret = ret.astype(np.int64)
         ret = func(close, ma, ret, length)
         ret = pd.Series(ret, index=index)
-        fill_invalidate_data(ret)
+        ret = fill_invalidate_data(ret)
         ret = ret.astype(int)
         save_pkl(ret, pkl_file_path)
     return ret
@@ -967,7 +969,7 @@ def i_close(symbol, timeframe, shift):
             temp.index = index
             ret = temp.iloc[:, 3]
             ret = ret.shift(shift)
-            fill_invalidate_data(ret)
+            ret = fill_invalidate_data(ret)
             save_pkl(ret, pkl_file_path)
     return ret
 
@@ -1030,7 +1032,7 @@ def i_event(index, timeframe, before, after):
             ret += temp.shift(i+1)    
         ret = ret.fillna(0)
         ret[ret>1] = 1
-        fill_invalidate_data(ret)
+        ret = fill_invalidate_data(ret)
         ret = ret.astype(int)
         save_pkl(ret, pkl_file_path)
     return ret
@@ -1070,7 +1072,7 @@ def i_high(symbol, timeframe, shift):
             temp.index = index
             ret = temp.iloc[:, 1]
             ret = ret.shift(shift)
-            fill_invalidate_data(ret)
+            ret = fill_invalidate_data(ret)
             save_pkl(ret, pkl_file_path)
     return ret
 
@@ -1095,7 +1097,7 @@ def i_highest(symbol, timeframe, period, shift):
 
         high = i_high(symbol, timeframe, shift)
         ret = high.rolling(window=period).apply(func)
-        fill_invalidate_data(ret)
+        ret = fill_invalidate_data(ret)
         ret = ret.astype(int)
         save_pkl(ret, pkl_file_path)
     return ret
@@ -1119,7 +1121,7 @@ def i_hl_band(symbol, timeframe, period, shift):
         ret['high'] = high.rolling(window=period).max()
         ret['low'] = low.rolling(window=period).min()
         ret['middle'] = (ret['high'] + ret['low']) / 2
-        fill_invalidate_data(ret)
+        ret = fill_invalidate_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
@@ -1173,7 +1175,7 @@ def i_ku_bandwalk(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
         ret = np.empty([m, n])
         ret = func(ku_close, ku_ma, ret, m, n)
         ret = pd.DataFrame(ret, index=index, columns=columns)
-        fill_invalidate_data(ret)
+        ret = fill_invalidate_data(ret)
         ret = ret.astype(int)
         save_pkl(ret, pkl_file_path)
     return ret
@@ -1241,7 +1243,7 @@ def i_ku_power(timeframe, shift, aud=0, cad=0, chf=0, eur=0, gbp=0, jpy=0,
             ret['NZD'] = nzdusd - a
         if usd == 1:
             ret['USD'] = -a
-        fill_invalidate_data(ret)
+        ret = fill_invalidate_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
@@ -1269,7 +1271,7 @@ def i_ku_roc(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
         ku_power = i_ku_power(timeframe, shift, aud=aud, cad=cad, chf=chf,
                               eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
         ret = ku_power - ku_power.shift(period)
-        fill_invalidate_data(ret)
+        ret = fill_invalidate_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
@@ -1305,7 +1307,7 @@ def i_ku_zscore(timeframe, period, ma_method, shift, aud=0, cad=0, chf=0,
             std = ku_power.ewm(span=period).std()
         std = std.mean(axis=1)
         ret = (ku_power - mean).div(std, axis=0)  # メモリーエラー対策。
-        fill_invalidate_data(ret)
+        ret = fill_invalidate_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
@@ -1344,7 +1346,7 @@ def i_low(symbol, timeframe, shift):
             temp.index = index
             ret = temp.iloc[:, 2]
             ret = ret.shift(shift)
-            fill_invalidate_data(ret)
+            ret = fill_invalidate_data(ret)
             save_pkl(ret, pkl_file_path)
     return ret
 
@@ -1369,7 +1371,7 @@ def i_lowest(symbol, timeframe, period, shift):
 
         low = i_low(symbol, timeframe, shift)
         ret = low.rolling(window=period).apply(func)
-        fill_invalidate_data(ret)
+        ret = fill_invalidate_data(ret)
         ret = ret.astype(int)
         save_pkl(ret, pkl_file_path)
     return ret
@@ -1409,7 +1411,7 @@ def i_open(symbol, timeframe, shift):
             temp.index = index
             ret = temp.iloc[:, 0]
             ret = ret.shift(shift)
-            fill_invalidate_data(ret)
+            ret = fill_invalidate_data(ret)
             save_pkl(ret, pkl_file_path)
     return ret
 
@@ -1431,7 +1433,7 @@ def i_opening_range(symbol, timeframe, shift):
         log_open[(time_hour(index)!=0) | (time_minute(index)!=0)] = np.nan
         log_open = log_open.fillna(method='ffill')
         ret = log_close - log_open
-        fill_invalidate_data(ret)
+        ret = fill_invalidate_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
@@ -1450,7 +1452,7 @@ def i_roc(symbol, timeframe, period, shift):
     if ret is None:
         close = i_close(symbol, timeframe, shift)
         ret = (close / close.shift(period) - 1.0) * 100.0
-        fill_invalidate_data(ret)
+        ret = fill_invalidate_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
@@ -1508,7 +1510,7 @@ def i_strength(timeframe, period, shift, aud=1, cad=0, chf=0, eur=1, gbp=1,
         mean = np.mean(data)
         std = np.std(data)
         ret = (ret - mean) / std
-        fill_invalidate_data(ret)
+        ret = fill_invalidate_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
@@ -1531,7 +1533,7 @@ def i_trange(symbol, timeframe, shift):
         temp = pd.concat([temp, high - close.shift(1)], axis=1)
         temp = pd.concat([temp, close.shift(1) - low], axis=1)
         ret = temp.max(axis=1)
-        fill_invalidate_data(ret)
+        ret = fill_invalidate_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
@@ -1570,7 +1572,7 @@ def i_volume(symbol, timeframe, shift):
             temp.index = index
             ret = temp.iloc[:, 4]
             ret = ret.shift(shift)
-            fill_invalidate_data(ret)
+            ret = fill_invalidate_data(ret)
             save_pkl(ret, pkl_file_path)
     return ret
 
@@ -1596,7 +1598,7 @@ def i_zscore(symbol, timeframe, period, ma_method, shift):
             mean = close.ewm(span=period).mean()
             std = close.ewm(span=period).std()
         ret = (close - mean) / std
-        fill_invalidate_data(ret)
+        ret = fill_invalidate_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
@@ -1667,7 +1669,7 @@ def i_zresid(symbol, timeframe, period, method, shift, exp1=None, exp2=None,
             y = close[i-period+1:i+1]
             ret[i] = func(x, y, period, clf)
         ret = pd.Series(ret, index=index)
-        fill_invalidate_data(ret)
+        ret = fill_invalidate_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
