@@ -282,19 +282,15 @@ def calc_signal(trading_rules):
     sl = trading_rules[7]
     tp = trading_rules[8]
 
-    # 後で不要なnanをなくすために先頭に0を入れておく。
-    buy_entry.iloc[0] = 0
-    buy_exit.iloc[0] = 0
-    sell_entry.iloc[0] = 0
-    sell_exit.iloc[0] = 0
-
     buy = buy_entry.copy()
     buy[buy==0] = np.nan
     buy[buy_exit==1] = 0
+    buy.iloc[0] = 0  # 不要なnanをなくすために先頭に0を入れておく。
     buy = buy.fillna(method='ffill')
     sell = -sell_entry.copy()
     sell[sell==0] = np.nan
     sell[sell_exit==1] = 0
+    sell.iloc[0] = 0  # 不要なnanをなくすために先頭に0を入れておく。
     sell = sell.fillna(method='ffill')
     signal = buy + sell
     signal = signal.fillna(0)
@@ -335,10 +331,12 @@ def calc_signal(trading_rules):
         buy = buy_entry.copy()
         buy[buy==0] = np.nan
         buy[buy_exit==1] = 0
+        buy.iloc[0] = 0  # 不要なnanをなくすために先頭に0を入れておく。
         buy = buy.fillna(method='ffill')
         sell = -sell_entry.copy()
         sell[sell==0] = np.nan
         sell[sell_exit==1] = 0
+        sell.iloc[0] = 0  # 不要なnanをなくすために先頭に0を入れておく。
         sell = sell.fillna(method='ffill')
         signal = buy + sell
         signal = signal.fillna(0)
