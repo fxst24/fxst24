@@ -219,9 +219,9 @@ def calc_ret(symbol, timeframe, signal, spread, position, start, end):
     if (symbol == 'AUDJPY' or symbol == 'CADJPY' or symbol == 'CHFJPY' or
         symbol == 'EURJPY' or symbol == 'GBPJPY' or symbol == 'NZDJPY' or
         symbol == 'USDJPY'):
-        adjusted_spread = spread / 1000.0
+        adjusted_spread = spread / 100.0
     else:
-        adjusted_spread = spread / 100000.0
+        adjusted_spread = spread / 10000.0
     # シグナルを調整する。
     adjusted_signal = signal.copy()
     if position == 0:
