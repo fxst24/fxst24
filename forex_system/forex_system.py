@@ -336,9 +336,9 @@ def calc_signal(trading_rules):
         sell[sell_exit==True] = 0.0
         sell.iloc[0] = 0.0  # 不要なnanをなくすために先頭に0を入れておく。
         sell = sell.fillna(method='ffill')
-        signal = buy - sell
-        signal = signal.fillna(0.0)
-        signal = signal.astype(int)
+    signal = buy - sell
+    signal = signal.fillna(0.0)
+    signal = signal.astype(int)
     return signal, lots
 
 def calc_trades(signal, position, start, end):
