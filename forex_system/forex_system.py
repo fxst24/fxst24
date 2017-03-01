@@ -274,27 +274,24 @@ def calc_signal(trading_rules):
     # シグナルを計算する。
     symbol = trading_rules[0]
     timeframe = int(trading_rules[1])
-    buy_entry = trading_rules[2].astype(int)
-    buy_exit = trading_rules[3].astype(int)
-    sell_entry = trading_rules[4].astype(int)
-    sell_exit = trading_rules[5].astype(int)
+    buy_entry = trading_rules[2]
+    buy_exit = trading_rules[3]
+    sell_entry = trading_rules[4]
+    sell_exit = trading_rules[5]
     lots = trading_rules[6]
     sl = trading_rules[7]
     tp = trading_rules[8]
 
     buy = buy_entry.copy()
-    buy[buy==0] = np.nan
-    buy[buy_exit==1] = 0
-    buy.iloc[0] = 0  # 不要なnanをなくすために先頭に0を入れておく。
+    buy[buy==False] = np.nan
+    buy[buy_exit==True] = 0.0
+    buy.iloc[0] = 0.0  # 不要なnanをなくすために先頭に0を入れておく。
     buy = buy.fillna(method='ffill')
-    sell = -sell_entry.copy()
-    sell[sell==0] = np.nan
-    sell[sell_exit==1] = 0
-    sell.iloc[0] = 0  # 不要なnanをなくすために先頭に0を入れておく。
+    sell = sell_entry.copy()
+    sell[sell==False] = np.nan
+    sell[sell_exit==True] = 0.0
+    sell.iloc[0] = 0.0  # 不要なnanをなくすために先頭に0を入れておく。
     sell = sell.fillna(method='ffill')
-    signal = buy + sell
-    signal = signal.fillna(0)
-    signal = signal.astype(int)
     if sl != 0 or tp != 0:
         # pipsの単位を調整する。
         if (symbol == 'AUDJPY' or symbol == 'CADJPY' or symbol == 'CHFJPY' or
@@ -309,37 +306,38 @@ def calc_signal(trading_rules):
         cl = i_close(symbol, timeframe, 0)
         buy_price = pd.Series(index=op.index)
         sell_price = pd.Series(index=op.index)
-        buy_price[(signal==1) & (signal.shift(1)!=1)] = op.copy()
-        sell_price[(signal==-1) & (signal.shift(1)!=-1)] = op.copy()
-        buy_price[(signal!=1) & (signal.shift(1)==1)] = 0.0
-        sell_price[(signal!=-1) & (signal.shift(1)==-1)] = 0.0
+        buy_price[(buy>=0.5) & (buy.shift(1)<0.5)] = op.copy()
+        sell_price[(sell>=0.5) & (sell.shift(1)<0.5)] = op.copy()
+        buy_price[(buy<0.5) & (buy.shift(1)>=0.5)] = 0.0
+        sell_price[(sell<0.5) & (sell.shift(1)>=0.5)] = 0.0
         buy_price.iloc[0] = 0.0
         sell_price.iloc[0] = 0.0
         buy_price = buy_price.fillna(method='ffill')
         sell_price = sell_price.fillna(method='ffill')
-        buy_pl = cl * (signal == 1) - buy_price
-        sell_pl = sell_price - cl * (signal==-1)
+        buy_pl = cl * (buy>=0.5) - buy_price
+        sell_pl = sell_price - cl * (sell>=0.5)
         if sl != 0:
             buy_exit[(buy_pl.shift(2)>-adj_sl) &
-                     (buy_pl.shift(1)<=-adj_sl)] = 1
+                     (buy_pl.shift(1)<=-adj_sl)] = True
             sell_exit[(sell_pl.shift(2)>-adj_sl) &
-                      (sell_pl.shift(1)<=-adj_sl)] = 1
+                      (sell_pl.shift(1)<=-adj_sl)] = True
         if tp != 0:
-            buy_exit[(buy_pl.shift(2)<adj_tp) & (buy_pl.shift(1)>=adj_tp)] = 1
+            buy_exit[(buy_pl.shift(2)<adj_tp) &
+                     (buy_pl.shift(1)>=adj_tp)] = True
             sell_exit[(sell_pl.shift(2)<adj_tp) &
-                      (sell_pl.shift(1)>=adj_tp)] = 1
+                      (sell_pl.shift(1)>=adj_tp)] = True
         buy = buy_entry.copy()
-        buy[buy==0] = np.nan
-        buy[buy_exit==1] = 0
-        buy.iloc[0] = 0  # 不要なnanをなくすために先頭に0を入れておく。
+        buy[buy==False] = np.nan
+        buy[buy_exit==True] = 0.0
+        buy.iloc[0] = 0.0  # 不要なnanをなくすために先頭に0を入れておく。
         buy = buy.fillna(method='ffill')
-        sell = -sell_entry.copy()
-        sell[sell==0] = np.nan
-        sell[sell_exit==1] = 0
-        sell.iloc[0] = 0  # 不要なnanをなくすために先頭に0を入れておく。
+        sell = sell_entry.copy()
+        sell[sell==False] = np.nan
+        sell[sell_exit==True] = 0.0
+        sell.iloc[0] = 0.0  # 不要なnanをなくすために先頭に0を入れておく。
         sell = sell.fillna(method='ffill')
-        signal = buy + sell
-        signal = signal.fillna(0)
+        signal = buy - sell
+        signal = signal.fillna(0.0)
         signal = signal.astype(int)
     return signal, lots
 
