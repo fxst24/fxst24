@@ -981,41 +981,151 @@ def i_event(index, timeframe, before, after):
     ret = restore_pkl(pkl_file_path)
     if ret is None:
         temp = pd.Series(index=index)
+        week_of_month = time_week_of_month(index)
         day_of_week = time_day_of_week(index)
         hour = time_hour(index)
         minute = time_minute(index)
         b = int(before / timeframe)
         a = int(after / timeframe)
-        # Mon 00:00
-        temp[(day_of_week==1) & (hour==0) & (minute==0)] = 1
-        # Tue 16:00
-        temp[(day_of_week==2) & (hour==16) & (minute==0)] = 1
-        # Wen 10:30
-        temp[(day_of_week==3) & (hour==10) & (minute==30)] = 1
-        # Thu 03:30
-        temp[(day_of_week==4) & (hour==3) & (minute==30)] = 1
-        # Thu 10:30   
-        temp[(day_of_week==4) & (hour==10) & (minute==30)] = 1
-        # Thu 14:30
-        temp[(day_of_week==4) & (hour==14) & (minute==30)] = 1
-        # Thu 14:35
-        temp[(day_of_week==4) & (hour==14) & (minute==35)] = 1
-        # Thu 15:30
-        temp[(day_of_week==4) & (hour==15) & (minute==30)] = 1
-        # Thu 16:00
-        temp[(day_of_week==4) & (hour==16) & (minute==0)] = 1
-        # Fri 14:30
-        temp[(day_of_week==5) & (hour==14) & (minute==30)] = 1
-        # Fri 14:35
-        temp[(day_of_week==5) & (hour==14) & (minute==35)] = 1
-        # Fri 15:30
-        temp[(day_of_week==5) & (hour==15) & (minute==30)] = 1
-        # Fri 15:40
-        temp[(day_of_week==5) & (hour==15) & (minute==40)] = 1
-        # Fri 16:00
-        temp[(day_of_week==5) & (hour==16) & (minute==0)] = 1
-        # Fri 16:55
-        temp[(day_of_week==5) & (hour==16) & (minute==55)] = 1
+
+        # (1, 1, 0, 0)
+        temp[(week_of_month==1) & (day_of_week==1) & (hour==0) &
+             (minute==0)] = 1
+        #(1, 2, 5, 30)
+        temp[(week_of_month==1) & (day_of_week==2) & (hour==5) &
+             (minute==30)] = 1
+        #(1, 2, 6, 30)
+        temp[(week_of_month==1) & (day_of_week==2) & (hour==6) &
+             (minute==30)] = 1
+        #(1, 2, 6, 35)
+        temp[(week_of_month==1) & (day_of_week==2) & (hour==6) &
+             (minute==35)] = 1
+        #(1, 2, 10, 30)
+        temp[(week_of_month==1) & (day_of_week==2) & (hour==10) &
+             (minute==30)] = 1
+        #(1, 2, 16, 0)
+        temp[(week_of_month==1) & (day_of_week==2) & (hour==16) &
+             (minute==0)] = 1
+        #(1, 3, 3, 30)
+        temp[(week_of_month==1) & (day_of_week==3) & (hour==3) &
+             (minute==30)] = 1
+        #(1, 3, 10, 30)
+        temp[(week_of_month==1) & (day_of_week==3) & (hour==10) &
+             (minute==30)] = 1
+        #(1, 3, 16, 0)
+        temp[(week_of_month==1) & (day_of_week==3) & (hour==16) &
+             (minute==0)] = 1
+        #(1, 4, 3, 30)
+        temp[(week_of_month==1) & (day_of_week==4) & (hour==3) &
+             (minute==30)] = 1
+        #(1, 4, 14, 0)
+        temp[(week_of_month==1) & (day_of_week==4) & (hour==14) &
+             (minute==0)] = 1
+        #(1, 4, 14, 40)
+        temp[(week_of_month==1) & (day_of_week==4) & (hour==14) &
+             (minute==40)] = 1
+        #(1, 4, 16, 0)
+        temp[(week_of_month==1) & (day_of_week==4) & (hour==16) &
+             (minute==0)] = 1
+        #(1, 5, 14, 30)
+        temp[(week_of_month==1) & (day_of_week==5) & (hour==14) &
+             (minute==30)] = 1
+        #(1, 5, 14, 35)
+        temp[(week_of_month==1) & (day_of_week==5) & (hour==14) &
+             (minute==35)] = 1
+        #(1, 5, 14, 40)
+        temp[(week_of_month==1) & (day_of_week==5) & (hour==14) &
+             (minute==40)] = 1
+        #(1, 5, 14, 45)
+        temp[(week_of_month==1) & (day_of_week==5) & (hour==14) &
+             (minute==45)] = 1
+        #(1, 5, 15, 25)
+        temp[(week_of_month==1) & (day_of_week==5) & (hour==15) &
+             (minute==25)] = 1
+        #(1, 5, 15, 30)
+        temp[(week_of_month==1) & (day_of_week==5) & (hour==15) &
+             (minute==30)] = 1
+        #(1, 5, 15, 35)
+        temp[(week_of_month==1) & (day_of_week==5) & (hour==15) &
+             (minute==35)] = 1
+        #(1, 5, 15, 40)
+        temp[(week_of_month==1) & (day_of_week==5) & (hour==15) &
+             (minute==40)] = 1
+        #(1, 5, 15, 45)
+        temp[(week_of_month==1) & (day_of_week==5) & (hour==15) &
+             (minute==45)] = 1
+        #(1, 5, 16, 0)
+        temp[(week_of_month==1) & (day_of_week==5) & (hour==16) &
+             (minute==0)] = 1
+        #(2, 1, 0, 0)
+        temp[(week_of_month==2) & (day_of_week==1) & (hour==0) &
+             (minute==0)] = 1
+        #(2, 2, 10, 30)
+        temp[(week_of_month==2) & (day_of_week==2) & (hour==10) &
+             (minute==30)] = 1
+        #(2, 4, 3, 30)
+        temp[(week_of_month==2) & (day_of_week==4) & (hour==3) &
+             (minute==30)] = 1
+        #(2, 4, 14, 30)
+        temp[(week_of_month==2) & (day_of_week==4) & (hour==14) &
+             (minute==30)] = 1
+        #(2, 4, 15, 30)
+        temp[(week_of_month==2) & (day_of_week==4) & (hour==15) &
+             (minute==30)] = 1
+        #(2, 5, 15, 30)
+        temp[(week_of_month==2) & (day_of_week==5) & (hour==15) &
+             (minute==30)] = 1
+        #(2, 5, 15, 40)
+        temp[(week_of_month==2) & (day_of_week==5) & (hour==15) &
+             (minute==40)] = 1
+        #(2, 5, 16, 0)
+        temp[(week_of_month==2) & (day_of_week==5) & (hour==16) &
+             (minute==0)] = 1
+        #(2, 5, 17, 0)
+        temp[(week_of_month==2) & (day_of_week==5) & (hour==17) &
+             (minute==0)] = 1
+        #(3, 1, 0, 0)
+        temp[(week_of_month==3) & (day_of_week==1) & (hour==0) &
+             (minute==0)] = 1
+        #(3, 2, 3, 30)
+        temp[(week_of_month==3) & (day_of_week==2) & (hour==3) &
+             (minute==30)] = 1
+        #(3, 2, 10, 30)
+        temp[(week_of_month==3) & (day_of_week==2) & (hour==10) &
+             (minute==30)] = 1
+        #(3, 3, 10, 30)
+        temp[(week_of_month==3) & (day_of_week==3) & (hour==10) &
+             (minute==30)] = 1
+        #(3, 4, 10, 30)
+        temp[(week_of_month==3) & (day_of_week==4) & (hour==10) &
+             (minute==30)] = 1
+        #(3, 4, 14, 30)
+        temp[(week_of_month==3) & (day_of_week==4) & (hour==14) &
+             (minute==30)] = 1
+        #(3, 4, 16, 0)
+        temp[(week_of_month==3) & (day_of_week==4) & (hour==16) &
+             (minute==0)] = 1
+        #(4, 1, 0, 0)
+        temp[(week_of_month==4) & (day_of_week==1) & (hour==0) &
+             (minute==0)] = 1
+        #(4, 3, 2, 30)
+        temp[(week_of_month==4) & (day_of_week==3) & (hour==2) &
+             (minute==30)] = 1
+        #(4, 4, 14, 30)
+        temp[(week_of_month==4) & (day_of_week==4) & (hour==14) &
+             (minute==30)] = 1
+        #(5, 1, 0, 0)
+        temp[(week_of_month==5) & (day_of_week==1) & (hour==0) &
+             (minute==0)] = 1
+        #(5, 3, 17, 0)
+        temp[(week_of_month==5) & (day_of_week==3) & (hour==17) &
+             (minute==0)] = 1
+        #(5, 5, 14, 30)
+        temp[(week_of_month==5) & (day_of_week==5) & (hour==14) &
+             (minute==30)] = 1
+        #(5, 5, 16, 55)
+        temp[(week_of_month==5) & (day_of_week==5) & (hour==16) &
+             (minute==55)] = 1
         temp = temp.fillna(0)
         ret = temp.copy()
         for i in range(b):
@@ -1408,23 +1518,24 @@ def i_open(symbol, timeframe, shift):
     return ret
 
 def i_opening_range(symbol, timeframe, shift):
-    '''日足始値からの（対数変換した）値幅を返す。
+    '''日足始値からの値幅(%)を返す。
     Args:
         symbol: 通貨ペア。
         timeframe: 足の種類。
         shift: シフト。
     Returns:
-        日足始値からの（対数変換した）値幅。
+        日足始値からの値幅(%)。
     '''
     pkl_file_path = create_pkl_file_path()  # 必ず最初に置く。
     ret = restore_pkl(pkl_file_path)
     if ret is None:
-        log_open = np.log(i_open(symbol, timeframe, shift))
-        log_close = np.log(i_close(symbol, timeframe, shift))
-        index = log_open.index
-        log_open[(time_hour(index)!=0) | (time_minute(index)!=0)] = np.nan
-        log_open = log_open.fillna(method='ffill')
-        ret = log_close - log_open
+        op = i_open(symbol, timeframe, shift)
+        cl = i_close(symbol, timeframe, shift)
+        index = op.index
+        daily_op = op.copy()
+        daily_op[(time_hour(index)!=0) | (time_minute(index)!=0)] = np.nan
+        daily_op = daily_op.fillna(method='ffill')
+        ret = cl / daily_op - 1.0
         ret = fill_invalidate_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
@@ -1540,7 +1651,7 @@ def i_volume(symbol, timeframe, shift):
     '''
     pkl_file_path = create_pkl_file_path()  # 必ず最初に置く。
     # トレードのとき、
-    if OANDA is None:
+    if OANDA is not None:
         instrument = convert_symbol2instrument(symbol)
         granularity = convert_timeframe2granularity(timeframe)
         temp = OANDA.get_history(
@@ -1874,6 +1985,20 @@ def time_month(index):
     '''
     time_month = pd.Series(index.month, index=index)
     return time_month
+
+def time_week_of_month(index):
+    '''月の何番目の曜日であるかを返す。
+       例えば週が日曜日から始まるとして、1日が土曜日だったとする。
+       2日の日曜日は月としては第2週だが、第1日曜日である。
+       この場合、2番目ではなくて1番目であるとする。
+    Args:
+        index: インデックス。
+    Returns:
+        週（1-5）。
+    '''
+    day = time_day(index)
+    time_week_of_month = (np.ceil(day / 7)).astype(int)
+    return time_week_of_month
 
 def time_market_hours(index, market):
     '''指定した市場の時間であるか否かを返す（30分足以下で使用すること）。

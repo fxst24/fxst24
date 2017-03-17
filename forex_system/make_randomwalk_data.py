@@ -9,9 +9,9 @@ from datetime import timedelta
 from scipy.stats import pearson3
 
 def func():
-    parser.add_argument('--mean', type=float)
-    parser.add_argument('--std', type=float)
-    parser.add_argument('--skew', type=float)
+    parser.add_argument('--mean', default=0.0, type=float)
+    parser.add_argument('--std', default=(0.01/np.sqrt(1440)), type=float)
+    parser.add_argument('--skew', default=0.0, type=float)
     args = parser.parse_args()
 
     # データが1/6分なので1分に調整（歪度は合ってる？）
