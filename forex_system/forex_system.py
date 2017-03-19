@@ -549,89 +549,91 @@ def divide_symbol(symbol):
         ベース通貨、クウォート通貨。
     '''
     if symbol == 'AUDCAD':
-        base = 'aud'
-        quote = 'cad'
+        base = 'AUD'
+        quote = 'CAD'
     elif symbol == 'AUDCHF':
-        base = 'aud'
-        quote = 'chf'
+        base = 'AUD'
+        quote = 'CHF'
     elif symbol == 'AUDJPY':
-        base = 'aud'
-        quote = 'jpy'
+        base = 'AUD'
+        quote = 'JPY'
     elif symbol == 'AUDNZD':
-        base = 'aud'
-        quote = 'nzd'
+        base = 'AUD'
+        quote = 'NZD'
     elif symbol == 'AUDUSD':
-        base = 'aud'
-        quote = 'usd'
+        base = 'AUD'
+        quote = 'USD'
     elif symbol == 'CADCHF':
-        base = 'cad'
-        quote = 'chf'
+        base = 'CAD'
+        quote = 'CHF'
     elif symbol == 'CADJPY':
-        base = 'cad'
-        quote = 'jpy'
+        base = 'CAD'
+        quote = 'JPY'
     elif symbol == 'CHFJPY':
-        base = 'chf'
-        quote = 'jpy'
+        base = 'CHF'
+        quote = 'JPY'
     elif symbol == 'EURAUD':
-        base = 'eur'
-        quote = 'aud'
+        base = 'EUR'
+        quote = 'AUD'
     elif symbol == 'EURCAD':
-        base = 'eur'
-        quote = 'cad'
+        base = 'EUR'
+        quote = 'CAD'
     elif symbol == 'EURCHF':
-        base = 'eur'
-        quote = 'chf'
+        base = 'EUR'
+        quote = 'CHF'
     elif symbol == 'EURGBP':
-        base = 'eur'
-        quote = 'gbp'
+        base = 'EUR'
+        quote = 'GBP'
     elif symbol == 'EURJPY':
-        base = 'eur'
-        quote = 'jpy'
+        base = 'EUR'
+        quote = 'JPY'
     elif symbol == 'EURNZD':
-        base = 'eur'
-        quote = 'nzd'
+        base = 'EUR'
+        quote = 'NZD'
     elif symbol == 'EURUSD':
-        base = 'eur'
-        quote = 'usd'
+        base = 'EUR'
+        quote = 'USD'
     elif symbol == 'GBPAUD':
-        base = 'gbp'
-        quote = 'aud'
+        base = 'GBP'
+        quote = 'AUD'
     elif symbol == 'GBPCAD':
-        base = 'gbp'
-        quote = 'cad'
+        base = 'GBP'
+        quote = 'CAD'
     elif symbol == 'GBPCHF':
-        base = 'gbp'
-        quote = 'chf'
+        base = 'GBP'
+        quote = 'CHF'
     elif symbol == 'GBPJPY':
-        base = 'gbp'
-        quote = 'jpy'
+        base = 'GBP'
+        quote = 'JPY'
     elif symbol == 'GBPNZD':
-        base = 'gbp'
-        quote = 'nzd'
+        base = 'GBP'
+        quote = 'NZD'
     elif symbol == 'GBPUSD':
-        base = 'gbp'
-        quote = 'usd'
+        base = 'GBP'
+        quote = 'USD'
     elif symbol == 'NZDCAD':
-        base = 'nzd'
-        quote = 'cad'
+        base = 'NZD'
+        quote = 'CAD'
     elif symbol == 'NZDCHF':
-        base = 'nzd'
-        quote = 'chf'
+        base = 'NZD'
+        quote = 'CHF'
     elif symbol == 'NZDJPY':
-        base = 'nzd'
-        quote = 'jpy'
+        base = 'NZD'
+        quote = 'JPY'
     elif symbol == 'NZDUSD':
-        base = 'nzd'
-        quote = 'usd'
+        base = 'NZD'
+        quote = 'USD'
     elif symbol == 'USDCAD':
-        base = 'usd'
-        quote = 'cad'
+        base = 'USD'
+        quote = 'CAD'
     elif symbol == 'USDCHF':
-        base = 'usd'
-        quote = 'chf'
+        base = 'USD'
+        quote = 'CHF'
+    elif symbol == 'USDJPY':
+        base = 'USD'
+        quote = 'JPY'
     else:
-        base = 'usd'
-        quote = 'jpy'
+        print('error: divide_symbol')
     return base, quote
 
 def divide_symbol_time(symbol):
@@ -735,7 +737,7 @@ def fill_invalidate_data(data):
     '''
     ret = data.copy()
     ret = ret.fillna(method='ffill')
-    ret[(np.isnan(ret)) | (ret==float("inf")) | (ret==float("-inf"))] = 0.0
+    ret[(np.isnan(ret)) | (ret==float("inf")) | (ret==float("-inf"))] = 1.0e-5
     return ret
 
 def get_current_filename_no_ext():
@@ -825,107 +827,6 @@ def i_atr(symbol, timeframe, period, shift):
         save_pkl(ret, pkl_file_path)
     return ret
 
-def i_bandwalk(symbol, timeframe, period, ma_method, shift):
-    '''バンドウォークを返す。
-    Args:
-        symbol: 通貨ペア。
-        timeframe: 足の種類。
-        period: 計算期間。
-        ma_method: 移動平均のメソッド。
-        shift: シフト。
-    Returns:
-        バンドウォーク。
-    '''
-    pkl_file_path = create_pkl_file_path()  # 必ず最初に置く。
-    ret = restore_pkl(pkl_file_path)
-    if ret is None:
-        @jit(int64[:](float64[:], float64[:], float64[:], int64[:], int64),
-             nopython=True, cache=True)
-        def func(high, low, ma, ret, length):
-            above = 0
-            below = 0
-            for i in range(length):
-                if (low[i] > ma[i]):
-                    above = above + 1
-                else:
-                    above = 0
-                if (high[i] < ma[i]):
-                    below = below + 1
-                else:
-                    below = 0
-                ret[i] = above - below
-            return ret
-
-        high = i_high(symbol, timeframe, shift)
-        low = i_low(symbol, timeframe, shift)
-        close = i_close(symbol, timeframe, shift)
-        if ma_method == 'MODE_SMA':
-            ma = close.rolling(window=period).mean()
-        elif ma_method == 'MODE_EMA':
-            ma = close.ewm(span=period).mean()
-        index = ma.index
-        high = np.array(high)
-        low = np.array(low)
-        ma = np.array(ma)
-        length = len(ma)
-        ret = np.empty(length)
-        ret = ret.astype(np.int64)
-        ret = func(high, low, ma, ret, length)
-        ret = pd.Series(ret, index=index)
-        ret = fill_invalidate_data(ret)
-        ret = ret.astype(int)
-        save_pkl(ret, pkl_file_path)
-    return ret
-
-def i_bandwalk_cl(symbol, timeframe, period, ma_method, shift):
-    '''バンドウォーク（終値ベース）を返す。
-    Args:
-        symbol: 通貨ペア。
-        timeframe: 足の種類。
-        period: 計算期間。
-        ma_method: 移動平均のメソッド。
-        shift: シフト。
-    Returns:
-        バンドウォーク（終値ベース）。
-    '''
-    pkl_file_path = create_pkl_file_path()  # 必ず最初に置く。
-    ret = restore_pkl(pkl_file_path)
-    if ret is None:
-        @jit(int64[:](float64[:], float64[:], int64[:], int64), nopython=True,
-             cache=True)
-        def func(log_close, log_ma, ret, length):
-            above = 0
-            below = 0
-            for i in range(length):
-                if (log_close[i] > log_ma[i]):
-                    above = above + 1
-                else:
-                    above = 0
-                if (log_close[i] < log_ma[i]):
-                    below = below + 1
-                else:
-                    below = 0
-                ret[i] = above - below
-            return ret
-
-        close = i_close(symbol, timeframe, shift)
-        if ma_method == 'MODE_SMA':
-            ma = close.rolling(window=period).mean()
-        elif ma_method == 'MODE_EMA':
-            ma = close.ewm(span=period).mean()
-        index = ma.index
-        close = np.array(close)
-        ma = np.array(ma)
-        length = len(ma)
-        ret = np.empty(length)
-        ret = ret.astype(np.int64)
-        ret = func(close, ma, ret, length)
-        ret = pd.Series(ret, index=index)
-        ret = fill_invalidate_data(ret)
-        ret = ret.astype(int)
-        save_pkl(ret, pkl_file_path)
-    return ret
-
 def i_close(symbol, timeframe, shift):
     '''終値を返す。
     Args:
@@ -965,10 +866,10 @@ def i_close(symbol, timeframe, shift):
             save_pkl(ret, pkl_file_path)
     return ret
 
-def i_event(index, timeframe, before, after):
+def i_event(symbol, timeframe, before, after):
     '''イベントの有無を返す（1時間未満の足でのみ使用する）。
     Args:
-        index: インデックス。
+        index: 通貨ペア。
         timeframe: 足の種類。
         before: イベントの前の時間（分単位）。
         after: イベントの後の時間（分単位）。
@@ -980,6 +881,8 @@ def i_event(index, timeframe, before, after):
     pkl_file_path = create_pkl_file_path()  # 必ず最初に置く。
     ret = restore_pkl(pkl_file_path)
     if ret is None:
+        close = i_close(symbol, timeframe, 0)
+        index = close.index
         temp = pd.Series(index=index)
         week_of_month = time_week_of_month(index)
         day_of_week = time_day_of_week(index)
@@ -989,143 +892,196 @@ def i_event(index, timeframe, before, after):
         a = int(after / timeframe)
 
         # (1, 1, 0, 0)
-        temp[(week_of_month==1) & (day_of_week==1) & (hour==0) &
-             (minute==0)] = 1
+        if symbol == 'AUDUSD' or symbol == 'USDJPY':
+            temp[(week_of_month==1) & (day_of_week==1) & (hour==0) &
+                 (minute==0)] = 1
         #(1, 2, 5, 30)
-        temp[(week_of_month==1) & (day_of_week==2) & (hour==5) &
-             (minute==30)] = 1
+        if symbol == 'AUDUSD':
+            temp[(week_of_month==1) & (day_of_week==2) & (hour==5) &
+                 (minute==30)] = 1
         #(1, 2, 6, 30)
-        temp[(week_of_month==1) & (day_of_week==2) & (hour==6) &
-             (minute==30)] = 1
+        if symbol == 'AUDUSD':
+            temp[(week_of_month==1) & (day_of_week==2) & (hour==6) &
+                 (minute==30)] = 1
         #(1, 2, 6, 35)
-        temp[(week_of_month==1) & (day_of_week==2) & (hour==6) &
-             (minute==35)] = 1
+        if symbol == 'AUDUSD':
+            temp[(week_of_month==1) & (day_of_week==2) & (hour==6) &
+                 (minute==35)] = 1
         #(1, 2, 10, 30)
-        temp[(week_of_month==1) & (day_of_week==2) & (hour==10) &
-             (minute==30)] = 1
+        if symbol == 'GBPUSD':
+            temp[(week_of_month==1) & (day_of_week==2) & (hour==10) &
+                 (minute==30)] = 1
         #(1, 2, 16, 0)
-        temp[(week_of_month==1) & (day_of_week==2) & (hour==16) &
-             (minute==0)] = 1
+        if symbol == 'EURUSD':
+            temp[(week_of_month==1) & (day_of_week==2) & (hour==16) &
+                 (minute==0)] = 1
         #(1, 3, 3, 30)
-        temp[(week_of_month==1) & (day_of_week==3) & (hour==3) &
-             (minute==30)] = 1
+        if symbol == 'AUDUSD':
+            temp[(week_of_month==1) & (day_of_week==3) & (hour==3) &
+                 (minute==30)] = 1
         #(1, 3, 10, 30)
-        temp[(week_of_month==1) & (day_of_week==3) & (hour==10) &
-             (minute==30)] = 1
+        if symbol == 'GBPUSD':
+            temp[(week_of_month==1) & (day_of_week==3) & (hour==10) &
+                 (minute==30)] = 1
         #(1, 3, 16, 0)
-        temp[(week_of_month==1) & (day_of_week==3) & (hour==16) &
-             (minute==0)] = 1
+        if symbol == 'EURUSD' or symbol == 'GBPUSD':
+            temp[(week_of_month==1) & (day_of_week==3) & (hour==16) &
+                 (minute==0)] = 1
         #(1, 4, 3, 30)
-        temp[(week_of_month==1) & (day_of_week==4) & (hour==3) &
-             (minute==30)] = 1
+        if symbol == 'AUDUSD':
+            temp[(week_of_month==1) & (day_of_week==4) & (hour==3) &
+                 (minute==30)] = 1
         #(1, 4, 14, 0)
-        temp[(week_of_month==1) & (day_of_week==4) & (hour==14) &
-             (minute==0)] = 1
+        if symbol == 'GBPUSD':
+            temp[(week_of_month==1) & (day_of_week==4) & (hour==14) &
+                 (minute==0)] = 1
         #(1, 4, 14, 40)
-        temp[(week_of_month==1) & (day_of_week==4) & (hour==14) &
-             (minute==40)] = 1
+        if symbol == 'EURUSD' or symbol == 'GBPUSD':
+            temp[(week_of_month==1) & (day_of_week==4) & (hour==14) &
+                 (minute==40)] = 1
         #(1, 4, 16, 0)
-        temp[(week_of_month==1) & (day_of_week==4) & (hour==16) &
-             (minute==0)] = 1
+        if symbol == 'EURUSD' or symbol == 'GBPUSD':
+            temp[(week_of_month==1) & (day_of_week==4) & (hour==16) &
+                 (minute==0)] = 1
         #(1, 5, 14, 30)
-        temp[(week_of_month==1) & (day_of_week==5) & (hour==14) &
-             (minute==30)] = 1
+        if (symbol == 'AUDUSD' or symbol == 'EURUSD' or symbol == 'GBPUSD' or
+            symbol == 'USDJPY'):
+            temp[(week_of_month==1) & (day_of_week==5) & (hour==14) &
+                 (minute==30)] = 1
         #(1, 5, 14, 35)
-        temp[(week_of_month==1) & (day_of_week==5) & (hour==14) &
-             (minute==35)] = 1
+        if (symbol == 'AUDUSD' or symbol == 'EURUSD' or symbol == 'GBPUSD' or
+            symbol == 'USDJPY'):
+            temp[(week_of_month==1) & (day_of_week==5) & (hour==14) &
+                 (minute==35)] = 1
         #(1, 5, 14, 40)
-        temp[(week_of_month==1) & (day_of_week==5) & (hour==14) &
-             (minute==40)] = 1
+        if (symbol == 'AUDUSD' or symbol == 'EURUSD' or symbol == 'GBPUSD' or
+            symbol == 'USDJPY'):
+            temp[(week_of_month==1) & (day_of_week==5) & (hour==14) &
+                 (minute==40)] = 1
         #(1, 5, 14, 45)
-        temp[(week_of_month==1) & (day_of_week==5) & (hour==14) &
-             (minute==45)] = 1
+        if symbol == 'GBPUSD':
+            temp[(week_of_month==1) & (day_of_week==5) & (hour==14) &
+                 (minute==45)] = 1
         #(1, 5, 15, 25)
-        temp[(week_of_month==1) & (day_of_week==5) & (hour==15) &
-             (minute==25)] = 1
+        if symbol == 'EURUSD':
+            temp[(week_of_month==1) & (day_of_week==5) & (hour==15) &
+                 (minute==25)] = 1
         #(1, 5, 15, 30)
-        temp[(week_of_month==1) & (day_of_week==5) & (hour==15) &
-             (minute==30)] = 1
+        if (symbol == 'AUDUSD' or symbol == 'EURUSD' or symbol == 'GBPUSD' or
+            symbol == 'USDJPY'):
+            temp[(week_of_month==1) & (day_of_week==5) & (hour==15) &
+                 (minute==30)] = 1
         #(1, 5, 15, 35)
-        temp[(week_of_month==1) & (day_of_week==5) & (hour==15) &
-             (minute==35)] = 1
+        if (symbol == 'AUDUSD' or symbol == 'EURUSD' or symbol == 'GBPUSD' or
+            symbol == 'USDJPY'):
+            temp[(week_of_month==1) & (day_of_week==5) & (hour==15) &
+                 (minute==35)] = 1
         #(1, 5, 15, 40)
-        temp[(week_of_month==1) & (day_of_week==5) & (hour==15) &
-             (minute==40)] = 1
+        if symbol == 'EURUSD' or symbol == 'USDJPY':
+            temp[(week_of_month==1) & (day_of_week==5) & (hour==15) &
+                 (minute==40)] = 1
         #(1, 5, 15, 45)
-        temp[(week_of_month==1) & (day_of_week==5) & (hour==15) &
-             (minute==45)] = 1
+        if (symbol == 'AUDUSD' or symbol == 'EURUSD' or symbol == 'USDJPY'):
+            temp[(week_of_month==1) & (day_of_week==5) & (hour==15) &
+                 (minute==45)] = 1
         #(1, 5, 16, 0)
-        temp[(week_of_month==1) & (day_of_week==5) & (hour==16) &
-             (minute==0)] = 1
+        if (symbol == 'AUDUSD' or symbol == 'EURUSD' or symbol == 'GBPUSD' or
+            symbol == 'USDJPY'):
+            temp[(week_of_month==1) & (day_of_week==5) & (hour==16) &
+                 (minute==0)] = 1
         #(2, 1, 0, 0)
-        temp[(week_of_month==2) & (day_of_week==1) & (hour==0) &
-             (minute==0)] = 1
+        if symbol == 'AUDUSD' or symbol == 'USDJPY':
+            temp[(week_of_month==2) & (day_of_week==1) & (hour==0) &
+                 (minute==0)] = 1
         #(2, 2, 10, 30)
-        temp[(week_of_month==2) & (day_of_week==2) & (hour==10) &
-             (minute==30)] = 1
+        if symbol == 'GBPUSD':
+            temp[(week_of_month==2) & (day_of_week==2) & (hour==10) &
+                 (minute==30)] = 1
         #(2, 4, 3, 30)
-        temp[(week_of_month==2) & (day_of_week==4) & (hour==3) &
-             (minute==30)] = 1
+        if symbol == 'AUDUSD':
+            temp[(week_of_month==2) & (day_of_week==4) & (hour==3) &
+                 (minute==30)] = 1
         #(2, 4, 14, 30)
-        temp[(week_of_month==2) & (day_of_week==4) & (hour==14) &
-             (minute==30)] = 1
+        if (symbol == 'EURUSD' or symbol == 'GBPUSD' or symbol == 'USDJPY'):
+            temp[(week_of_month==2) & (day_of_week==4) & (hour==14) &
+                 (minute==30)] = 1
         #(2, 4, 15, 30)
-        temp[(week_of_month==2) & (day_of_week==4) & (hour==15) &
-             (minute==30)] = 1
+        if symbol == 'EURUSD':
+            temp[(week_of_month==2) & (day_of_week==4) & (hour==15) &
+                 (minute==30)] = 1
         #(2, 5, 15, 30)
-        temp[(week_of_month==2) & (day_of_week==5) & (hour==15) &
-             (minute==30)] = 1
+        if symbol == 'EURUSD' or symbol == 'USDJPY':
+            temp[(week_of_month==2) & (day_of_week==5) & (hour==15) &
+                 (minute==30)] = 1
         #(2, 5, 15, 40)
-        temp[(week_of_month==2) & (day_of_week==5) & (hour==15) &
-             (minute==40)] = 1
+        if symbol == 'EURUSD':
+            temp[(week_of_month==2) & (day_of_week==5) & (hour==15) &
+                 (minute==40)] = 1
         #(2, 5, 16, 0)
-        temp[(week_of_month==2) & (day_of_week==5) & (hour==16) &
-             (minute==0)] = 1
+        if symbol == 'EURUSD':
+            temp[(week_of_month==2) & (day_of_week==5) & (hour==16) &
+                 (minute==0)] = 1
         #(2, 5, 17, 0)
-        temp[(week_of_month==2) & (day_of_week==5) & (hour==17) &
-             (minute==0)] = 1
+        if symbol == 'EURUSD':
+            temp[(week_of_month==2) & (day_of_week==5) & (hour==17) &
+                 (minute==0)] = 1
         #(3, 1, 0, 0)
-        temp[(week_of_month==3) & (day_of_week==1) & (hour==0) &
-             (minute==0)] = 1
+        if symbol == 'EURUSD' or symbol == 'USDJPY':
+            temp[(week_of_month==3) & (day_of_week==1) & (hour==0) &
+                 (minute==0)] = 1
         #(3, 2, 3, 30)
-        temp[(week_of_month==3) & (day_of_week==2) & (hour==3) &
-             (minute==30)] = 1
+        if symbol == 'AUDUSD':
+            temp[(week_of_month==3) & (day_of_week==2) & (hour==3) &
+                 (minute==30)] = 1
         #(3, 2, 10, 30)
-        temp[(week_of_month==3) & (day_of_week==2) & (hour==10) &
-             (minute==30)] = 1
+        if symbol == 'GBPUSD':
+            temp[(week_of_month==3) & (day_of_week==2) & (hour==10) &
+                 (minute==30)] = 1
         #(3, 3, 10, 30)
-        temp[(week_of_month==3) & (day_of_week==3) & (hour==10) &
-             (minute==30)] = 1
+        if symbol == 'GBPUSD':
+            temp[(week_of_month==3) & (day_of_week==3) & (hour==10) &
+                 (minute==30)] = 1
         #(3, 4, 10, 30)
-        temp[(week_of_month==3) & (day_of_week==4) & (hour==10) &
-             (minute==30)] = 1
+        if symbol == 'GBPUSD':
+            temp[(week_of_month==3) & (day_of_week==4) & (hour==10) &
+                 (minute==30)] = 1
         #(3, 4, 14, 30)
-        temp[(week_of_month==3) & (day_of_week==4) & (hour==14) &
-             (minute==30)] = 1
+        if (symbol == 'EURUSD' or symbol == 'GBPUSD' or symbol == 'USDJPY'):
+            temp[(week_of_month==3) & (day_of_week==4) & (hour==14) &
+                 (minute==30)] = 1
         #(3, 4, 16, 0)
-        temp[(week_of_month==3) & (day_of_week==4) & (hour==16) &
-             (minute==0)] = 1
+        if symbol == 'EURUSD':
+            temp[(week_of_month==3) & (day_of_week==4) & (hour==16) &
+                 (minute==0)] = 1
         #(4, 1, 0, 0)
-        temp[(week_of_month==4) & (day_of_week==1) & (hour==0) &
-             (minute==0)] = 1
+        if (symbol == 'AUDUSD' or symbol == 'EURUSD' or symbol == 'GBPUSD' or
+            symbol == 'USDJPY'):
+            temp[(week_of_month==4) & (day_of_week==1) & (hour==0) &
+                 (minute==0)] = 1
         #(4, 3, 2, 30)
-        temp[(week_of_month==4) & (day_of_week==3) & (hour==2) &
-             (minute==30)] = 1
+        if symbol == 'AUDUSD':
+            temp[(week_of_month==4) & (day_of_week==3) & (hour==2) &
+                 (minute==30)] = 1
         #(4, 4, 14, 30)
-        temp[(week_of_month==4) & (day_of_week==4) & (hour==14) &
-             (minute==30)] = 1
+        if symbol == 'EURUSD':
+            temp[(week_of_month==4) & (day_of_week==4) & (hour==14) &
+                 (minute==30)] = 1
         #(5, 1, 0, 0)
-        temp[(week_of_month==5) & (day_of_week==1) & (hour==0) &
-             (minute==0)] = 1
+        if symbol == 'USDJPY':
+            temp[(week_of_month==5) & (day_of_week==1) & (hour==0) &
+                 (minute==0)] = 1
         #(5, 3, 17, 0)
-        temp[(week_of_month==5) & (day_of_week==3) & (hour==17) &
-             (minute==0)] = 1
+        if symbol == 'EURUSD':
+            temp[(week_of_month==5) & (day_of_week==3) & (hour==17) &
+                 (minute==0)] = 1
         #(5, 5, 14, 30)
-        temp[(week_of_month==5) & (day_of_week==5) & (hour==14) &
-             (minute==30)] = 1
+        if symbol == 'GBPUSD':
+            temp[(week_of_month==5) & (day_of_week==5) & (hour==14) &
+                 (minute==30)] = 1
         #(5, 5, 16, 55)
-        temp[(week_of_month==5) & (day_of_week==5) & (hour==16) &
-             (minute==55)] = 1
+        if symbol == 'EURUSD':
+            temp[(week_of_month==5) & (day_of_week==5) & (hour==16) &
+                 (minute==55)] = 1
         temp = temp.fillna(0)
         ret = temp.copy()
         for i in range(b):
@@ -1223,6 +1179,30 @@ def i_hl_band(symbol, timeframe, period, shift):
         ret['high'] = high.rolling(window=period).max()
         ret['low'] = low.rolling(window=period).min()
         ret['middle'] = (ret['high'] + ret['low']) / 2
+        ret = fill_invalidate_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
+def i_kairi(symbol, timeframe, period, ma_method, shift):
+    '''移動平均乖離率を返す。
+    Args:
+        symbol: 通貨ペア。
+        timeframe: 足の種類。
+        period: 計算期間。
+        ma_method: 移動平均のメソッド。
+        shift: シフト。
+    Returns:
+        移動平均乖離率。
+    '''
+    pkl_file_path = create_pkl_file_path()  # 必ず最初に置く。
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        close = i_close(symbol, timeframe, shift)
+        if ma_method == 'MODE_SMA':
+            mean = close.rolling(window=period).mean()
+        elif ma_method == 'MODE_EMA':
+            mean = close.ewm(span=period).mean()
+        ret = (close - mean) / mean
         ret = fill_invalidate_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
@@ -1540,6 +1520,42 @@ def i_opening_range(symbol, timeframe, shift):
         save_pkl(ret, pkl_file_path)
     return ret
 
+def i_percentrank(timeframe, period, ma_method, shift, aud=0, cad=0, chf=0,
+                  eur=0, gbp=0, jpy=0, nzd=0, usd=0):
+    '''通貨の順位（基準はZスコア）をパーセントで返す。
+    Args:
+        symbol: 通貨ペア。
+        timeframe: 足の種類。
+        period: 計算期間。
+        shift: シフト。
+        aud: 豪ドルの設定。
+        cad: カナダドルの設定。
+        chf: スイスフランの設定。
+        eur: ユーロの設定。
+        gbp: ポンドの設定。
+        jpy: 円の設定。
+        nzd: NZドルの設定。
+        usd: 米ドルの設定。
+    Returns:
+        通貨の順位（パーセント）。
+            首位: 1.0
+            最下位:0.0
+    '''
+    pkl_file_path = create_pkl_file_path()  # 必ず最初に置く。
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        temp = i_ku_zscore(timeframe, period, ma_method, shift, aud=aud,
+                           cad=cad, chf=chf, eur=eur, gbp=gbp, jpy=jpy,
+                           nzd=nzd, usd=usd)
+        n = aud + cad + chf + eur + gbp + jpy + nzd + usd
+        # 同値になることはほとんどないと思うが、その場合は観測順にしている点に注意。
+        ret = temp.rank(axis=1, method='first')
+        ret -= 1
+        ret /= (n - 1)
+        ret = fill_invalidate_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
 def i_roc(symbol, timeframe, period, shift):
     '''変化率を返す。
     Args:
@@ -1555,64 +1571,6 @@ def i_roc(symbol, timeframe, period, shift):
     if ret is None:
         close = i_close(symbol, timeframe, shift)
         ret = (close / close.shift(period) - 1.0) * 100.0
-        ret = fill_invalidate_data(ret)
-        save_pkl(ret, pkl_file_path)
-    return ret
-
-def i_strength(timeframe, period, shift, aud=1, cad=0, chf=0, eur=1, gbp=1,
-               jpy=1, nzd=0, usd=1):
-    '''通貨の強さを返す。
-    Args:
-        symbol: 通貨ペア。
-        timeframe: 足の種類。
-        period: 計算期間。
-        shift: シフト。
-        aud: 豪ドルの設定。
-        cad: カナダドルの設定。
-        chf: スイスフランの設定。
-        eur: ユーロの設定。
-        gbp: ポンドの設定。
-        jpy: 円の設定。
-        nzd: NZドルの設定。
-        usd: 米ドルの設定。
-    Returns:
-        通貨の強さ。
-    '''
-    pkl_file_path = create_pkl_file_path()  # 必ず最初に置く。
-    ret = restore_pkl(pkl_file_path)
-    if ret is None:
-        temp = pd.DataFrame()
-        n = 0
-        if aud == 1:
-            temp['AUD'] = i_zscore('AUDUSD', timeframe, period, shift)
-            n += 1
-        if cad == 1:
-            temp['CAD'] = -i_zscore('USDCAD', timeframe, period, shift)
-            n += 1
-        if chf == 1:
-            temp['CHF'] = -i_zscore('USDCHF', timeframe, period, shift)
-            n += 1
-        if eur == 1:
-            temp['EUR'] = i_zscore('EURUSD', timeframe, period, shift)
-            n += 1
-        if gbp == 1:
-            temp['GBP'] = i_zscore('GBPUSD', timeframe, period, shift)
-            n += 1
-        if jpy == 1:
-            temp['JPY'] = -i_zscore('USDJPY', timeframe, period, shift)
-            n += 1
-        if nzd == 1:
-            temp['NZD'] = i_zscore('NZDUSD', timeframe, period, shift)
-            n += 1
-        if usd == 1:
-            temp['USD'] = pd.Series(np.zeros(len(temp)), index=temp.index)
-            n += 1
-        # 同値になることはほとんどないと思うが、その場合は観測順にしている点に注意。
-        ret = temp.rank(axis=1, method='first')
-        data = np.array(range(1, n+1))
-        mean = np.mean(data)
-        std = np.std(data)
-        ret = (ret - mean) / std
         ret = fill_invalidate_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
@@ -1637,6 +1595,58 @@ def i_trange(symbol, timeframe, shift):
         temp = pd.concat([temp, close.shift(1) - low], axis=1)
         ret = temp.max(axis=1)
         ret = fill_invalidate_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
+def i_trend_duration(symbol, timeframe, period, ma_method, shift):
+    '''トレンド期間を返す。
+    Args:
+        symbol: 通貨ペア。
+        timeframe: 足の種類。
+        period: 計算期間。
+        ma_method: 移動平均のメソッド。
+        shift: シフト。
+    Returns:
+        トレンド期間。
+    '''
+    pkl_file_path = create_pkl_file_path()  # 必ず最初に置く。
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        @jit(int64[:](float64[:], float64[:], float64[:], int64[:], int64),
+             nopython=True, cache=True)
+        def func(high, low, ma, ret, length):
+            above = 0
+            below = 0
+            for i in range(length):
+                if (low[i] > ma[i]):
+                    above = above + 1
+                else:
+                    above = 0
+                if (high[i] < ma[i]):
+                    below = below + 1
+                else:
+                    below = 0
+                ret[i] = above - below
+            return ret
+
+        high = i_high(symbol, timeframe, shift)
+        low = i_low(symbol, timeframe, shift)
+        close = i_close(symbol, timeframe, shift)
+        if ma_method == 'MODE_SMA':
+            ma = close.rolling(window=period).mean()
+        elif ma_method == 'MODE_EMA':
+            ma = close.ewm(span=period).mean()
+        index = ma.index
+        high = np.array(high)
+        low = np.array(low)
+        ma = np.array(ma)
+        length = len(ma)
+        ret = np.empty(length)
+        ret = ret.astype(np.int64)
+        ret = func(high, low, ma, ret, length)
+        ret = pd.Series(ret, index=index)
+        ret = fill_invalidate_data(ret)
+        ret = ret.astype(int)
         save_pkl(ret, pkl_file_path)
     return ret
 
@@ -1731,9 +1741,10 @@ def i_zresid(symbol, timeframe, period, method, shift, exp1=None, exp2=None,
         close = i_close(symbol, timeframe, shift)
         index = close.index
         close = np.array(close)
-        n_exp = (((exp1 is not None) + (exp2 is not None) + (exp3 is not None) +
-            (exp4 is not None) + (exp5 is not None) + (exp6 is not None) +
-            (exp7 is not None)) * 1)
+        n_exp = (((exp1 is not None) + (exp2 is not None) +
+                  (exp3 is not None) + (exp4 is not None) +
+                  (exp5 is not None) + (exp6 is not None) +
+                  (exp7 is not None)) * 1)
         if n_exp == 0:
             exp = np.array(range(len(close)))
             exp = exp.reshape(len(exp), 1)
