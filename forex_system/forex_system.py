@@ -1458,6 +1458,29 @@ def i_lowest(symbol, timeframe, period, shift):
         save_pkl(ret, pkl_file_path)
     return ret
 
+def i_ma(symbol, timeframe, period, ma_method, shift):
+    '''移動平均を返す。
+    Args:
+        symbol: 通貨ペア。
+        timeframe: 足の種類。
+        period: 計算期間。
+        ma_method: 移動平均のメソッド。
+        shift: シフト。
+    Returns:
+        移動平均。
+    '''
+    pkl_file_path = create_pkl_file_path()  # 必ず最初に置く。
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        close = i_close(symbol, timeframe, shift)
+        if ma_method == 'MODE_SMA':
+            ret = close.rolling(window=period).mean()
+        elif ma_method == 'MODE_EMA':
+            ret = close.ewm(span=period).mean()
+        ret = fill_invalidate_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
 def i_open(symbol, timeframe, shift):
     '''始値を返す。
     Args:
@@ -1556,6 +1579,44 @@ def i_percentrank(timeframe, period, ma_method, shift, aud=0, cad=0, chf=0,
         save_pkl(ret, pkl_file_path)
     return ret
 
+def i_resistance(symbol, timeframe, shift):
+    '''レジスタンスを返す。
+    Args:
+        symbol: 通貨ペア。
+        timeframe: 足の種類。
+        shift: シフト。
+    Returns:
+        レジスタンス。
+    '''
+    pkl_file_path = create_pkl_file_path()  # 必ず最初に置く。
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        @jit(float64(float64[:], int64), nopython=True, cache=True)
+        def func(high, i):
+            highest = i - 1
+            while(True):
+                if high[highest] > high[i]:
+                    break
+                else:
+                    highest -= 1
+                if highest < 0:
+                    highest = i
+                    break
+            ret = high[highest]
+            return ret
+
+        high = i_high(symbol, timeframe, shift)
+        size = len(high)
+        ret = np.empty(size)
+        index = high.index
+        high = np.array(high)
+        for i in range(1, size):
+            ret[i] = func(high[0:i+1], i)
+        ret = pd.Series(ret, index=index)
+        ret = fill_invalidate_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
 def i_roc(symbol, timeframe, period, shift):
     '''変化率を返す。
     Args:
@@ -1571,6 +1632,45 @@ def i_roc(symbol, timeframe, period, shift):
     if ret is None:
         close = i_close(symbol, timeframe, shift)
         ret = (close / close.shift(period) - 1.0) * 100.0
+        ret = fill_invalidate_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
+def i_support(symbol, timeframe, shift):
+    '''サポートを返す。
+    Args:
+        symbol: 通貨ペア。
+        timeframe: 足の種類。
+        period: 計算期間。
+        shift: シフト。
+    Returns:
+        サポート。
+    '''
+    pkl_file_path = create_pkl_file_path()  # 必ず最初に置く。
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        @jit(float64(float64[:], int64), nopython=True, cache=True)
+        def func(low, i):
+            lowest = i - 1
+            while(True):
+                if low[lowest] < low[i]:
+                    break
+                else:
+                    lowest -= 1
+                if lowest < 0:
+                    lowest = i
+                    break
+            ret = low[lowest]
+            return ret
+
+        low = i_low(symbol, timeframe, shift)
+        size = len(low)
+        ret = np.empty(size)
+        index = low.index
+        low = np.array(low)
+        for i in range(1, size):
+            ret[i] = func(low[0:i+1], i)
+        ret = pd.Series(ret, index=index)
         ret = fill_invalidate_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
