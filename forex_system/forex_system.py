@@ -1579,11 +1579,13 @@ def i_percentrank(timeframe, period, ma_method, shift, aud=0, cad=0, chf=0,
         save_pkl(ret, pkl_file_path)
     return ret
 
-def i_resistance(symbol, timeframe, shift):
+def i_resistance(symbol, timeframe, period, shift):
     '''レジスタンスを返す。
+       ただし、検索範囲は計算期間以上離れている場合に限る。
     Args:
         symbol: 通貨ペア。
         timeframe: 足の種類。
+        period: 計算期間。
         shift: シフト。
     Returns:
         レジスタンス。
@@ -1591,9 +1593,9 @@ def i_resistance(symbol, timeframe, shift):
     pkl_file_path = create_pkl_file_path()  # 必ず最初に置く。
     ret = restore_pkl(pkl_file_path)
     if ret is None:
-        @jit(float64(float64[:], int64), nopython=True, cache=True)
-        def func(high, i):
-            highest = i - 1
+        @jit(float64(float64[:], int64, int64), nopython=True, cache=True)
+        def func(high, i, period):
+            highest = i - period
             while(True):
                 if high[highest] > high[i]:
                     break
@@ -1611,7 +1613,7 @@ def i_resistance(symbol, timeframe, shift):
         index = high.index
         high = np.array(high)
         for i in range(1, size):
-            ret[i] = func(high[0:i+1], i)
+            ret[i] = func(high[0:i+1], i, period)
         ret = pd.Series(ret, index=index)
         ret = fill_invalidate_data(ret)
         save_pkl(ret, pkl_file_path)
@@ -1636,8 +1638,9 @@ def i_roc(symbol, timeframe, period, shift):
         save_pkl(ret, pkl_file_path)
     return ret
 
-def i_support(symbol, timeframe, shift):
+def i_support(symbol, timeframe, period, shift):
     '''サポートを返す。
+       ただし、検索範囲は計算期間以上離れている場合に限る。
     Args:
         symbol: 通貨ペア。
         timeframe: 足の種類。
@@ -1649,9 +1652,9 @@ def i_support(symbol, timeframe, shift):
     pkl_file_path = create_pkl_file_path()  # 必ず最初に置く。
     ret = restore_pkl(pkl_file_path)
     if ret is None:
-        @jit(float64(float64[:], int64), nopython=True, cache=True)
-        def func(low, i):
-            lowest = i - 1
+        @jit(float64(float64[:], int64, int64), nopython=True, cache=True)
+        def func(low, i, period):
+            lowest = i - period
             while(True):
                 if low[lowest] < low[i]:
                     break
@@ -1669,7 +1672,7 @@ def i_support(symbol, timeframe, shift):
         index = low.index
         low = np.array(low)
         for i in range(1, size):
-            ret[i] = func(low[0:i+1], i)
+            ret[i] = func(low[0:i+1], i, period)
         ret = pd.Series(ret, index=index)
         ret = fill_invalidate_data(ret)
         save_pkl(ret, pkl_file_path)
