@@ -24,6 +24,7 @@ from sklearn.externals import joblib
 
 COUNT = 500
 EPS = 1.0e-5  # 許容誤差を設定する。
+
 OANDA = None
 ENVIRONMENT = None
 ACCESS_TOKEN = None
@@ -31,7 +32,7 @@ ACCOUNT_ID = None
 
 def backtest(
         strategy, symbol, timeframe, spread, start, end,
-        build_model, lots, sl, tp, position, min_trade, optimization,
+        build_model, sl, tp, position, min_trade, optimization,
         in_sample_period, out_of_sample_period, parameter, rranges):
     '''
     Args:
@@ -47,17 +48,17 @@ def backtest(
         # レポートを作成する。
         report =  pd.DataFrame(
                 index=[''], columns=['start', 'end', 'trades', 'apr',
-                'sharpe', 'kelly', 'drawdowns', 'durations', 'parameter'])
+                'sharpe', 'kelly', 'drawdown', 'duration', 'parameter'])
         # バックテストを行う。
         if optimization == 1:
             parameter = optimize_parameter(
-                    strategy, symbol, timeframe, spread, lots, sl, tp,
-                    start, end, position, min_trade, rranges)
-        buy_entry, buy_exit, sell_entry, sell_exit = strategy(
+                    strategy, symbol, timeframe, spread, sl, tp, start, end,
+                    position, min_trade, rranges)
+        buy_entry, buy_exit, sell_entry, sell_exit, units = strategy(
                 parameter, symbol, timeframe)
         signal = get_signal(buy_entry, buy_exit, sell_entry, sell_exit, symbol,
                             timeframe, sl, tp)
-        ret = get_return(signal, symbol, timeframe, spread, lots, start, end,
+        ret = get_return(signal, symbol, timeframe, units, spread, start, end,
                          position)
         trades = get_trades(signal, start, end, position)
         # 各パフォーマンスを計算する。
@@ -122,21 +123,21 @@ def backtest(
             # EAのバックテストを行う。
             if optimization == 2:
                 parameter = optimize_parameter(
-                    strategy, symbol, timeframe, spread, lots, sl, tp,
-                    start_train, end_train, position, min_trade, rranges)
-                buy_entry, buy_exit, sell_entry, sell_exit = strategy(
+                    strategy, symbol, timeframe, spread, sl, tp, start_train,
+                    end_train, position, min_trade, rranges)
+                buy_entry, buy_exit, sell_entry, sell_exit, units = strategy(
                         parameter, symbol, timeframe)
                 signal = get_signal(
                         buy_entry, buy_exit, sell_entry, sell_exit, symbol,
                         timeframe, sl, tp)
             elif optimization == 3:
                 build_model(symbol, timeframe, start_train, end_train)
-                buy_entry, buy_exit, sell_entry, sell_exit = strategy(
+                buy_entry, buy_exit, sell_entry, sell_exit, units = strategy(
                         parameter, symbol, timeframe)
                 signal = get_signal(
                         buy_entry, buy_exit, sell_entry, sell_exit, symbol,
                         timeframe, sl, tp)
-            ret_test = get_return(signal, symbol, timeframe, spread, lots,
+            ret_test = get_return(signal, symbol, timeframe, units, spread,
                                   start_test, end_test, position)
             trades_test = get_trades(
                     signal, start_test, end_test, position)
@@ -494,69 +495,119 @@ def fill_invalidate_data(data):
         filled data.
     '''
     ret = data.copy()
+    ret[(ret==float("inf")) | (ret==float("-inf"))] = np.nan
     ret = ret.fillna(method='ffill')
-    ret[(np.isnan(ret)) | (ret==float("inf")) | (ret==float("-inf"))] = 1.0e-5
+    ret[np.isnan(ret)] = 0.0
     return ret
 
-def get_args():
-    '''
+def get_apr(returns, start, end):
+    '''年率を計算する。
     Args:
+        returns: リターン。
+        start: 開始日。
+        end: 終了日。
     Returns:
+        年率。
     '''
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', type=str)
-    parser.add_argument('--symbol', type=str)
-    parser.add_argument('--timeframe', type=int)
-    parser.add_argument('--spread', type=float)
-    parser.add_argument('--lots', type=float)
-    parser.add_argument('--sl', type=float)
-    parser.add_argument('--tp', type=float)
-    parser.add_argument('--start', type=str)
-    parser.add_argument('--end', type=str)
-#    parser.add_argument('--position', type=int, default=2)
-#    parser.add_argument('--min_trade', type=int, default=260)
-#    parser.add_argument('--optimization', type=int, default=0)
-#    parser.add_argument('--in_sample_period', type=int, default=360)
-#    parser.add_argument('--out_of_sample_period', type=int, default=30)
-#    parser.add_argument('--start_train', type=str, default=None)
-#    parser.add_argument('--end_train', type=str, default=None)
-#    parser.add_argument('--mail', type=int, default=0)
-#    parser.add_argument('--mt4', type=int, default=0)
-    parser.add_argument('--position', type=int)
-    parser.add_argument('--min_trade', type=int)
-    parser.add_argument('--optimization', type=int)
-    parser.add_argument('--in_sample_period', type=int)
-    parser.add_argument('--out_of_sample_period', type=int)
-    parser.add_argument('--start_train', type=str)
-    parser.add_argument('--end_train', type=str)
-    parser.add_argument('--mail', type=int)
-    parser.add_argument('--mt4', type=int)
-    args = parser.parse_args()
-    return args
+    rate = (returns + 1.0).prod() - 1.0
+    years = (end - start).total_seconds() / 60.0 / 60.0 / 24.0 / 365.0
+    ret = rate / years
+    return ret
 
-def get_pkl_file_path():
-    '''pklファイルのパスを作成する。
+def get_base_and_quote(symbol):
+    '''通貨ペアをベース通貨とクウォート通貨に分ける。
+    Args:
+        symbol: 通貨ペア。
     Returns:
-        pklファイルのパス。
+        ベース通貨、クウォート通貨。
     '''
-    dir_name = os.path.dirname(__file__) + '/temp/'
-    framerecords = inspect.stack()
-    framerecord = framerecords[1]
-    frame = framerecord[0]
-    func_name = frame.f_code.co_name
-    ls = list(inspect.getargvalues(frame)[3].values())
-    size = len(ls)
-    arg_values = ''
-    for i in range(size):
-        if len(str(ls[size-1-i])) < 30:
-            arg_values += '_' + str(ls[size-1-i])
-        # 名前が長すぎる場合はindexと仮定する。
-        else:
-            arg_values += '_index'
-            
-    arg_values += '.pkl'
-    pkl_file_path = dir_name + func_name + arg_values
-    return pkl_file_path
+    if symbol == 'AUDCAD':
+        base = 'AUD'
+        quote = 'CAD'
+    elif symbol == 'AUDCHF':
+        base = 'AUD'
+        quote = 'CHF'
+    elif symbol == 'AUDJPY':
+        base = 'AUD'
+        quote = 'JPY'
+    elif symbol == 'AUDNZD':
+        base = 'AUD'
+        quote = 'NZD'
+    elif symbol == 'AUDUSD':
+        base = 'AUD'
+        quote = 'USD'
+    elif symbol == 'CADCHF':
+        base = 'CAD'
+        quote = 'CHF'
+    elif symbol == 'CADJPY':
+        base = 'CAD'
+        quote = 'JPY'
+    elif symbol == 'CHFJPY':
+        base = 'CHF'
+        quote = 'JPY'
+    elif symbol == 'EURAUD':
+        base = 'EUR'
+        quote = 'AUD'
+    elif symbol == 'EURCAD':
+        base = 'EUR'
+        quote = 'CAD'
+    elif symbol == 'EURCHF':
+        base = 'EUR'
+        quote = 'CHF'
+    elif symbol == 'EURGBP':
+        base = 'EUR'
+        quote = 'GBP'
+    elif symbol == 'EURJPY':
+        base = 'EUR'
+        quote = 'JPY'
+    elif symbol == 'EURNZD':
+        base = 'EUR'
+        quote = 'NZD'
+    elif symbol == 'EURUSD':
+        base = 'EUR'
+        quote = 'USD'
+    elif symbol == 'GBPAUD':
+        base = 'GBP'
+        quote = 'AUD'
+    elif symbol == 'GBPCAD':
+        base = 'GBP'
+        quote = 'CAD'
+    elif symbol == 'GBPCHF':
+        base = 'GBP'
+        quote = 'CHF'
+    elif symbol == 'GBPJPY':
+        base = 'GBP'
+        quote = 'JPY'
+    elif symbol == 'GBPNZD':
+        base = 'GBP'
+        quote = 'NZD'
+    elif symbol == 'GBPUSD':
+        base = 'GBP'
+        quote = 'USD'
+    elif symbol == 'NZDCAD':
+        base = 'NZD'
+        quote = 'CAD'
+    elif symbol == 'NZDCHF':
+        base = 'NZD'
+        quote = 'CHF'
+    elif symbol == 'NZDJPY':
+        base = 'NZD'
+        quote = 'JPY'
+    elif symbol == 'NZDUSD':
+        base = 'NZD'
+        quote = 'USD'
+    elif symbol == 'USDCAD':
+        base = 'USD'
+        quote = 'CAD'
+    elif symbol == 'USDCHF':
+        base = 'USD'
+        quote = 'CHF'
+    elif symbol == 'USDJPY':
+        base = 'USD'
+        quote = 'JPY'
+    else:
+        print('error: get_base_and_quote')
+    return base, quote
 
 def get_current_filename():
     '''拡張子なしの現在のファイル名を返す。
@@ -569,19 +620,6 @@ def get_current_filename():
     current_filename, ext = os.path.splitext(current_filename)
     return current_filename
 
-def get_apr(ret, start, end):
-    '''年率を計算する。
-    Args:
-        ret: リターン。
-        start: 開始日。
-        end: 終了日。
-    Returns:
-        年率。
-    '''
-    rate = (ret + 1.0).prod() - 1.0
-    years = (end - start).total_seconds() / 60.0 / 60.0 / 24.0 / 365.0
-    apr = rate / years
-    return apr
 
 def get_historical_data(
         start, end,
@@ -1075,21 +1113,45 @@ def get_max_duration(ret, timeframe):
     max_duration = int(func(cum_ret))
     return max_duration
  
-def get_optimal_leverage(ret):
+def get_optimal_leverage(returns):
     '''ケリー基準による最適レバレッジを計算する。
     Args:
-        ret: リターン。
+        returns: リターン。
     Returns:
         ケリー基準による最適レバレッジ。
     '''
-    mean = ret.mean()
-    std = ret.std()
+    mean = returns.mean()
+    std = returns.std()
     # 標準偏差が0であった場合、とりあえず最適レバレッジは0ということにしておく。
     if np.abs(std) < EPS:  # 標準偏差がマイナスになるはずはないが一応。
-        optimal_leverage = 0.0
+        ret = 0.0
     else:
-        optimal_leverage = mean / (std * std)
-    return optimal_leverage
+        ret = mean / (std * std)
+    return ret
+
+def get_pkl_file_path():
+    '''pklファイルのパスを作成する。
+    Returns:
+        pklファイルのパス。
+    '''
+    dir_name = os.path.dirname(__file__) + '/temp/'
+    framerecords = inspect.stack()
+    framerecord = framerecords[1]
+    frame = framerecord[0]
+    func_name = frame.f_code.co_name
+    ls = list(inspect.getargvalues(frame)[3].values())
+    size = len(ls)
+    arg_values = ''
+    for i in range(size):
+        if len(str(ls[size-1-i])) < 30:
+            arg_values += '_' + str(ls[size-1-i])
+        # 名前が長すぎる場合はindexと仮定する。
+        else:
+            arg_values += '_index'
+            
+    arg_values += '.pkl'
+    pkl_file_path = dir_name + func_name + arg_values
+    return pkl_file_path
 
 def get_randomwalk_data(mean=0.0, std=0.01/np.sqrt(1440), skew=0.0):
     '''Get randomwalk data.
@@ -1199,14 +1261,14 @@ def get_randomwalk_data(mean=0.0, std=0.01/np.sqrt(1440), skew=0.0):
     randomwalk720.to_csv('~/historical_data/RANDOM720.csv')
     randomwalk1440.to_csv('~/historical_data/RANDOM1440.csv')
 
-def get_return(signal, symbol, timeframe, spread, lots, start, end, position):
+def get_return(signal, symbol, timeframe, units, spread, start, end, position):
     '''リターンを計算する。
     Args:
         signal: シグナル。
         symbol: 通貨ペア。
         timeframe: 期間。
+        units: ユニット。
         spread: スプレッド。
-        lots:
         start: 開始日。
         end: 終了日。
         position: ポジションの設定。
@@ -1238,12 +1300,11 @@ def get_return(signal, symbol, timeframe, spread, lots, start, end, position):
     cost = cost_buy_entry + cost_sell_entry
     # リターンを計算する。
     op = i_open(symbol, timeframe, 0)
-    ret = ((op.shift(-1) - op) * adjusted_signal - cost) / op
-    ret = ret.fillna(0.0)
-    ret[(ret==float('inf')) | (ret==float('-inf'))] = 0.0
+    ret = ((op.shift(-1) - op) * adjusted_signal - cost) / op * units
+    ret = fill_invalidate_data(ret)
     ret = ret[start:end]
     return ret
- 
+
 def get_sharpe(ret, start, end):
     '''シャープレシオを計算する。
     Args:
@@ -1281,16 +1342,22 @@ def get_signal(buy_entry, buy_exit, sell_entry, sell_exit, symbol, timeframe,
         シグナル。
     '''
     # シグナルを計算する。
-    buy = buy_entry.copy()
-    buy[buy==False] = np.nan
-    buy[buy_exit==True] = 0.0
+    buy_entry_copy = buy_entry.copy()
+    sell_entry_copy = sell_entry.copy()
+    buy_exit_copy = buy_exit.copy()
+    sell_exit_copy = sell_exit.copy()
+    buy = buy_entry_copy.copy()
+    buy[buy_entry_copy==False] = np.nan
+    buy[buy_exit_copy==True] = 0.0
     buy.iloc[0] = 0.0  # 不要なnanをなくすために先頭に0を入れておく。
     buy = buy.fillna(method='ffill')
-    sell = sell_entry.copy()
-    sell[sell==False] = np.nan
-    sell[sell_exit==True] = 0.0
+    sell = sell_entry_copy.copy()
+    sell[sell_entry_copy==False] = np.nan
+    sell[sell_exit_copy==True] = 0.0
     sell.iloc[0] = 0.0  # 不要なnanをなくすために先頭に0を入れておく。
     sell = sell.fillna(method='ffill')
+    buy_copy = buy.copy()
+    sell_copy = sell.copy()
     if sl != 0 or tp != 0:
         # pipsの単位を調整する。
         if (symbol == 'AUDJPY' or symbol == 'CADJPY' or
@@ -1306,16 +1373,16 @@ def get_signal(buy_entry, buy_exit, sell_entry, sell_exit, symbol, timeframe,
         cl = i_close(symbol, timeframe, 0)
         buy_price = pd.Series(index=op.index)
         sell_price = pd.Series(index=op.index)
-        buy_price[(buy>=0.5) & (buy.shift(1)<0.5)] = op.copy()
-        sell_price[(sell>=0.5) & (sell.shift(1)<0.5)] = op.copy()
-        buy_price[(buy<0.5) & (buy.shift(1)>=0.5)] = 0.0
-        sell_price[(sell<0.5) & (sell.shift(1)>=0.5)] = 0.0
+        buy_price[(buy_copy>=0.5) & (buy_copy.shift(1)<0.5)] = op.copy()
+        sell_price[(sell_copy>=0.5) & (sell_copy.shift(1)<0.5)] = op.copy()
+        buy_price[(buy_copy<0.5) & (buy_copy.shift(1)>=0.5)] = 0.0
+        sell_price[(sell_copy<0.5) & (sell_copy.shift(1)>=0.5)] = 0.0
         buy_price.iloc[0] = 0.0
         sell_price.iloc[0] = 0.0
         buy_price = buy_price.fillna(method='ffill')
         sell_price = sell_price.fillna(method='ffill')
-        buy_pl = cl * (buy>=0.5) - buy_price
-        sell_pl = sell_price - cl * (sell>=0.5)
+        buy_pl = cl * (buy_copy>=0.5) - buy_price
+        sell_pl = sell_price - cl * (sell_copy>=0.5)
         if sl != 0:
             buy_exit[(buy_pl.shift(2)>-adj_sl) &
                      (buy_pl.shift(1)<=-adj_sl)] = True
@@ -1327,12 +1394,12 @@ def get_signal(buy_entry, buy_exit, sell_entry, sell_exit, symbol, timeframe,
             sell_exit[(sell_pl.shift(2)<adj_tp) &
                       (sell_pl.shift(1)>=adj_tp)] = True
         buy = buy_entry.copy()
-        buy[buy==False] = np.nan
+        buy[buy_entry==False] = np.nan
         buy[buy_exit==True] = 0.0
         buy.iloc[0] = 0.0  # 不要なnanをなくすために先頭に0を入れておく。
         buy = buy.fillna(method='ffill')
         sell = sell_entry.copy()
-        sell[sell==False] = np.nan
+        sell[sell_entry==False] = np.nan
         sell[sell_exit==True] = 0.0
         sell.iloc[0] = 0.0  # 不要なnanをなくすために先頭に0を入れておく。
         sell = sell.fillna(method='ffill')
@@ -1366,6 +1433,17 @@ def get_trades(signal, start, end, position):
     trade = trade.astype(int)
     trades = trade[start:end].sum()
     return trades
+
+def get_units(units, index):
+    '''Get number of units.
+    Args:
+        lots: Units.
+        index: Index.
+    Returns:
+        Number of units.
+    '''
+    ret = pd.Series(units, index=index)
+    return ret
 
 def i_close(symbol, timeframe, shift):
     '''終値を返す。
@@ -1466,6 +1544,137 @@ def i_hl_band(symbol, timeframe, period, shift):
         ret['high'] = high.rolling(window=period).max()
         ret['low'] = low.rolling(window=period).min()
         ret['middle'] = (ret['high'] + ret['low']) / 2
+        ret = fill_invalidate_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
+def i_ku_close(timeframe, shift, aud=0, cad=0, chf=0, eur=0, gbp=0, jpy=0,
+               nzd=0, usd=0):
+    '''Ku-Powerを返す。
+    Args:
+        timeframe: 足の種類。
+        shift: シフト。
+        aud: 豪ドル。
+        cad: カナダドル。
+        chf: スイスフラン。
+        eur: ユーロ。
+        gbp: ポンド。
+        jpy: 円。
+        nzd: NZドル。
+        usd: 米ドル。
+    Returns:
+        Ku-Power。
+    '''
+    pkl_file_path = get_pkl_file_path()  # 必ず最初に置く。
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        # 終値を格納する。
+        audusd = 0.0
+        cadusd = 0.0
+        chfusd = 0.0
+        eurusd = 0.0
+        gbpusd = 0.0
+        jpyusd = 0.0
+        nzdusd = 0.0
+        if aud == 1:
+            audusd = np.log(i_close('AUDUSD', timeframe, shift))
+        if cad == 1:
+            cadusd = -np.log(i_close('USDCAD', timeframe, shift))
+        if chf == 1:
+            chfusd = -np.log(i_close('USDCHF', timeframe, shift))
+        if eur == 1:
+            eurusd = np.log(i_close('EURUSD', timeframe, shift))
+        if gbp == 1:
+            gbpusd = np.log(i_close('GBPUSD', timeframe, shift))
+        if jpy == 1:
+            jpyusd = -np.log(i_close('USDJPY', timeframe, shift))
+        if nzd == 1:
+            nzdusd = np.log(i_close('NZDUSD', timeframe, shift))
+        # Ku-Closeを作成する。
+        n = aud + cad + chf + eur + gbp + jpy + nzd + usd
+        a = (audusd * aud + cadusd * cad + chfusd * chf + eurusd * eur
+             + gbpusd * gbp + jpyusd * jpy + nzdusd * nzd) / n
+        ret = pd.DataFrame()
+        if aud == 1:
+            ret['AUD'] = audusd - a
+        if cad == 1:
+            ret['CAD'] = cadusd - a
+        if chf == 1:
+            ret['CHF'] = chfusd - a
+        if eur == 1:
+            ret['EUR'] = eurusd - a
+        if gbp == 1:
+            ret['GBP'] = gbpusd - a
+        if jpy == 1:
+            ret['JPY'] = jpyusd - a
+        if nzd == 1:
+            ret['NZD'] = nzdusd - a
+        if usd == 1:
+            ret['USD'] = -a
+        ret = fill_invalidate_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
+def i_ku_roc(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
+             jpy=0, nzd=0, usd=0):
+    '''Ku-Powerの変化率を返す。
+    Args:
+        timeframe: 足の種類。
+        period:計算期間。
+        shift: シフト。
+        aud: 豪ドル。
+        cad: カナダドル。
+        chf: スイスフラン。
+        eur: ユーロ。
+        gbp: ポンド。
+        jpy: 円。
+        nzd: NZドル。
+        usd: 米ドル。
+    Returns:
+        Ku-Powerの変化率。
+    '''
+    pkl_file_path = get_pkl_file_path()  # 必ず最初に置く。
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        ku_close = i_ku_close(timeframe, shift, aud=aud, cad=cad, chf=chf,
+                              eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
+        ret = ku_close - ku_close.shift(period)
+        ret = fill_invalidate_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
+def i_ku_zscore(timeframe, period, ma_method, shift, aud=0, cad=0, chf=0,
+                eur=0, gbp=0, jpy=0, nzd=0, usd=0):
+    '''Ku-PowerのZスコアを返す。
+    Args:
+        timeframe: 足の種類。
+        period:計算期間。
+        ma_method: 移動平均のメソッド。
+        shift: シフト。
+        aud: 豪ドル。
+        cad: カナダドル。
+        chf: スイスフラン。
+        eur: ユーロ。
+        gbp: ポンド。
+        jpy: 円。
+        nzd: NZドル。
+        usd: 米ドル。
+    Returns:
+        Ku-PowerのZスコア。
+    '''
+    pkl_file_path = get_pkl_file_path()  # 必ず最初に置く。
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        ku_close = i_ku_close(timeframe, shift, aud=aud, cad=cad, chf=chf,
+                              eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
+        if ma_method == 'MODE_SMA':
+            mean = ku_close.rolling(window=period).mean()
+            std = ku_close.rolling(window=period).std()
+        elif ma_method == 'MODE_EMA':
+            mean = ku_close.ewm(span=period).mean()
+            std = ku_close.ewm(span=period).std()
+        std = std.mean(axis=1)
+        ret = (ku_close - mean).div(std, axis=0)  # メモリーエラー対策。
         ret = fill_invalidate_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
@@ -1573,6 +1782,82 @@ def i_open(symbol, timeframe, shift):
             save_pkl(ret, pkl_file_path)
     return ret
 
+def i_percentrank(timeframe, period, ma_method, shift, aud=0, cad=0, chf=0,
+                  eur=0, gbp=0, jpy=0, nzd=0, usd=0):
+    '''通貨の順位（基準はZスコア）をパーセントで返す。
+    Args:
+        symbol: 通貨ペア。
+        timeframe: 足の種類。
+        period: 計算期間。
+        shift: シフト。
+        aud: 豪ドルの設定。
+        cad: カナダドルの設定。
+        chf: スイスフランの設定。
+        eur: ユーロの設定。
+        gbp: ポンドの設定。
+        jpy: 円の設定。
+        nzd: NZドルの設定。
+        usd: 米ドルの設定。
+    Returns:
+        通貨の順位（パーセント）。
+            首位: 1.0
+            最下位:0.0
+    '''
+    pkl_file_path = get_pkl_file_path()  # 必ず最初に置く。
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        temp = i_ku_zscore(
+                timeframe, period, ma_method, shift, aud=aud, cad=cad, chf=chf,
+                eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
+        n = aud + cad + chf + eur + gbp + jpy + nzd + usd
+        # 同値になることはほとんどないと思うが、その場合は観測順にしている点に注意。
+        ret = temp.rank(axis=1, method='first')
+        ret -= 1
+        ret /= (n - 1)
+        ret = fill_invalidate_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
+def i_resistance(symbol, timeframe, period, shift):
+    '''レジスタンスを返す。
+       ただし、検索範囲は計算期間以上離れている場合に限る。
+    Args:
+        symbol: 通貨ペア。
+        timeframe: 足の種類。
+        period: 計算期間。
+        shift: シフト。
+    Returns:
+        レジスタンス。
+    '''
+    pkl_file_path = get_pkl_file_path()  # 必ず最初に置く。
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        @jit(float64(float64[:], int64, int64), nopython=True, cache=True)
+        def func(high, i, period):
+            highest = i - period
+            while(True):
+                if high[highest] > high[i]:
+                    break
+                else:
+                    highest -= 1
+                if highest < 0:
+                    highest = i
+                    break
+            ret = high[highest]
+            return ret
+
+        high = i_high(symbol, timeframe, shift)
+        size = len(high)
+        ret = np.empty(size)
+        index = high.index
+        high = np.array(high)
+        for i in range(1, size):
+            ret[i] = func(high[0:i+1], i, period)
+        ret = pd.Series(ret, index=index)
+        ret = fill_invalidate_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
 def i_roc(symbol, timeframe, period, shift):
     '''変化率を返す。
     Args:
@@ -1592,6 +1877,46 @@ def i_roc(symbol, timeframe, period, shift):
         save_pkl(ret, pkl_file_path)
     return ret
 
+def i_support(symbol, timeframe, period, shift):
+    '''サポートを返す。
+       ただし、検索範囲は計算期間以上離れている場合に限る。
+    Args:
+        symbol: 通貨ペア。
+        timeframe: 足の種類。
+        period: 計算期間。
+        shift: シフト。
+    Returns:
+        サポート。
+    '''
+    pkl_file_path = get_pkl_file_path()  # 必ず最初に置く。
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        @jit(float64(float64[:], int64, int64), nopython=True, cache=True)
+        def func(low, i, period):
+            lowest = i - period
+            while(True):
+                if low[lowest] < low[i]:
+                    break
+                else:
+                    lowest -= 1
+                if lowest < 0:
+                    lowest = i
+                    break
+            ret = low[lowest]
+            return ret
+
+        low = i_low(symbol, timeframe, shift)
+        size = len(low)
+        ret = np.empty(size)
+        index = low.index
+        low = np.array(low)
+        for i in range(1, size):
+            ret[i] = func(low[0:i+1], i, period)
+        ret = pd.Series(ret, index=index)
+        ret = fill_invalidate_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
 def i_trend_duration(symbol, timeframe, period, ma_method, shift):
     '''トレンド期間を返す。
     Args:
@@ -1606,39 +1931,16 @@ def i_trend_duration(symbol, timeframe, period, ma_method, shift):
     pkl_file_path = get_pkl_file_path()  # 必ず最初に置く。
     ret = restore_pkl(pkl_file_path)
     if ret is None:
-        @jit(int64[:](float64[:], float64[:], float64[:], int64[:], int64),
-             nopython=True, cache=True)
-        def func(high, low, ma, ret, length):
-            above = 0
-            below = 0
-            for i in range(length):
-                if (low[i] > ma[i]):
-                    above = above + 1
-                else:
-                    above = 0
-                if (high[i] < ma[i]):
-                    below = below + 1
-                else:
-                    below = 0
-                ret[i] = above - below
-            return ret
-
         high = i_high(symbol, timeframe, shift)
         low = i_low(symbol, timeframe, shift)
-        close = i_close(symbol, timeframe, shift)
-        if ma_method == 'MODE_SMA':
-            ma = close.rolling(window=period).mean()
-        elif ma_method == 'MODE_EMA':
-            ma = close.ewm(span=period).mean()
-        index = ma.index
-        high = np.array(high)
-        low = np.array(low)
-        ma = np.array(ma)
-        length = len(ma)
-        ret = np.empty(length)
-        ret = ret.astype(np.int64)
-        ret = func(high, low, ma, ret, length)
-        ret = pd.Series(ret, index=index)
+        ma = i_ma(symbol, timeframe, period, 'MODE_SMA', shift)
+        above = low > ma
+        above = above * (
+                above.groupby((above!=above.shift()).cumsum()).cumcount()+1)
+        below = high < ma
+        below = below * (
+                below.groupby((below!=below.shift()).cumsum()).cumcount()+1)
+        ret = above - below
         ret = fill_invalidate_data(ret)
         ret = ret.astype(int)
         save_pkl(ret, pkl_file_path)
@@ -1670,7 +1972,7 @@ def i_zscore(symbol, timeframe, period, ma_method, shift):
         save_pkl(ret, pkl_file_path)
     return ret
 
-def optimize_parameter(strategy, symbol, timeframe, spread, lots, sl, tp,
+def optimize_parameter(strategy, symbol, timeframe, spread, sl, tp,
                        start, end, position, min_trade, rranges):
     '''パラメーターを最適化する。
     Args:
@@ -1692,14 +1994,14 @@ def optimize_parameter(strategy, symbol, timeframe, spread, lots, sl, tp,
     Returns:
         パラメーター。
     '''
-    def func(parameter, strategy, symbol, timeframe, spread, lots, sl, tp,
+    def func(parameter, strategy, symbol, timeframe, spread, sl, tp,
              start, end, position, min_trade):
         # パフォーマンスを計算する。
-        buy_entry, buy_exit, sell_entry, sell_exit = strategy(
+        buy_entry, buy_exit, sell_entry, sell_exit, units = strategy(
                 parameter, symbol, timeframe)
         signal = get_signal(buy_entry, buy_exit, sell_entry, sell_exit, symbol,
                             timeframe, sl, tp)
-        ret = get_return(signal, symbol, timeframe, spread, lots, start, end,
+        ret = get_return(signal, symbol, timeframe, units, spread, start, end,
                          position)
         trades = get_trades(signal, start, end, position)
         sharpe = get_sharpe(ret, start, end)
@@ -1714,7 +2016,7 @@ def optimize_parameter(strategy, symbol, timeframe, spread, lots, sl, tp,
 
     parameter = optimize.brute(
             func, rranges, args=(
-                    strategy, symbol, timeframe, spread, lots, sl, tp,
+                    strategy, symbol, timeframe, spread, sl, tp,
                     start, end, position, min_trade), finish=None)
     return parameter
 
@@ -1742,16 +2044,6 @@ def order_send(symbol, lots, side):
     return ticket
 
 def platform():
-#        mode, symbol, timeframe, spread, lots, sl, tp, start, end,
-#        position=2, min_trade=260, optimization=0,
-#        in_sample_period=360,
-#        out_of_sample_period=30,
-#        start_train=None, end_train=None, mail=1, mt4=0):
-#        mode, symbol, timeframe, spread, lots, sl, tp, start, end,
-#        position, min_trade, optimization,
-#        in_sample_period,
-#        out_of_sample_period,
-#        start_train, end_train, mail, mt4):
     '''
     Args:
     Returns:
@@ -1775,15 +2067,6 @@ def platform():
     parser.add_argument('--end_train', type=str, default='')
     parser.add_argument('--mail', type=int, default=1)
     parser.add_argument('--mt4', type=int, default=0)
-#    parser.add_argument('--position', type=int)
-#    parser.add_argument('--min_trade', type=int)
-#    parser.add_argument('--optimization', type=int)
-#    parser.add_argument('--in_sample_period', type=int)
-#    parser.add_argument('--out_of_sample_period', type=int)
-#    parser.add_argument('--start_train', type=str)
-#    parser.add_argument('--end_train', type=str)
-#    parser.add_argument('--mail', type=int)
-#    parser.add_argument('--mt4', type=int)
     args = parser.parse_args()
     mode = args.mode
     symbol = args.symbol
@@ -1811,9 +2094,9 @@ def platform():
     if mode == 'backtest':
         backtest(
                 strategy, symbol, timeframe, spread, start, end,
-                build_model=build_model, lots=lots, sl=sl, tp=tp,
-                position=position, min_trade=min_trade,
-                optimization=optimization, in_sample_period=in_sample_period,
+                build_model=build_model, sl=sl, tp=tp, position=position,
+                min_trade=min_trade, optimization=optimization,
+                in_sample_period=in_sample_period,
                 out_of_sample_period=out_of_sample_period, parameter=parameter,
                 rranges=rranges)
     elif mode == 'trade':
@@ -2003,8 +2286,8 @@ def trade(strategy, symbol, timeframe, ea,
                 # 更新が完了してから実行しないと計算がおかしくなる。
                 if history_time != pre_history_time:
                     pre_history_time = history_time
-                    buy_entry, buy_exit, sell_entry, sell_exit = strategy(
-                            parameter, symbol, timeframe)
+                    buy_entry, buy_exit, sell_entry, sell_exit, units = (
+                            strategy(parameter, symbol, timeframe))
                     signal = get_signal(
                             buy_entry, buy_exit, sell_entry, sell_exit,
                             symbol, timeframe, sl, tp)
