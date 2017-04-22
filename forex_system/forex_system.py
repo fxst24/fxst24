@@ -497,7 +497,7 @@ def fill_invalidate_data(data):
     ret = data.copy()
     ret[(ret==float("inf")) | (ret==float("-inf"))] = np.nan
     ret = ret.fillna(method='ffill')
-    ret[np.isnan(ret)] = 0.0
+    ret = ret.fillna(method='bfill')
     return ret
 
 def get_apr(returns, start, end):
@@ -1485,6 +1485,85 @@ def i_close(symbol, timeframe, shift):
             save_pkl(ret, pkl_file_path)
     return ret
 
+def i_daily_high(symbol, timeframe, shift):
+    '''
+    Args:
+        symbol:
+        timeframe:
+        shift:
+    Returns:
+    '''
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        high = i_high(symbol, timeframe, shift)
+        index = high.index
+        temp = high.copy()
+        temp[(time_hour(index)!=0) | (time_minute(index)!=0)] = np.nan
+        temp = temp.fillna(method='ffill')
+        ret = high.copy()
+        ret[ret<temp] = np.nan
+        ret = ret.fillna(method='ffill')
+        # Is there any other way?
+        while(True):
+            ret[((time_hour(index)!=0) | (time_minute(index)!=0))
+            & (ret < ret.shift(1))] = np.nan
+            if ret.isnull().sum()==0:
+                break
+            ret = ret.fillna(method='ffill')
+        ret = fill_invalidate_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
+def i_daily_low(symbol, timeframe, shift):
+    '''
+    Args:
+        symbol:
+        timeframe:
+        shift:
+    Returns:
+    '''
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        low = i_low(symbol, timeframe, shift)
+        index = low.index
+        temp = low.copy()
+        temp[(time_hour(index)!=0) | (time_minute(index)!=0)] = np.nan
+        temp = temp.fillna(method='ffill')
+        ret = low.copy()
+        ret[ret>temp] = np.nan
+        ret = ret.fillna(method='ffill')
+        # Is there any other way?
+        while(True):
+            ret[((time_hour(index)!=0) | (time_minute(index)!=0))
+            & (ret > ret.shift(1))] = np.nan
+            if ret.isnull().sum()==0:
+                break
+            ret = ret.fillna(method='ffill')
+        ret = fill_invalidate_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
+def i_daily_open(symbol, timeframe, shift):
+    '''
+    Args:
+        symbol:
+        timeframe:
+        shift:
+    Returns:
+    '''
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        op = i_open(symbol, timeframe, shift)
+        index = op.index
+        ret = op.copy()
+        ret[(time_hour(index)!=0) | (time_minute(index)!=0)] = np.nan
+        ret = fill_invalidate_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
 def i_high(symbol, timeframe, shift):
     '''高値を返す。
     Args:
@@ -2213,6 +2292,16 @@ def time_hour(index):
     '''
     time_hour = pd.Series(index.hour, index=index)
     return time_hour
+
+def time_minute(index):
+    '''分を返す。
+    Args:
+        index: インデックス。
+    Returns:
+        分。
+    '''
+    time_minute = pd.Series(index.minute, index=index)
+    return time_minute
 
 def time_month(index):
     '''月を返す。
