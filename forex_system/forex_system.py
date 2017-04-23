@@ -1408,6 +1408,90 @@ def get_signal(buy_entry, buy_exit, sell_entry, sell_exit, symbol, timeframe,
     signal = signal.astype(int)
     return signal
 
+def get_signal_of_god(symbol, timeframe, longer_timeframe):
+    '''Get signal of god.
+    Args:
+        symbol:
+        timeframe:
+        longer_timeframe:
+    Returns:
+        signal of god.
+    '''
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+#分、3分、4分、5分、6分、10分、12分、15分、20分、30分、1時間、2時間、3時間、
+#         # 4時間、6時間、8時間、12時間、日
+#
+#
+#
+#
+#
+#        if longer_timeframe == 2:
+#            rule = '60T'
+#        elif longer_timeframe == 3:
+#            rule = '1440T'
+#        elif longer_timeframe == 4:
+#            rule = '1440T'
+#        elif longer_timeframe == 5:
+#            rule = '1440T'
+#        elif longer_timeframe == 6:
+#            rule = '1440T'
+#        elif longer_timeframe == 10:
+#            rule = '1440T'
+#        elif longer_timeframe == 12:
+#            rule = '1440T'
+#        elif longer_timeframe == 15:
+#            rule = '1440T'
+#        elif longer_timeframe == 20:
+#            rule = '1440T'
+#        elif longer_timeframe == 30:
+#            rule = '1440T'
+#        elif longer_timeframe == 60:
+#            rule = '1440T'
+#        elif longer_timeframe == 120:
+#            rule = '1440T'
+#        elif longer_timeframe == 180:
+#            rule = '1440T'
+#        elif longer_timeframe == 240:
+#            rule = '1440T'
+#        elif longer_timeframe == 360:
+#            rule = '1440T'
+#        elif longer_timeframe == 480:
+#            rule = '1440T'
+#        elif longer_timeframe == 720:
+#            rule = '1440T'
+#        elif longer_timeframe == 1440:
+#            rule = '1440T'
+
+        op = i_open(symbol, timeframe, 0)
+
+        high = op.resample(str(longer_timeframe)+'T').max()
+        high = high[high.index.dayofweek<5]
+        temp = pd.concat([op, high], axis=1)
+        high = temp.iloc[:, 1]
+        high = fill_invalidate_data(high)
+
+        low = op.resample(str(longer_timeframe)+'T').min()
+        low = low[low.index.dayofweek<5]
+        temp = pd.concat([op, low], axis=1)
+        low = temp.iloc[:, 1]
+        low = fill_invalidate_data(low)
+
+        buy = op == low
+        buy = fill_invalidate_data(buy)
+        buy = buy.astype(int)
+
+        sell = op == high
+        sell = fill_invalidate_data(sell)
+        sell = sell.astype(int)
+        ret = buy - sell
+        ret[ret==0] = np.nan
+        ret = fill_invalidate_data(ret)
+        ret = ret.astype(int)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
 def get_trades(signal, start, end, position):
     '''トレード数を計算する。
     Args:
