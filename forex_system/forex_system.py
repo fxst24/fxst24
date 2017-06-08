@@ -1,5 +1,3 @@
-# coding: utf-8
-
 import argparse
 import configparser
 import glob
@@ -24,14 +22,12 @@ from sklearn.externals import joblib
 
 UNITS = 100000
 COUNT = 500
-EPS = 1.0e-5  # 許容誤差を設定する。
+EPS = 1.0e-5  #
 
-# ここまで
-
-OANDA = None
-ENVIRONMENT = None
-ACCESS_TOKEN = None
-ACCOUNT_ID = None
+g_oanda = None
+g_environment = None
+g_access_token = None
+g_access_id = None
 
 def backtest(
         strategy, symbol, timeframe, spread, start, end,
@@ -46,13 +42,13 @@ def backtest(
     start = datetime.strptime(start + ' 00:00', '%Y.%m.%d %H:%M')
     end = datetime.strptime(end + ' 00:00', '%Y.%m.%d %H:%M')
     end -= timedelta(minutes=timeframe)
-    # 最適化なし、または最適化ありのバックテストを行う。
+    #
     if optimization == 0 or optimization == 1:
-        # レポートを作成する。
+        #
         report =  pd.DataFrame(
                 index=[''], columns=['start', 'end', 'profits', 'trades',
                 'pf', 'ep', 'mdd', 'parameter'])
-        # バックテストを行う。
+        #
         if optimization == 1:
             parameter = optimize_parameter(
                     strategy, symbol, timeframe, spread, sl, tp, start, end,
@@ -61,8 +57,9 @@ def backtest(
                 parameter, symbol, timeframe)
         units = get_units(buy_entry, buy_exit, sell_entry, sell_exit, lots,
                           symbol, timeframe, sl, tp, position)
-        # レポートを作成する。
-        profits = get_profits(units, symbol, timeframe, spread, start, end)
+        #
+        profit = get_profit(units, symbol, timeframe, spread, start, end)
+        profits = profit.sum()
         trades = get_trades(units, start, end)
         pf = get_pf(units, symbol, timeframe, spread, start, end)
         ep = get_ep(units, symbol, timeframe, spread, start, end)
@@ -74,14 +71,14 @@ def backtest(
         report.iloc[0, 4] = str(np.round(pf, 3))
         report.iloc[0, 5] = str(np.round(ep, 3))
         report.iloc[0, 6] = str(np.round(mdd, 3))
+# here!
         if parameter is not None:
             report.iloc[0, 7] = np.round(parameter, 3)
         report = report.dropna(axis=1)
-        # レポートを出力する。
+        #
         pd.set_option('display.width', 1000)
         print(report)
-        # グラフを作成、出力する。
-        profit = get_profit(units, symbol, timeframe, spread, start, end)
+        #
         equity = profit.cumsum()
         ax=plt.subplot()
         ax.set_xticklabels(equity.index, rotation=45)
@@ -90,13 +87,13 @@ def backtest(
         plt.title('Backtest')
         plt.xlabel('Date')
         plt.ylabel('Equith Curve')
-        plt.tight_layout()  # これを入れないとラベルがはみ出る。
+        plt.tight_layout()  #
         plt.savefig('backtest.png', dpi=150)
         plt.show()
         plt.close()
-    # ウォークフォワードテスト、または機械学習を用いたバックテストを行う。
+    #
     elif optimization == 2 or optimization == 3:
-        # レポートを作成する。
+        # 
         report =  pd.DataFrame(
                 index=[['']*1000], columns=['start_test', 'end_test',
                       'profits', 'trades', 'pf', 'ep', 'mdd', 'parameter',])
@@ -115,7 +112,7 @@ def backtest(
                 break
             end_test = (start_test + timedelta(days=out_of_sample_period)
                 - timedelta(minutes=timeframe))
-            # EAのバックテストを行う。
+            #
             if optimization == 2:
                 parameter = optimize_parameter(
                     strategy, symbol, timeframe, spread, sl, tp, start_train,
@@ -130,18 +127,14 @@ def backtest(
                         parameter, symbol, timeframe)
                 units = get_units(buy_entry, buy_exit, sell_entry, sell_exit,
                                   lots, symbol, timeframe, sl, tp, position)
-            profit_test = get_profit(units, symbol, timeframe, spread,
-                                     start_test, end_test)
-            if i == 0:
-                profit_test_all = profit_test
-            else:
-                profit_test_all = profit_test_all.append(profit_test)
-            # レポートを作成する。
-            profits = get_profits(units, symbol, timeframe, spread, start_test,
-                                  end_test)
+            profit = get_profit(units, symbol, timeframe, spread, start_test,
+                                end_test)
+            profits = profit.sum()
             trades = get_trades(units, start_test, end_test)
-            pf = get_pf(units, symbol, timeframe, spread, start_test, end_test)
-            ep = get_ep(units, symbol, timeframe, spread, start_test, end_test)
+            pf = get_pf(units, symbol, timeframe, spread, start_test,
+                        end_test)
+            ep = get_ep(units, symbol, timeframe, spread, start_test,
+                        end_test)
             mdd = get_mdd(units, symbol, timeframe, spread, start_test,
                           end_test)
             report.iloc[i, 0] = start_test.strftime('%Y.%m.%d')
@@ -153,10 +146,17 @@ def backtest(
             report.iloc[i, 6] = str(np.round(mdd, 3))
             if parameter is not None:
                 report.iloc[i, 7] = np.round(parameter, 3)
+            #
+            if i == 0:
+                temp = units[start_test:end_test]
+            else:
+                temp = temp.append(units[start_test:end_test])
             i += 1
-        # 全体のレポートを最後に追加する。
-        profits = get_profits(units, symbol, timeframe, spread, start_all,
-                              end_all)
+        #
+        units = temp
+        profit = get_profit(units, symbol, timeframe, spread, start_all,
+                            end_all)
+        profits = profit.sum()
         trades = get_trades(units, start_all, end_all)
         pf = get_pf(units, symbol, timeframe, spread, start_all, end_all)
         ep = get_ep(units, symbol, timeframe, spread, start_all, end_all)
@@ -172,13 +172,11 @@ def backtest(
             report.iloc[i, 7] = ''
         report = report.iloc[0:i+1, :]
         report = report.dropna(axis=1)
-        # レポートを出力する。
+        #
         pd.set_option('display.width', 1000)
         print(report)
-        # グラフを作成、出力する。
-        profit_test_all = get_profit(units, symbol, timeframe, spread,
-                                     start_all, end_all)
-        equity = profit_test_all.cumsum()
+        #
+        equity = profit.cumsum()
         ax=plt.subplot()
         ax.set_xticklabels(equity.index, rotation=45)
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
@@ -186,12 +184,13 @@ def backtest(
         plt.title('Backtest')
         plt.xlabel('Date')
         plt.ylabel('Equity Curve')
-        plt.tight_layout()  # これを入れないとラベルがはみ出る。
+        plt.tight_layout()
         plt.savefig('backtest.png', dpi=150)
         plt.show()
         plt.close()
-    # 一時フォルダを削除する。
+    #
     delete_temp_folder()
+    return profit
 
 def clean_historical_data_folder():
     '''Clean historical data folder.
@@ -324,9 +323,9 @@ def convert_hst_to_csv(
             symbol = 'USDJPY'
         else:
             pass
-        # 端末のカレントディレクトリが「~」で、そこからの相対パスであることに注意する。
+        #
         filename_hst = '../historical_data/' + symbol + '.hst'
-        # 同上
+        #
         filename_csv = '../historical_data/' + symbol + '.csv'
         read = 0
         datetime = []
@@ -347,8 +346,8 @@ def convert_hst_to_csv(
                         time.strftime('%Y-%m-%d %H:%M:%S',
                         time.gmtime(bar[0])))
                     open_price.append(bar[1])
-                    high_price.append(bar[3])  # 高値と安値の順序が違うようだ
-                    low_price.append(bar[2])  # 同上
+                    high_price.append(bar[3])  #
+                    low_price.append(bar[2])  #
                     close_price.append(bar[4])
                     volume.append(bar[5])
                 else:
@@ -364,20 +363,20 @@ def convert_hst_to_csv(
         result.to_csv(filename_csv)
 
 def convert_minute_to_period(minute, timeframe):
-    '''分を計算期間に変換する。
+    '''
     Args:
-        minute: 分。
-        timeframe: 足の種類。
+        minute:
+        timeframe:
     Returns:
-        計算期間。
+        period.
     '''
     period = int(minute / timeframe)
     return period
 
 def convert_symbol_to_instrument(symbol):
-    '''symbolをinstrumentに変換する。
+    '''
     Args:
-        symbol: 通貨ペア。
+        symbol:
     Returns:
         instrument。
     '''
@@ -440,11 +439,11 @@ def convert_symbol_to_instrument(symbol):
     return instrument
 
 def convert_timeframe_to_granularity(timeframe):
-    '''timeframeをgranularityに変換する。
+    '''
     Args:
-        timeframe: 期間。
+        timeframe:
     Returns:
-        granularity。
+        granularity.
     '''
     if timeframe == 1:
         granularity = 'M1'
@@ -463,23 +462,23 @@ def convert_timeframe_to_granularity(timeframe):
     return granularity
 
 def create_temp_folder():
-    '''一時フォルダを作成する。
+    '''
     '''
     pathname = os.path.dirname(__file__)
     if os.path.exists(pathname + '/temp') == False:
         os.mkdir(pathname + '/temp')
 
 def delete_temp_folder():
-    '''一時フォルダを削除する。
+    '''
     '''
     pathname = os.path.dirname(__file__)
     if os.path.exists(pathname + '/temp') == True:
         shutil.rmtree(pathname + '/temp')
 
 def fill_invalidate_data(data):
-    '''無効なデータを埋める。
+    '''
     Args:
-        data: データ。
+        data:
     Returns:
         filled data.
     '''
@@ -490,11 +489,10 @@ def fill_invalidate_data(data):
     return ret
 
 def get_base_and_quote(symbol):
-    '''通貨ペアをベース通貨とクウォート通貨に分ける。
+    '''
     Args:
-        symbol: 通貨ペア。
+        symbol:
     Returns:
-        ベース通貨、クウォート通貨。
     '''
     if symbol == 'AUDCAD':
         base = 'AUD'
@@ -585,9 +583,8 @@ def get_base_and_quote(symbol):
     return base, quote
 
 def get_current_filename():
-    '''拡張子なしの現在のファイル名を返す。
+    '''
     Returns:
-        拡張子なしの現在のファイル名。
     '''
     pathname = os.path.dirname(__file__)
     current_filename = inspect.currentframe().f_back.f_code.co_filename
@@ -608,7 +605,8 @@ def get_ep(units, symbol, timeframe, spread, start, end):
         ep.
     '''
     # Get expected payoff.
-    profits = get_profits(units, symbol, timeframe, spread, start, end)
+    profit = get_profit(units, symbol, timeframe, spread, start, end)
+    profits = profit.sum()
     trades = get_trades(units, start, end)
     ep = profits / trades
     return ep
@@ -619,7 +617,7 @@ def get_historical_data(
         chfjpy=0, euraud=0, eurcad=0, eurchf=0, eurgbp=0, eurjpy=0, eurnzd=0,
         eurusd=0, gbpaud=0, gbpcad=0, gbpchf=0, gbpjpy=0, gbpnzd=0, gbpusd=0,
         nzdcad=0, nzdchf=0, nzdjpy=0, nzdusd=0, usdcad=0, usdchf=0, usdjpy=0):
-    '''ヒストリカルデータを作成する。
+    '''
     Args:
         start:
         end:
@@ -629,7 +627,7 @@ def get_historical_data(
     end = end + ' 00:00'
     index = pd.date_range(start, end, freq='T')
     data = pd.DataFrame(index=index)
-    # csvファイルを読み込む。
+    #
     for i in range(28):
         if i == 0:
             if audcad == 0:
@@ -745,30 +743,30 @@ def get_historical_data(
             symbol = 'USDJPY'
         else:
             pass
-        # 選択した通貨ペアの数を数える。
+        #
         n = (
                 audcad + audchf + audjpy + audnzd + audusd + cadchf + cadjpy
               + chfjpy + euraud + eurcad + eurchf + eurgbp + eurjpy + eurnzd 
               + eurusd + gbpaud + gbpcad + gbpchf + gbpjpy + gbpnzd + gbpusd
               + nzdcad + nzdchf + nzdjpy + nzdusd + usdcad + usdchf + usdjpy)
-        # 1分足の作成
+        #
         filename = '~/historical_data/' + symbol + '.csv'
         temp = pd.read_csv(filename, index_col=0)
         temp.index = pd.to_datetime(temp.index)
-        # デューカスコピーのデータはUTC時間のようなので、UTC+2に変更する。
+        #
         temp.index = temp.index + timedelta(hours=2)
         data = pd.concat([data, temp], axis=1)
-    # 列名を変更する。
+    #
     label = ['open', 'high', 'low', 'close', 'volume']
     data.columns = label * n
-    # リサンプリングの方法を設定する。
+    #
     ohlcv_dict = OrderedDict()
     ohlcv_dict['open'] = 'first'
     ohlcv_dict['high'] = 'max'
     ohlcv_dict['low'] = 'min'
     ohlcv_dict['close'] = 'last'
     ohlcv_dict['volume'] = 'sum'
-    # 各足を作成する。
+    #
     count = 0
     for i in range(28):
         if i == 0:
@@ -914,12 +912,11 @@ def get_historical_data(
         else:
             pass
         data1 = data.iloc[:, 0+(5*(count-1)): 5+(5*(count-1))]
-        # 欠損値を補間する。
+        #
         data1 = data1.fillna(method='ffill')
-        # 重複行を削除する。
+        #
         data1 = data1[~data1.index.duplicated()]
-         # 2分、3分、4分、5分、6分、10分、12分、15分、20分、30分、1時間、2時間、3時間、
-         # 4時間、6時間、8時間、12時間、日の各足を作成する。
+         #
         data2 = data1.resample(
             '2T', label='left', closed='left').apply(ohlcv_dict)
         data3 = data1.resample(
@@ -956,7 +953,7 @@ def get_historical_data(
             '720T', label='left', closed='left').apply(ohlcv_dict)
         data1440 = data1.resample(
             '1440T', label='left', closed='left').apply(ohlcv_dict)
-        # 土日を削除する。
+        #
         data1 = data1[data1.index.dayofweek<5]
         data2 = data2[data2.index.dayofweek<5]
         data3 = data3[data3.index.dayofweek<5]
@@ -976,7 +973,7 @@ def get_historical_data(
         data480 = data480[data480.index.dayofweek<5]
         data720 = data720[data720.index.dayofweek<5]
         data1440 = data1440[data1440.index.dayofweek<5]
-        # ファイルを出力する。
+        #
         filename1 =  '~/historical_data/' + symbol + '1.csv'
         filename2 =  '~/historical_data/' + symbol + '2.csv'
         filename3 =  '~/historical_data/' + symbol + '3.csv'
@@ -1062,17 +1059,57 @@ def get_pf(units, symbol, timeframe, spread, start, end):
     Returns:
         profit factor.
     '''
+    # Adjust spread.
+    if (symbol == 'AUDJPY' or symbol == 'CADJPY' or symbol == 'CHFJPY' or
+        symbol == 'EURJPY' or symbol == 'GBPJPY' or symbol == 'NZDJPY' or
+        symbol == 'USDJPY'):
+        adj_spread = spread / 100.0
+    else:
+        adj_spread = spread / 10000.0
     # Get profit factor.
-    profit = get_profit(units, symbol, timeframe, spread, start, end)
-    gross_profit = profit[profit>=0.0].sum()
-    gross_loss = profit[profit<0.0].sum()
+    cost_buy = (
+            (units>units.shift(1)) * (units-units.shift(1)) * (units>0)
+            * adj_spread)
+    cost_sell = (
+            (units>units.shift(1)) * (units-units.shift(1)) * (units<=0)
+            * adj_spread)
+    op = i_open(symbol, timeframe, 0)
+    # https://stackoverflow.com/questions/32890124/
+    # pandas-dataframe-running-sum-with-reset
+    df1 = pd.DataFrame()
+    df2 = pd.DataFrame()
+    df1['reset'] = (units.shift(1)<=0)[start:end]
+    df2['reset'] = (units.shift(1)>=0)[start:end]
+    df1['val'] = (
+            (op-op.shift(1))*units.shift(1)*(units.shift(1)>0)
+            -cost_buy)[start:end]
+    df2['val'] = (
+            (op-op.shift(1))*units.shift(1)*(units.shift(1)<0)
+            -cost_sell)[start:end]
+    df1['val'] = df1['val'].fillna(0.0)
+    df2['val'] = df2['val'].fillna(0.0)
+    df1['cumsum'] = df1['reset'].cumsum()
+    df2['cumsum'] = df2['reset'].cumsum()
+    df1['des'] = df1.groupby(['cumsum'])['val'].cumsum()
+    df2['des'] = df2.groupby(['cumsum'])['val'].cumsum()
+    exit_buy = (units<=0)[start:end]
+    exit_sell = (units>=0)[start:end]
+    exit_buy.iloc[len(exit_buy)-1] = True
+    exit_sell.iloc[len(exit_sell)-1] = True
+    profit_buy = df1['des'] * exit_buy
+    profit_sell = df2['des'] * exit_sell
+    gross_profit = (
+            profit_buy[profit_buy>0.0].sum()
+            + profit_sell[profit_sell>0.0].sum())
+    gross_loss = (
+            profit_buy[profit_buy<0.0].sum()
+            + profit_sell[profit_sell<0.0].sum())
     pf = -(gross_profit / gross_loss)
     return pf
 
 def get_pkl_file_path():
-    '''pklファイルのパスを作成する。
+    '''
     Returns:
-        pklファイルのパス。
     '''
     dir_name = os.path.dirname(__file__) + '/temp/'
     framerecords = inspect.stack()
@@ -1085,7 +1122,7 @@ def get_pkl_file_path():
     for i in range(size):
         if len(str(ls[size-1-i])) < 30:
             arg_values += '_' + str(ls[size-1-i])
-        # 名前が長すぎる場合はindexと仮定する。
+        #
         else:
             arg_values += '_index'
             
@@ -1118,23 +1155,6 @@ def get_profit(units, symbol, timeframe, spread, start, end):
     profit = ((op - op.shift(1)) * units.shift(1) - cost)[start:end]
     return profit
 
-def get_profits(units, symbol, timeframe, spread, start, end):
-    '''Get profits.
-    Args:
-        units:
-        symbol:
-        timeframe:
-        spread:
-        start:
-        end
-    Returns:
-        profits.
-    '''
-    # Get profits.
-    profit = get_profit(units, symbol, timeframe, spread, start, end)
-    profits = profit.sum()
-    return profits
-
 def get_randomwalk_data(mean=0.0, std=0.01/np.sqrt(1440), skew=0.0):
     '''Get randomwalk data.
     Args:
@@ -1142,7 +1162,7 @@ def get_randomwalk_data(mean=0.0, std=0.01/np.sqrt(1440), skew=0.0):
         std: standard deviation.
         skew: skew.
     '''
-    # データが1/6分なので1分に調整（歪度は合ってる？）
+    #
     mean = mean / 6
     std = std / np.sqrt(6)
     skew = skew * np.sqrt(6)
@@ -1160,7 +1180,7 @@ def get_randomwalk_data(mean=0.0, std=0.01/np.sqrt(1440), skew=0.0):
     volume = pd.DataFrame([6]*len(randomwalk1), index=randomwalk1.index,
                        columns=['volume'])
     randomwalk1 = pd.concat([randomwalk1, volume], axis=1)
-    # リサンプリングの方法を設定する。
+    #
     ohlcv_dict = OrderedDict()
     ohlcv_dict['open'] = 'first'
     ohlcv_dict['high'] = 'max'
@@ -1222,7 +1242,7 @@ def get_randomwalk_data(mean=0.0, std=0.01/np.sqrt(1440), skew=0.0):
     randomwalk480 = randomwalk480[randomwalk480.index.dayofweek<5]
     randomwalk720 = randomwalk720[randomwalk720.index.dayofweek<5]
     randomwalk1440 = randomwalk1440[randomwalk1440.index.dayofweek<5]
-    # ファイルを出力する。
+    #
     randomwalk1.to_csv('~/historical_data/RANDOM1.csv')
     randomwalk2.to_csv('~/historical_data/RANDOM2.csv')
     randomwalk3.to_csv('~/historical_data/RANDOM3.csv')
@@ -1293,7 +1313,7 @@ def get_trades(units, start, end):
         trades.
     '''
     # Get trades.
-    trades = (units > units.shift(1))[start:end].sum()
+    trades = ((units.shift(1) <= 0) & (units > 0))[start:end].sum() + ((units.shift(1) >= 0) & (units < 0))[start:end].sum()
     return trades
 
 def get_units(buy_entry, buy_exit, sell_entry, sell_exit, lots, symbol,
@@ -1321,17 +1341,17 @@ def get_units(buy_entry, buy_exit, sell_entry, sell_exit, lots, symbol,
     buy = buy_entry_copy.copy()
     buy[buy_entry_copy==False] = np.nan
     buy[buy_exit_copy==True] = 0.0
-    buy.iloc[0] = 0.0  # 不要なnanをなくすために先頭に0を入れておく。
+    buy.iloc[0] = 0.0  #
     buy = buy.fillna(method='ffill')
     sell = sell_entry_copy.copy()
     sell[sell_entry_copy==False] = np.nan
     sell[sell_exit_copy==True] = 0.0
-    sell.iloc[0] = 0.0  # 不要なnanをなくすために先頭に0を入れておく。
+    sell.iloc[0] = 0.0  #
     sell = sell.fillna(method='ffill')
     buy_copy = buy.copy()
     sell_copy = sell.copy()
     if sl != 0 or tp != 0:
-        # pipsの単位を調整する。
+        #
         if (symbol == 'AUDJPY' or symbol == 'CADJPY' or
             symbol == 'CHFJPY' or symbol == 'EURJPY' or
             symbol == 'GBPJPY' or symbol == 'NZDJPY' or
@@ -1368,12 +1388,12 @@ def get_units(buy_entry, buy_exit, sell_entry, sell_exit, lots, symbol,
         buy = buy_entry.copy()
         buy[buy_entry==False] = np.nan
         buy[buy_exit==True] = 0.0
-        buy.iloc[0] = 0.0  # 不要なnanをなくすために先頭に0を入れておく。
+        buy.iloc[0] = 0.0  #
         buy = buy.fillna(method='ffill')
         sell = sell_entry.copy()
         sell[sell_entry==False] = np.nan
         sell[sell_exit==True] = 0.0
-        sell.iloc[0] = 0.0  # 不要なnanをなくすために先頭に0を入れておく。
+        sell.iloc[0] = 0.0  #
         sell = sell.fillna(method='ffill')
     if position == 0:
         signal = buy
@@ -1387,22 +1407,20 @@ def get_units(buy_entry, buy_exit, sell_entry, sell_exit, lots, symbol,
     return units
 
 def i_close(symbol, timeframe, shift):
-    '''終値を返す。
-    Args:
-        symbol: 通貨ペア。
-        timeframe: 足の種類。
-        shift: シフト。
-    Returns:
-        終値。
     '''
-    pkl_file_path = get_pkl_file_path()  # 必ず最初に置く。
-    # トレードのとき、
-    if OANDA is not None:
+    Args:
+        symbol:
+        timeframe:
+        shift:
+    Returns:
+    '''
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    #
+    if g_oanda is not None:
         instrument = convert_symbol_to_instrument(symbol)
         granularity = convert_timeframe_to_granularity(timeframe)
-        temp = OANDA.get_history(
-            instrument=instrument, granularity=granularity,
-            COUNT=COUNT)
+        temp = g_oanda.get_history(
+            instrument=instrument, granularity=granularity, count=COUNT)
         index = pd.Series(np.zeros(COUNT))
         ret = pd.Series(np.zeros(COUNT))
         for i in range(COUNT):
@@ -1411,7 +1429,7 @@ def i_close(symbol, timeframe, shift):
             index = pd.to_datetime(index)
             ret.index = index
         ret = ret.shift(shift)
-    # バックテスト、またはウォークフォワードテストのとき、
+    #
     else:
         ret = restore_pkl(pkl_file_path)
         if ret is None:
@@ -1506,22 +1524,20 @@ def i_daily_open(symbol, timeframe, shift):
     return ret
 
 def i_high(symbol, timeframe, shift):
-    '''高値を返す。
-    Args:
-        symbol: 通貨ペア。
-        timeframe: 足の種類。
-        shift: シフト。
-    Returns:
-        高値。
     '''
-    pkl_file_path = get_pkl_file_path()  # 必ず最初に置く。
-    # トレードのとき、
-    if OANDA is not None:
+    Args:
+        symbol:
+        timeframe:
+        shift:
+    Returns:
+    '''
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    #
+    if g_oanda is not None:
         instrument = convert_symbol_to_instrument(symbol)
         granularity = convert_timeframe_to_granularity(timeframe)
-        temp = OANDA.get_history(
-            instrument=instrument, granularity=granularity,
-            COUNT=COUNT)
+        temp = g_oanda.get_history(
+            instrument=instrument, granularity=granularity, count=COUNT)
         index = pd.Series(np.zeros(COUNT))
         ret = pd.Series(np.zeros(COUNT))
         for i in range(COUNT):
@@ -1530,7 +1546,7 @@ def i_high(symbol, timeframe, shift):
             index = pd.to_datetime(index)
             ret.index = index
         ret = ret.shift(shift)
-    # バックテスト、またはウォークフォワードテストのとき、
+    #
     else:
         ret = restore_pkl(pkl_file_path)
         if ret is None:
@@ -1546,16 +1562,15 @@ def i_high(symbol, timeframe, shift):
     return ret
 
 def i_hl_band(symbol, timeframe, period, shift):
-    '''直近の高値、安値を返す。
-    Args:
-        symbol: 通貨ペア。
-        timeframe: 足の種類。
-        period: 計算期間。
-        shift: シフト。
-    Returns:
-        直近の高値、安値。
     '''
-    pkl_file_path = get_pkl_file_path()  # 必ず最初に置く。
+    Args:
+        symbol:
+        timeframe:
+        period:
+        shift: 
+    Returns:
+    '''
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
         high = i_high(symbol, timeframe, shift)
@@ -1570,25 +1585,25 @@ def i_hl_band(symbol, timeframe, period, shift):
 
 def i_ku_close(timeframe, shift, aud=0, cad=0, chf=0, eur=0, gbp=0, jpy=0,
                nzd=0, usd=0):
-    '''Ku-Powerを返す。
+    '''
     Args:
-        timeframe: 足の種類。
-        shift: シフト。
-        aud: 豪ドル。
-        cad: カナダドル。
-        chf: スイスフラン。
-        eur: ユーロ。
-        gbp: ポンド。
-        jpy: 円。
-        nzd: NZドル。
-        usd: 米ドル。
+        timeframe:
+        shift:
+        aud:
+        cad:
+        chf:
+        eur:
+        gbp:
+        jpy:
+        nzd:
+        usd:
     Returns:
         Ku-Power。
     '''
-    pkl_file_path = get_pkl_file_path()  # 必ず最初に置く。
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
-        # 終値を格納する。
+        #
         audusd = 0.0
         cadusd = 0.0
         chfusd = 0.0
@@ -1610,7 +1625,7 @@ def i_ku_close(timeframe, shift, aud=0, cad=0, chf=0, eur=0, gbp=0, jpy=0,
             jpyusd = -np.log(i_close('USDJPY', timeframe, shift))
         if nzd == 1:
             nzdusd = np.log(i_close('NZDUSD', timeframe, shift))
-        # Ku-Closeを作成する。
+        #
         n = aud + cad + chf + eur + gbp + jpy + nzd + usd
         a = (audusd * aud + cadusd * cad + chfusd * chf + eurusd * eur
              + gbpusd * gbp + jpyusd * jpy + nzdusd * nzd) / n
@@ -1637,23 +1652,22 @@ def i_ku_close(timeframe, shift, aud=0, cad=0, chf=0, eur=0, gbp=0, jpy=0,
 
 def i_ku_roc(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
              jpy=0, nzd=0, usd=0):
-    '''Ku-Powerの変化率を返す。
-    Args:
-        timeframe: 足の種類。
-        period:計算期間。
-        shift: シフト。
-        aud: 豪ドル。
-        cad: カナダドル。
-        chf: スイスフラン。
-        eur: ユーロ。
-        gbp: ポンド。
-        jpy: 円。
-        nzd: NZドル。
-        usd: 米ドル。
-    Returns:
-        Ku-Powerの変化率。
     '''
-    pkl_file_path = get_pkl_file_path()  # 必ず最初に置く。
+    Args:
+        timeframe:
+        period:
+        shift:
+        aud:
+        cad:
+        chf:
+        eur:
+        gbp:
+        jpy:
+        nzd:
+        usd:
+    Returns:
+    '''
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
         ku_close = i_ku_close(timeframe, shift, aud=aud, cad=cad, chf=chf,
@@ -1665,24 +1679,23 @@ def i_ku_roc(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
 
 def i_ku_zscore(timeframe, period, ma_method, shift, aud=0, cad=0, chf=0,
                 eur=0, gbp=0, jpy=0, nzd=0, usd=0):
-    '''Ku-PowerのZスコアを返す。
-    Args:
-        timeframe: 足の種類。
-        period:計算期間。
-        ma_method: 移動平均のメソッド。
-        shift: シフト。
-        aud: 豪ドル。
-        cad: カナダドル。
-        chf: スイスフラン。
-        eur: ユーロ。
-        gbp: ポンド。
-        jpy: 円。
-        nzd: NZドル。
-        usd: 米ドル。
-    Returns:
-        Ku-PowerのZスコア。
     '''
-    pkl_file_path = get_pkl_file_path()  # 必ず最初に置く。
+    Args:
+        timeframe:
+        period:
+        ma_method:
+        shift: 
+        aud:
+        cad:
+        chf:
+        eur:
+        gbp:
+        jpy:
+        nzd:
+        usd:
+    Returns:
+    '''
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
         ku_close = i_ku_close(timeframe, shift, aud=aud, cad=cad, chf=chf,
@@ -1694,58 +1707,55 @@ def i_ku_zscore(timeframe, period, ma_method, shift, aud=0, cad=0, chf=0,
             mean = ku_close.ewm(span=period).mean()
             std = ku_close.ewm(span=period).std()
         std = std.mean(axis=1)
-        ret = (ku_close - mean).div(std, axis=0)  # メモリーエラー対策。
+        ret = (ku_close - mean).div(std, axis=0)  #
         ret = fill_invalidate_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
 def i_ku_zscore2(timeframe, shift, aud=0, cad=0, chf=0,
                 eur=0, gbp=0, jpy=0, nzd=0, usd=0):
-    '''Ku-PowerのZスコアを返す。
-    Args:
-        timeframe: 足の種類。
-        period:計算期間。
-        ma_method: 移動平均のメソッド。
-        shift: シフト。
-        aud: 豪ドル。
-        cad: カナダドル。
-        chf: スイスフラン。
-        eur: ユーロ。
-        gbp: ポンド。
-        jpy: 円。
-        nzd: NZドル。
-        usd: 米ドル。
-    Returns:
-        Ku-PowerのZスコア。
     '''
-    pkl_file_path = get_pkl_file_path()  # 必ず最初に置く。
+    Args:
+        timeframe:
+        period:
+        ma_method:
+        shift:
+        aud:
+        cad: 
+        chf:
+        eur:
+        gbp:
+        jpy:
+        nzd:
+        usd:
+    Returns:
+    '''
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
         ku_close = i_ku_close(timeframe, shift, aud=aud, cad=cad, chf=chf,
                               eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
         std = ku_close.std(axis=1)
-        ret = ku_close.div(std, axis=0)  # メモリーエラー対策。
+        ret = ku_close.div(std, axis=0)  #
         ret = fill_invalidate_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
 def i_low(symbol, timeframe, shift):
-    '''安値を返す。
-    Args:
-        symbol: 通貨ペア。
-        timeframe: 足の種類。
-        shift: シフト。
-    Returns:
-        安値。
     '''
-    pkl_file_path = get_pkl_file_path()  # 必ず最初に置く。
-    # トレードのとき、
-    if OANDA is not None:
+    Args:
+        symbol:
+        timeframe:
+        shift:
+    Returns:
+    '''
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    #
+    if g_oanda is not None:
         instrument = convert_symbol_to_instrument(symbol)
         granularity = convert_timeframe_to_granularity(timeframe)
-        temp = OANDA.get_history(
-            instrument=instrument, granularity=granularity,
-            COUNT=COUNT)
+        temp = g_oanda.get_history(
+            instrument=instrument, granularity=granularity, count=COUNT)
         index = pd.Series(np.zeros(COUNT))
         ret = pd.Series(np.zeros(COUNT))
         for i in range(COUNT):
@@ -1754,7 +1764,7 @@ def i_low(symbol, timeframe, shift):
             index = pd.to_datetime(index)
             ret.index = index
         ret = ret.shift(shift)
-    # バックテスト、またはウォークフォワードテストのとき、
+    #
     else:
         ret = restore_pkl(pkl_file_path)
         if ret is None:
@@ -1770,17 +1780,16 @@ def i_low(symbol, timeframe, shift):
     return ret
 
 def i_ma(symbol, timeframe, period, ma_method, shift):
-    '''移動平均を返す。
-    Args:
-        symbol: 通貨ペア。
-        timeframe: 足の種類。
-        period: 計算期間。
-        ma_method: 移動平均のメソッド。
-        shift: シフト。
-    Returns:
-        移動平均。
     '''
-    pkl_file_path = get_pkl_file_path()  # 必ず最初に置く。
+    Args:
+        symbol
+        timeframe:
+        period:
+        ma_method:
+        shift:
+    Returns:
+    '''
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
         close = i_close(symbol, timeframe, shift)
@@ -1793,22 +1802,20 @@ def i_ma(symbol, timeframe, period, ma_method, shift):
     return ret
 
 def i_open(symbol, timeframe, shift):
-    '''始値を返す。
-    Args:
-        symbol: 通貨ペア。
-        timeframe: 足の種類。
-        shift: シフト。
-    Returns:
-        始値。
     '''
-    pkl_file_path = get_pkl_file_path()  # 必ず最初に置く。
-    # トレードのとき、
-    if OANDA is not None:
+    Args:
+        symbol:
+        timeframe:
+        shift:
+    Returns:
+    '''
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    #
+    if g_oanda is not None:
         instrument = convert_symbol_to_instrument(symbol)
         granularity = convert_timeframe_to_granularity(timeframe)
-        temp = OANDA.get_history(
-            instrument=instrument, granularity=granularity,
-            COUNT=COUNT)
+        temp = g_oanda.get_history(
+            instrument=instrument, granularity=granularity, count=COUNT)
         index = pd.Series(np.zeros(COUNT))
         ret = pd.Series(np.zeros(COUNT))
         for i in range(COUNT):
@@ -1817,7 +1824,7 @@ def i_open(symbol, timeframe, shift):
             index = pd.to_datetime(index)
             ret.index = index
         ret = ret.shift(shift)
-    # バックテスト、またはウォークフォワードテストのとき、
+    #
     else:
         ret = restore_pkl(pkl_file_path)
         if ret is None:
@@ -1834,33 +1841,30 @@ def i_open(symbol, timeframe, shift):
 
 def i_percentrank(timeframe, period, ma_method, shift, aud=0, cad=0, chf=0,
                   eur=0, gbp=0, jpy=0, nzd=0, usd=0):
-    '''通貨の順位（基準はZスコア）をパーセントで返す。
-    Args:
-        symbol: 通貨ペア。
-        timeframe: 足の種類。
-        period: 計算期間。
-        shift: シフト。
-        aud: 豪ドルの設定。
-        cad: カナダドルの設定。
-        chf: スイスフランの設定。
-        eur: ユーロの設定。
-        gbp: ポンドの設定。
-        jpy: 円の設定。
-        nzd: NZドルの設定。
-        usd: 米ドルの設定。
-    Returns:
-        通貨の順位（パーセント）。
-            首位: 1.0
-            最下位:0.0
     '''
-    pkl_file_path = get_pkl_file_path()  # 必ず最初に置く。
+    Args:
+        symbol:
+        timeframe:
+        period:
+        shift:
+        aud:
+        cad:
+        chf:
+        eur:
+        gbp:
+        jpy:
+        nzd:
+        usd:
+    Returns:
+    '''
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
         temp = i_ku_zscore(
                 timeframe, period, ma_method, shift, aud=aud, cad=cad, chf=chf,
                 eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
         n = aud + cad + chf + eur + gbp + jpy + nzd + usd
-        # 同値になることはほとんどないと思うが、その場合は観測順にしている点に注意。
+        #
         ret = temp.rank(axis=1, method='first')
         ret -= 1
         ret /= (n - 1)
@@ -1869,17 +1873,15 @@ def i_percentrank(timeframe, period, ma_method, shift, aud=0, cad=0, chf=0,
     return ret
 
 def i_resistance(symbol, timeframe, period, shift):
-    '''レジスタンスを返す。
-       ただし、検索範囲は計算期間以上離れている場合に限る。
-    Args:
-        symbol: 通貨ペア。
-        timeframe: 足の種類。
-        period: 計算期間。
-        shift: シフト。
-    Returns:
-        レジスタンス。
     '''
-    pkl_file_path = get_pkl_file_path()  # 必ず最初に置く。
+    Args:
+        symbol:
+        timeframe:
+        period:
+        shift:
+    Returns:
+    '''
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
         @jit(float64(float64[:], int64, int64), nopython=True, cache=True)
@@ -1909,16 +1911,15 @@ def i_resistance(symbol, timeframe, period, shift):
     return ret
 
 def i_roc(symbol, timeframe, period, shift):
-    '''変化率を返す。
-    Args:
-        symbol: 通貨ペア。
-        timeframe: 足の種類。
-        period: 計算期間。
-        shift: シフト。
-    Returns:
-        変化率。
     '''
-    pkl_file_path = get_pkl_file_path()  # 必ず最初に置く。
+    Args:
+        symbol:
+        timeframe:
+        period:
+        shift:
+    Returns:
+    '''
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
         close = i_close(symbol, timeframe, shift)
@@ -1928,17 +1929,15 @@ def i_roc(symbol, timeframe, period, shift):
     return ret
 
 def i_support(symbol, timeframe, period, shift):
-    '''サポートを返す。
-       ただし、検索範囲は計算期間以上離れている場合に限る。
-    Args:
-        symbol: 通貨ペア。
-        timeframe: 足の種類。
-        period: 計算期間。
-        shift: シフト。
-    Returns:
-        サポート。
     '''
-    pkl_file_path = get_pkl_file_path()  # 必ず最初に置く。
+    Args:
+        symbol:
+        timeframe:
+        period:
+        shift:
+    Returns:
+    '''
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
         @jit(float64(float64[:], int64, int64), nopython=True, cache=True)
@@ -1968,17 +1967,16 @@ def i_support(symbol, timeframe, period, shift):
     return ret
 
 def i_trend_duration(symbol, timeframe, period, ma_method, shift):
-    '''トレンド期間を返す。
-    Args:
-        symbol: 通貨ペア。
-        timeframe: 足の種類。
-        period: 計算期間。
-        ma_method: 移動平均のメソッド。
-        shift: シフト。
-    Returns:
-        トレンド期間。
     '''
-    pkl_file_path = get_pkl_file_path()  # 必ず最初に置く。
+    Args:
+        symbol:
+        timeframe:
+        period:
+        ma_method:
+        shift:
+    Returns:
+    '''
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
         high = i_high(symbol, timeframe, shift)
@@ -1997,17 +1995,16 @@ def i_trend_duration(symbol, timeframe, period, ma_method, shift):
     return ret
 
 def i_zscore(symbol, timeframe, period, ma_method, shift):
-    '''終値のzスコアを返す。
-    Args:
-        symbol: 通貨ペア。
-        timeframe: 足の種類。
-        period: 計算期間。
-        ma_method: 移動平均のメソッド。
-        shift: シフト。
-    Returns:
-        終値のzスコア。
     '''
-    pkl_file_path = get_pkl_file_path()  # 必ず最初に置く。
+    Args:
+        symbol:
+        timeframe:
+        period:
+        ma_method:
+        shift:
+    Returns:
+    '''
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
         close = i_close(symbol, timeframe, shift)
@@ -2024,36 +2021,34 @@ def i_zscore(symbol, timeframe, period, ma_method, shift):
 
 def optimize_parameter(strategy, symbol, timeframe, spread, sl, tp,
                        start, end, position, min_trade, criteria, rranges):
-    '''パラメーターを最適化する。
+    '''
     Args:
-        strategy: 戦略。
-        symbol: 通貨ペア。
-        timeframe: 足の種類。
-        spread: スプレッド。
-        lots: lots.
+        strategy:
+        symbol:
+        timeframe:
+        spread:
+        lots:
         sl: stop loss.
         tp: take profit.
-        start: 開始日。
-        end: 終了日。
-        position: ポジションの設定。
-            0: 買いのみ。
-            1: 売りのみ。
-            2: 売買両方。
-        min_trade: 最低トレード数。
+        start:
+        end:
+        position:
+        min_trade:
         criteria:
-        rranges: パラメーターのスタート、ストップ、ステップ。
+        rranges:
     Returns:
-        パラメーター。
     '''
     def func(parameter, strategy, symbol, timeframe, spread, sl, tp,
              start, end, position, min_trade, criteria):
-        # パフォーマンスを計算する。
+        #
         buy_entry, buy_exit, sell_entry, sell_exit, lots = strategy(
                 parameter, symbol, timeframe)
         units = get_units(buy_entry, buy_exit, sell_entry, sell_exit, lots,
                           symbol, timeframe, sl, tp, position)
         if criteria == 'profits':
-            fitness = get_profits(units, symbol, timeframe, spread, start, end)
+            profit = get_profit(units, symbol, timeframe, spread, start, end)
+            profits = profit.sum()
+            fitness = profits
         elif criteria == 'trades':
             fitness = get_trades(units, start, end)
         elif criteria == 'pf':
@@ -2065,8 +2060,7 @@ def optimize_parameter(strategy, symbol, timeframe, spread, sl, tp,
                                     end)
         trades = get_trades(units, start, end)
         years = (end - start).total_seconds() / 60 / 60 / 24 / 365
-        # 1年当たりのトレード数が最低トレード数に満たない場合、
-        # 適応度を0にする。
+        #
         if trades / years < min_trade:
             fitness = 0.0
         return -fitness
@@ -2078,25 +2072,25 @@ def optimize_parameter(strategy, symbol, timeframe, spread, sl, tp,
     return parameter
 
 def order_close(ticket):
-    '''決済注文を送信する。
-    Args:
-        ticket: チケット番号。
     '''
-    OANDA.close_trade(ACCOUNT_ID, ticket)
+    Args:
+        ticket:
+    '''
+    g_oanda.close_trade(g_access_id, ticket)
  
 def order_send(symbol, units, side):
-    '''新規注文を送信する。
-    Args:
-        symbol: 通貨ペア名。
-        units:
-        side: 売買の種別
-    Returns:
-        チケット番号。
     '''
-    # 通貨ペアの名称を変換する。
+    Args:
+        symbol:
+        units:
+        side:
+    Returns:
+    '''
+    #
     instrument = convert_symbol_to_instrument(symbol)
-    response = OANDA.create_order(account_id=ACCOUNT_ID, instrument=instrument,
-        units=units, side=side, type='market')
+    response = g_oanda.create_order(
+            account_id=g_access_id, instrument=instrument, units=units,
+            side=side, type='market')
     ticket = response['tradeOpened']['id']
     return ticket
 
@@ -2148,8 +2142,9 @@ def platform():
     get_model = calling_module.get_model
     parameter = calling_module.PARAMETER
     rranges = calling_module.RRANGES
+    profit = None
     if mode == 'backtest':
-        backtest(
+        profit = backtest(
                 strategy, symbol, timeframe, spread, start, end,
                 get_model=get_model, sl=sl, tp=tp, position=position,
                 min_trade=min_trade, criteria=criteria,
@@ -2173,6 +2168,7 @@ def platform():
         signal(strategy, symbol, timeframe, ea,
                parameter=parameter, sl=sl, tp=tp,
                start_train=start_train, end_train=end_train, position=position)
+    return profit
 
 def rename_historical_data_filename():
     '''Rename historical data filename.
@@ -2201,13 +2197,12 @@ def restore_model(filename):
     return ret
 
 def restore_pkl(pkl_file_path):
-    '''pklファイルを復元する。
-    Args:
-        pkl_file_path: pklファイルのパス。
-    Returns:
-        pklファイル。
     '''
-    if OANDA is None and os.path.exists(pkl_file_path) == True:
+    Args:
+        pkl_file_path
+    Returns:
+    '''
+    if g_oanda is None and os.path.exists(pkl_file_path) == True:
         ret = joblib.load(pkl_file_path)
     else:
         ret = None
@@ -2225,47 +2220,48 @@ def save_model(model, filename):
     joblib.dump(model, pathname + '/' + filename + '.pkl') 
 
 def save_pkl(data, pkl_file_path):
-    '''pklファイルを保存する。
-    Args:
-        data: データ。
-        pkl_file_path: pklファイルのパス。
     '''
-    if OANDA is None:
+    Args:
+        data:
+        pkl_file_path:
+    '''
+    if g_oanda is None:
         create_temp_folder()
         joblib.dump(data, pkl_file_path)
 
 def seconds():
-    '''現在の秒を返す。
+    '''
     Returns:
-        現在の秒。
     '''    
     seconds = datetime.now().second
     return seconds
 
 def send_mail(subject, some_text, fromaddr, toaddr, host, port, password):
-    '''メールを送信する。
+    '''
     Args:
-        subject: タイトル。
-        some_text: 文。
+        subject:
+        some_text:
     '''
     msg = MIMEText(some_text)
     msg['Subject'] = subject
     msg['From'] = fromaddr
     msg['To'] = toaddr
-    s = smtplib.SMTP_SSL(host, port)
-    s.login(fromaddr, password)
-    s.send_message(msg)
-    s.quit()
+#    s = smtplib.SMTP_SSL(host, port)
+#    s.login(fromaddr, password)
+#    s.send_message(msg)
+#    s.quit()
+    with smtplib.SMTP_SSL(host, port) as s:
+        s.login(fromaddr, password)
+        s.send_message(msg)
 
 def send_signal_to_mt4(filename, signal):
-    '''シグナルをMT4に送信する。
+    '''
     Args:
-        filename: ファイル名。
-        signal: シグナル。
+        filename:
+        signal:
     '''
     f = open(filename, 'w')
-    # 0を使いたくないので2を加える。
-    # MT4側で2を減じて調整する。
+    #
     f.write(str(int(signal.iloc[len(signal)-1] + 2)))
     f.close()
 
@@ -2274,50 +2270,48 @@ def signal(strategy, symbol, timeframe, ea, parameter, sl, tp,
     '''
     Args:
     '''
-    global OANDA
-    global ENVIRONMENT
-    global ACCESS_TOKEN
-    global ACCOUNT_ID
-    # 設定を格納する。
+    global g_oanda
+    global g_environment
+    global g_access_token
+    global g_access_id
+    #
     path = os.path.dirname(__file__)
     config = configparser.ConfigParser()
     config.read(path + '/settings.ini')
-    # メールを設定する。
+    #
     host = 'smtp.mail.yahoo.co.jp'
     port = 465
     fromaddr = config['DEFAULT']['fromaddr']
     toaddr = config['DEFAULT']['toaddr']
     password = config['DEFAULT']['password']
-    # OANDA API用に設定する。
-    if ENVIRONMENT is None:
-        ENVIRONMENT = config['DEFAULT']['environment']
-    if ACCESS_TOKEN is None:
-        ACCESS_TOKEN = config['DEFAULT']['access_token']
-    if ACCOUNT_ID is None:
-        ACCOUNT_ID = config['DEFAULT']['account_id']
-    if OANDA is None:
-        OANDA = oandapy.API(environment=ENVIRONMENT, access_token=ACCESS_TOKEN)
+    #
+    if g_environment is None:
+        g_environment = config['DEFAULT']['environment']
+    if g_access_token is None:
+        g_access_token = config['DEFAULT']['access_token']
+    if g_access_id is None:
+        g_access_id = config['DEFAULT']['account_id']
+    if g_oanda is None:
+        g_oanda = oandapy.API(environment=g_environment,
+                              access_token=g_access_token)
     second_before = 0
-    count = COUNT
     pre_history_time = None
     instrument = convert_symbol_to_instrument(symbol)
     granularity = convert_timeframe_to_granularity(timeframe)
     #
     while True:
-        # 回線接続を確認してから実行する。
+        #
         try:
-            # 回線が接続していないと約15分でエラーになる。
+            #
             second_now = seconds()
-            # 毎秒実行する。
+            #
             if second_now != second_before:
                 second_before = second_now
-                history = OANDA.get_history(
+                history = g_oanda.get_history(
                     instrument=instrument, granularity=granularity,
-                    count=count)
-                history_time = history['candles'][count-1]['time']
-                # 過去のデータの更新が完了してから実行する。
-                # シグナルの計算は過去のデータを用いているので、過去のデータの
-                # 更新が完了してから実行しないと計算がおかしくなる。
+                    count=COUNT)
+                history_time = history['candles'][COUNT-1]['time']
+                #
                 if history_time != pre_history_time:
                     pre_history_time = history_time
                     buy_entry, buy_exit, sell_entry, sell_exit, lots = (
@@ -2328,7 +2322,7 @@ def signal(strategy, symbol, timeframe, ea, parameter, sl, tp,
                     end_row = len(units) - 1
                     open0 = i_open(symbol, timeframe, 0)
                     price = open0[len(open0)-1]
-                    if (units.iloc[end_row] != units.iloc[end_row-1]):
+                    if units.iloc[end_row] != units.iloc[end_row-1]:
                         subject = ea
                         some_text = (symbol + ' ' + str(units.iloc[end_row])
                         + ' ' + str(price))
@@ -2338,38 +2332,35 @@ def signal(strategy, symbol, timeframe, ea, parameter, sl, tp,
                 now = datetime.now()
                 print(now.strftime('%Y.%m.%d %H:%M:%S'), ea, symbol,
                       timeframe, units.iloc[end_row])
-        # エラーを処理する。
+        #
         except Exception as e:
-            print('エラーが発生しました。')
+            print('error')
             print(e)
-            time.sleep(1) # 1秒おきに表示させる。
+            time.sleep(1) #
 
 def time_hour(index):
-    '''時を返す。
+    '''
     Args:
-        index: インデックス。
+        index:
     Returns:
-        時。
     '''
     time_hour = pd.Series(index.hour, index=index)
     return time_hour
 
 def time_minute(index):
-    '''分を返す。
+    '''
     Args:
-        index: インデックス。
+        index:
     Returns:
-        分。
     '''
     time_minute = pd.Series(index.minute, index=index)
     return time_minute
 
 def time_month(index):
-    '''月を返す。
+    '''
     Args:
-        index: インデックス。
+        index:
     Returns:
-        月。
     '''
     time_month = pd.Series(index.month, index=index)
     return time_month
@@ -2380,60 +2371,58 @@ def trade(strategy, symbol, timeframe, ea,
     '''
     Args:
     '''
-    global OANDA
-    global ENVIRONMENT
-    global ACCESS_TOKEN
-    global ACCOUNT_ID
-    # 設定を格納する。
+    global g_oanda
+    global g_environment
+    global g_access_token
+    global g_access_id
+    #
     path = os.path.dirname(__file__)
     config = configparser.ConfigParser()
     config.read(path + '/settings.ini')
-    # メールを設定する。
+    # 
     if mail == 1:
         host = 'smtp.mail.yahoo.co.jp'
         port = 465
         fromaddr = config['DEFAULT']['fromaddr']
         toaddr = config['DEFAULT']['toaddr']
         password = config['DEFAULT']['password']
-    # OANDA API用に設定する。
-    if ENVIRONMENT is None:
-        ENVIRONMENT = config['DEFAULT']['environment']
-    if ACCESS_TOKEN is None:
-        ACCESS_TOKEN = config['DEFAULT']['access_token']
-    if ACCOUNT_ID is None:
-        ACCOUNT_ID = config['DEFAULT']['account_id']
-    if OANDA is None:
-        OANDA = oandapy.API(environment=ENVIRONMENT, access_token=ACCESS_TOKEN)
+    # 
+    if g_environment is None:
+        g_environment = config['DEFAULT']['environment']
+    if g_access_token is None:
+        g_access_token = config['DEFAULT']['access_token']
+    if g_access_id is None:
+        g_access_id = config['DEFAULT']['account_id']
+    if g_oanda is None:
+        g_oanda = oandapy.API(environment=g_environment,
+                              access_token=g_access_token)
     second_before = 0
-    count = COUNT
     pre_history_time = None
     instrument = convert_symbol_to_instrument(symbol)
     granularity = convert_timeframe_to_granularity(timeframe)
-    # MT4用に設定する。
+    #
     if mt4 == 1:
         folder_ea = config['DEFAULT']['folder_ea']
         filename = folder_ea + '/' + ea + '.csv'
         f = open(filename, 'w')
-        f.write(str(2))  # EA側で-2とするので2で初期化する。
+        f.write(str(2))  # 
         f.close()
-    # トレードを行う。
+    # 
     pos = 0
     ticket = 0
     while True:
-        # 回線接続を確認してから実行する。
+        #
         try:
-            # 回線が接続していないと約15分でエラーになる。
+            #
             second_now = seconds()
-            # 毎秒実行する。
+            #
             if second_now != second_before:
                 second_before = second_now
-                history = OANDA.get_history(
+                history = g_oanda.get_history(
                     instrument=instrument, granularity=granularity,
-                    count=count)
-                history_time = history['candles'][count-1]['time']
-                # 過去のデータの更新が完了してから実行する。
-                # シグナルの計算は過去のデータを用いているので、過去のデータの
-                # 更新が完了してから実行しないと計算がおかしくなる。
+                    count=COUNT)
+                history_time = history['candles'][COUNT-1]['time']
+                #
                 if history_time != pre_history_time:
                     pre_history_time = history_time
                     buy_entry, buy_exit, sell_entry, sell_exit, lots = (
@@ -2445,73 +2434,77 @@ def trade(strategy, symbol, timeframe, ea,
                     end_row = len(units) - 1
                     open0 = i_open(symbol, timeframe, 0)
                     price = open0[len(open0)-1]
-                    # エグジット→エントリーの順に設定しないとドテンができない。
-                    # 買いエグジット。
+                    #
+                    #
                     if (pos == 1 and signal.iloc[end_row] != 1):
                         pos = 0
                         order_close(ticket)
                         ticket = 0
-                        # メールにシグナルを送信する場合
+                        #
                         if mail == 1:
                             subject = ea
-                            some_text = (symbol + 'を' + str(price) +
-                                'で買いエグジットです。')
+                            some_text = (symbol + ' ' +
+                                         str(units.iloc[end_row]) + ' '
+                                         + str(price))
                             send_mail(subject, some_text, fromaddr, toaddr,
                                       host, port, password)
-                        # EAにシグナルを送信する場合
+                        #
                         if mt4 == 1:
                             send_signal_to_mt4(filename, signal)
-                    # 売りエグジット
+                    #
                     elif (pos == -1 and signal[end_row] != -1):
                         pos = 0
                         order_close(ticket)
                         ticket = 0
-                        # メールにシグナルを送信する場合
+                        #
                         if mail == 1:
                             subject = ea
-                            some_text = (symbol + 'を' + str(price) +
-                                '+スプレッドで売りエグジットです。')
+                            some_text = (symbol + ' ' +
+                                         str(units.iloc[end_row]) + ' '
+                                         + str(price))
                             send_mail(subject, some_text, fromaddr, toaddr,
                                       host, port, password)
-                        # EAにシグナルを送信する場合
+                        #
                         if mt4 == 1:
                             send_signal_to_mt4(filename, signal)
-                    # 買いエントリー
+                    #
                     elif (pos == 0 and signal[end_row] == 1):
                         pos = 1
                         ticket = order_send(symbol, np.abs(units[end_row]),
                                             'buy')
-                        # メールにシグナルを送信する場合
+                        #
                         if mail == 1:
                             subject = ea
-                            some_text = (symbol + 'を' + str(price) +
-                                '+スプレッドで買いエントリーです。')
+                            some_text = (symbol + ' ' +
+                                         str(units.iloc[end_row]) + ' '
+                                         + str(price))
                             send_mail(subject, some_text, fromaddr, toaddr,
                                       host, port, password)
-                        # EAにシグナルを送信する場合
+                        #
                         if mt4 == 1:
                             send_signal_to_mt4(filename, signal)
-                    # 売りエントリー
+                    #
                     elif (pos == 0 and signal[end_row] == -1):
                         pos = -1
                         ticket = order_send(symbol, np.abs(units[end_row]),
                                             'sell')
-                        # メールにシグナルを送信する場合
+                        # 
                         if mail == 1:
                             subject = ea
-                            some_text = (symbol + 'を' + str(price) +
-                                'で売りエントリーです。')
+                            some_text = (symbol + ' ' +
+                                         str(units.iloc[end_row]) + ' '
+                                         + str(price))
                             send_mail(subject, some_text, fromaddr, toaddr,
                                       host, port, password)
-                        # EAにシグナルを送信する場合
+                        #
                         if mt4 == 1:
                             send_signal_to_mt4(filename, signal)
-                # シグナルを出力する。
+                #
                 now = datetime.now()
                 print(now.strftime('%Y.%m.%d %H:%M:%S'), ea, symbol,
                       timeframe, signal.iloc[end_row])
-        # エラーを処理する。
+        #
         except Exception as e:
-            print('エラーが発生しました。')
+            print('error')
             print(e)
-            time.sleep(1) # 1秒おきに表示させる。
+            time.sleep(1) #
