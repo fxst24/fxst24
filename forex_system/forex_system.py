@@ -22,444 +22,282 @@ from sklearn.externals import joblib
 
 UNITS = 100000
 COUNT = 500
-EPS = 1.0e-5  #
+EPS = 1.0e-5
 
 g_oanda = None
 g_environment = None
 g_access_token = None
 g_access_id = None
 
-def backtest(
-        strategy, symbol, timeframe, spread, start, end, get_model, min_trade,
-        optimization, in_sample_period, out_of_sample_period, parameter,
-        rranges):
-    delete_temp_folder()
-    create_temp_folder()
+def backtest(strategy, symbol, timeframe, spread, start, end, parameter):
+    empty_folder('temp')
+    create_folder('temp')
     start = datetime.strptime(start + ' 00:00', '%Y.%m.%d %H:%M')
     end = datetime.strptime(end + ' 00:00', '%Y.%m.%d %H:%M')
     end -= timedelta(minutes=timeframe)
-    if optimization == 0 or optimization == 1:
-        report =  pd.DataFrame(
-                index=[''], columns=['start', 'end', 'trades', 'apr', 'sharpe',
-                      'drawdown', 'parameter'])
-        if optimization == 1:
-            parameter = optimize_parameter(
-                    strategy, symbol, timeframe, spread, start, end, min_trade,
-                    rranges)
+    report =  pd.DataFrame(
+            index=[''], columns=['start', 'end', 'trades', 'apr', 'sharpe',
+                  'drawdown', 'parameter'])
+    buy_entry, buy_exit, sell_entry, sell_exit = strategy(
+            parameter, symbol, timeframe)
+    signal = get_signal(buy_entry, buy_exit, sell_entry, sell_exit, symbol,
+                        timeframe)
+    pnl = get_pnl(signal, symbol, timeframe, spread, start, end)
+    trades = get_trades(signal, start, end)
+    apr = get_apr(pnl, timeframe)
+    sharpe = get_sharpe(pnl, timeframe)
+    drawdown = get_drawdown(pnl)
+    report.iloc[0, 0] = start.strftime('%Y.%m.%d')
+    report.iloc[0, 1] = end.strftime('%Y.%m.%d')
+    report.iloc[0, 2] = str(trades)
+    report.iloc[0, 3] = str(np.round(apr, 3))
+    report.iloc[0, 4] = str(np.round(sharpe, 3))
+    report.iloc[0, 5] = str(np.round(drawdown, 3))
+    if parameter is not None:
+        report.iloc[0, 6] = np.round(parameter, 3)
+    report = report.dropna(axis=1)
+    pd.set_option('display.width', 1000)
+    print(report)
+    equity = (1.0+pnl).cumprod() - 1.0
+    ax=plt.subplot()
+    ax.set_xticklabels(equity.index, rotation=45)
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+    plt.plot(equity)
+    plt.title('Backtest')
+    plt.xlabel('Date')
+    plt.ylabel('Equith Curve')
+    plt.tight_layout()  #
+    plt.savefig('backtest.png', dpi=150)
+    plt.show()
+    plt.close()
+    empty_folder('temp')
+    return pnl
+
+def backtest_ml(strategy, symbol, timeframe, spread, start, end, get_model,
+                in_sample_period, out_of_sample_period):
+    empty_folder('temp')
+    create_folder('temp')
+    start = datetime.strptime(start + ' 00:00', '%Y.%m.%d %H:%M')
+    end = datetime.strptime(end + ' 00:00', '%Y.%m.%d %H:%M')
+    end -= timedelta(minutes=timeframe)
+    report =  pd.DataFrame(
+            index=[['']*1000], columns=['start_test', 'end_test', 'trades',
+                  'apr', 'sharpe', 'drawdown'])
+    end_test = start
+    i = 0
+    while True:
+        start_train = start + timedelta(days=out_of_sample_period*i)
+        end_train = (start_train + timedelta(days=in_sample_period)
+            - timedelta(minutes=timeframe))
+        start_test = end_train + timedelta(minutes=timeframe)
+        if i == 0:
+            start_all = start_test
+        if (start_test + timedelta(days=out_of_sample_period)
+            - timedelta(minutes=timeframe)) > end:
+            end_all = end_test
+            break
+        end_test = (start_test + timedelta(days=out_of_sample_period)
+            - timedelta(minutes=timeframe))
+        get_model(symbol, timeframe, start_train, end_train)
         buy_entry, buy_exit, sell_entry, sell_exit = strategy(
-                parameter, symbol, timeframe)
-        signal = get_signal(buy_entry, buy_exit, sell_entry, sell_exit, symbol,
-                            timeframe)
-        pnl = get_pnl(signal, symbol, timeframe, spread, start, end)
-        trades = get_trades(signal, start, end)
+                None, symbol, timeframe)
+        signal = get_signal(buy_entry, buy_exit, sell_entry, sell_exit,
+                          symbol, timeframe)
+        pnl = get_pnl(signal, symbol, timeframe, spread, start_test,
+                      end_test)
+        trades = get_trades(signal, start_test, end_test)
         apr = get_apr(pnl, timeframe)
         sharpe = get_sharpe(pnl, timeframe)
         drawdown = get_drawdown(pnl)
-        report.iloc[0, 0] = start.strftime('%Y.%m.%d')
-        report.iloc[0, 1] = end.strftime('%Y.%m.%d')
-        report.iloc[0, 2] = str(trades)
-        report.iloc[0, 3] = str(np.round(apr, 3))
-        report.iloc[0, 4] = str(np.round(sharpe, 3))
-        report.iloc[0, 5] = str(np.round(drawdown, 3))
-        if parameter is not None:
-            report.iloc[0, 6] = np.round(parameter, 3)
-        report = report.dropna(axis=1)
-        #
-        pd.set_option('display.width', 1000)
-        print(report)
-        equity = (1.0+pnl).cumprod() - 1.0
-        ax=plt.subplot()
-        ax.set_xticklabels(equity.index, rotation=45)
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
-        plt.plot(equity)
-        plt.title('Backtest')
-        plt.xlabel('Date')
-        plt.ylabel('Equith Curve')
-        plt.tight_layout()  #
-        plt.savefig('backtest.png', dpi=150)
-        plt.show()
-        plt.close()
-    elif optimization == 2 or optimization == 3:
-        report =  pd.DataFrame(
-                index=[['']*1000], columns=['start_test', 'end_test', 'trades',
-                      'apr', 'sharpe', 'drawdown', 'parameter'])
-        end_test = start
-        i = 0
-        while True:
-            start_train = start + timedelta(days=out_of_sample_period*i)
-            end_train = (start_train + timedelta(days=in_sample_period)
-                - timedelta(minutes=timeframe))
-            start_test = end_train + timedelta(minutes=timeframe)
-            if i == 0:
-                start_all = start_test
-            if (start_test + timedelta(days=out_of_sample_period)
-                - timedelta(minutes=timeframe)) > end:
-                end_all = end_test
-                break
-            end_test = (start_test + timedelta(days=out_of_sample_period)
-                - timedelta(minutes=timeframe))
-            #
-            if optimization == 2:
-                parameter = optimize_parameter(
-                    strategy, symbol, timeframe, spread, start_train,
-                    end_train, min_trade, rranges)
-                buy_entry, buy_exit, sell_entry, sell_exit = strategy(
-                        parameter, symbol, timeframe)
-                signal = get_signal(buy_entry, buy_exit, sell_entry, sell_exit,
-                                  symbol, timeframe)
-            elif optimization == 3:
-                get_model(symbol, timeframe, start_train, end_train)
-                buy_entry, buy_exit, sell_entry, sell_exit = strategy(
-                        parameter, symbol, timeframe)
-                signal = get_signal(buy_entry, buy_exit, sell_entry, sell_exit,
-                                  symbol, timeframe)
-            pnl = get_pnl(signal, symbol, timeframe, spread, start_test,
-                          end_test)
-            trades = get_trades(signal, start_test, end_test)
-            apr = get_apr(pnl, timeframe)
-            sharpe = get_sharpe(pnl, timeframe)
-            drawdown = get_drawdown(pnl)
-            report.iloc[i, 0] = start_test.strftime('%Y.%m.%d')
-            report.iloc[i, 1] = end_test.strftime('%Y.%m.%d')
-            report.iloc[i, 2] = str(trades)
-            report.iloc[i, 3] = str(np.round(apr, 3))
-            report.iloc[i, 4] = str(np.round(sharpe, 3))
-            report.iloc[i, 5] = str(np.round(drawdown, 3))
-            if parameter is not None:
-                report.iloc[i, 6] = np.round(parameter, 3)
-            if i == 0:
-                temp = signal[start_test:end_test]
-            else:
-                temp = temp.append(signal[start_test:end_test])
-            i += 1
-        signal = temp
-        pnl = get_pnl(signal, symbol, timeframe, spread, start_all, end_all)
-        trades = get_trades(signal, start_all, end_all)
-        apr = get_apr(pnl, timeframe)
-        sharpe = get_sharpe(pnl, timeframe)
-        drawdown = get_drawdown(pnl)
-        report.iloc[i, 0] = start_all.strftime('%Y.%m.%d')
-        report.iloc[i, 1] = end_all.strftime('%Y.%m.%d')
+        report.iloc[i, 0] = start_test.strftime('%Y.%m.%d')
+        report.iloc[i, 1] = end_test.strftime('%Y.%m.%d')
         report.iloc[i, 2] = str(trades)
         report.iloc[i, 3] = str(np.round(apr, 3))
         report.iloc[i, 4] = str(np.round(sharpe, 3))
         report.iloc[i, 5] = str(np.round(drawdown, 3))
-        if parameter is not None:
-            report.iloc[i, 6] = ''
-        report = report.iloc[0:i+1, :]
-        report = report.dropna(axis=1)
-        pd.set_option('display.width', 1000)
-        print(report)
-        equity = (1.0+pnl).cumprod() - 1.0
-        ax=plt.subplot()
-        ax.set_xticklabels(equity.index, rotation=45)
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
-        plt.plot(equity)
-        plt.title('Backtest')
-        plt.xlabel('Date')
-        plt.ylabel('Equity Curve')
-        plt.tight_layout()
-        plt.savefig('backtest.png', dpi=150)
-        plt.show()
-        plt.close()
-    delete_temp_folder()
+        if i == 0:
+            temp = signal[start_test:end_test]
+        else:
+            temp = temp.append(signal[start_test:end_test])
+        i += 1
+    signal = temp
+    pnl = get_pnl(signal, symbol, timeframe, spread, start_all, end_all)
+    trades = get_trades(signal, start_all, end_all)
+    apr = get_apr(pnl, timeframe)
+    sharpe = get_sharpe(pnl, timeframe)
+    drawdown = get_drawdown(pnl)
+    report.iloc[i, 0] = start_all.strftime('%Y.%m.%d')
+    report.iloc[i, 1] = end_all.strftime('%Y.%m.%d')
+    report.iloc[i, 2] = str(trades)
+    report.iloc[i, 3] = str(np.round(apr, 3))
+    report.iloc[i, 4] = str(np.round(sharpe, 3))
+    report.iloc[i, 5] = str(np.round(drawdown, 3))
+    report = report.iloc[0:i+1, :]
+    report = report.dropna(axis=1)
+    pd.set_option('display.width', 1000)
+    print(report)
+    equity = (1.0+pnl).cumprod() - 1.0
+    ax=plt.subplot()
+    ax.set_xticklabels(equity.index, rotation=45)
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+    plt.plot(equity)
+    plt.title('Backtest')
+    plt.xlabel('Date')
+    plt.ylabel('Equity Curve')
+    plt.tight_layout()
+    plt.savefig('backtest.png', dpi=150)
+    plt.show()
+    plt.close()
+    empty_folder('temp')
     return pnl
 
-def clean_historical_data_folder():
-    '''Clean historical data folder.
-    '''
-    for filename in glob.glob('../historical_data/*'):
+def backtest_opt(strategy, symbol, timeframe, spread, start, end, rranges,
+                 min_trade):
+    empty_folder('temp')
+    create_folder('temp')
+    start = datetime.strptime(start + ' 00:00', '%Y.%m.%d %H:%M')
+    end = datetime.strptime(end + ' 00:00', '%Y.%m.%d %H:%M')
+    end -= timedelta(minutes=timeframe)
+    report =  pd.DataFrame(
+            index=[''], columns=['start', 'end', 'trades', 'apr', 'sharpe',
+                  'drawdown', 'parameter'])
+    parameter = optimize_parameter(
+            strategy, symbol, timeframe, spread, start, end, min_trade,
+            rranges)
+    buy_entry, buy_exit, sell_entry, sell_exit = strategy(
+            parameter, symbol, timeframe)
+    signal = get_signal(buy_entry, buy_exit, sell_entry, sell_exit, symbol,
+                        timeframe)
+    pnl = get_pnl(signal, symbol, timeframe, spread, start, end)
+    trades = get_trades(signal, start, end)
+    apr = get_apr(pnl, timeframe)
+    sharpe = get_sharpe(pnl, timeframe)
+    drawdown = get_drawdown(pnl)
+    report.iloc[0, 0] = start.strftime('%Y.%m.%d')
+    report.iloc[0, 1] = end.strftime('%Y.%m.%d')
+    report.iloc[0, 2] = str(trades)
+    report.iloc[0, 3] = str(np.round(apr, 3))
+    report.iloc[0, 4] = str(np.round(sharpe, 3))
+    report.iloc[0, 5] = str(np.round(drawdown, 3))
+    if parameter is not None:
+        report.iloc[0, 6] = np.round(parameter, 3)
+    report = report.dropna(axis=1)
+    pd.set_option('display.width', 1000)
+    print(report)
+    equity = (1.0+pnl).cumprod() - 1.0
+    ax=plt.subplot()
+    ax.set_xticklabels(equity.index, rotation=45)
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+    plt.plot(equity)
+    plt.title('Backtest')
+    plt.xlabel('Date')
+    plt.ylabel('Equith Curve')
+    plt.tight_layout()  #
+    plt.savefig('backtest.png', dpi=150)
+    plt.show()
+    plt.close()
+    empty_folder('temp')
+    return pnl
+
+def backtest_wft(strategy, symbol, timeframe, spread, start, end, rranges,
+                 min_trade, in_sample_period, out_of_sample_period):
+    empty_folder('temp')
+    create_folder('temp')
+    start = datetime.strptime(start + ' 00:00', '%Y.%m.%d %H:%M')
+    end = datetime.strptime(end + ' 00:00', '%Y.%m.%d %H:%M')
+    end -= timedelta(minutes=timeframe)
+    report =  pd.DataFrame(
+            index=[['']*1000], columns=['start_test', 'end_test', 'trades',
+                  'apr', 'sharpe', 'drawdown', 'parameter'])
+    end_test = start
+    i = 0
+    while True:
+        start_train = start + timedelta(days=out_of_sample_period*i)
+        end_train = (start_train + timedelta(days=in_sample_period)
+            - timedelta(minutes=timeframe))
+        start_test = end_train + timedelta(minutes=timeframe)
+        if i == 0:
+            start_all = start_test
+        if (start_test + timedelta(days=out_of_sample_period)
+            - timedelta(minutes=timeframe)) > end:
+            end_all = end_test
+            break
+        end_test = (start_test + timedelta(days=out_of_sample_period)
+            - timedelta(minutes=timeframe))
+        parameter = optimize_parameter(
+            strategy, symbol, timeframe, spread, start_train,
+            end_train, min_trade, rranges)
+        buy_entry, buy_exit, sell_entry, sell_exit = strategy(
+                parameter, symbol, timeframe)
+        signal = get_signal(buy_entry, buy_exit, sell_entry, sell_exit,
+                          symbol, timeframe)
+        pnl = get_pnl(signal, symbol, timeframe, spread, start_test,
+                      end_test)
+        trades = get_trades(signal, start_test, end_test)
+        apr = get_apr(pnl, timeframe)
+        sharpe = get_sharpe(pnl, timeframe)
+        drawdown = get_drawdown(pnl)
+        report.iloc[i, 0] = start_test.strftime('%Y.%m.%d')
+        report.iloc[i, 1] = end_test.strftime('%Y.%m.%d')
+        report.iloc[i, 2] = str(trades)
+        report.iloc[i, 3] = str(np.round(apr, 3))
+        report.iloc[i, 4] = str(np.round(sharpe, 3))
+        report.iloc[i, 5] = str(np.round(drawdown, 3))
+        report.iloc[i, 6] = np.round(parameter, 3)
+        if i == 0:
+            temp = signal[start_test:end_test]
+        else:
+            temp = temp.append(signal[start_test:end_test])
+        i += 1
+    signal = temp
+    pnl = get_pnl(signal, symbol, timeframe, spread, start_all, end_all)
+    trades = get_trades(signal, start_all, end_all)
+    apr = get_apr(pnl, timeframe)
+    sharpe = get_sharpe(pnl, timeframe)
+    drawdown = get_drawdown(pnl)
+    report.iloc[i, 0] = start_all.strftime('%Y.%m.%d')
+    report.iloc[i, 1] = end_all.strftime('%Y.%m.%d')
+    report.iloc[i, 2] = str(trades)
+    report.iloc[i, 3] = str(np.round(apr, 3))
+    report.iloc[i, 4] = str(np.round(sharpe, 3))
+    report.iloc[i, 5] = str(np.round(drawdown, 3))
+    report.iloc[i, 6] = ''
+    report = report.iloc[0:i+1, :]
+    report = report.dropna(axis=1)
+    pd.set_option('display.width', 1000)
+    print(report)
+    equity = (1.0+pnl).cumprod() - 1.0
+    ax=plt.subplot()
+    ax.set_xticklabels(equity.index, rotation=45)
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+    plt.plot(equity)
+    plt.title('Backtest')
+    plt.xlabel('Date')
+    plt.ylabel('Equity Curve')
+    plt.tight_layout()
+    plt.savefig('backtest.png', dpi=150)
+    plt.show()
+    plt.close()
+    empty_folder('temp')
+    return pnl
+
+def create_folder(folder):
+    pathname = os.path.dirname(__file__)
+    if os.path.exists(pathname + '/' + folder) == False:
+        os.mkdir(pathname + '/' + folder)
+
+def empty_folder(folder):
+    pathname = os.path.dirname(__file__)
+    for filename in glob.glob(pathname + '/' + folder + '/*'):
         os.remove(filename)
 
-def convert_hst_to_csv(
-        audcad=0, audchf=0, audjpy=0, audnzd=0, audusd=0, cadchf=0, cadjpy=0,
-        chfjpy=0, euraud=0, eurcad=0, eurchf=0, eurgbp=0, eurjpy=0, eurnzd=0,
-        eurusd=0, gbpaud=0, gbpcad=0, gbpchf=0, gbpjpy=0, gbpnzd=0, gbpusd=0,
-        nzdcad=0, nzdchf=0, nzdjpy=0, nzdusd=0, usdcad=0, usdchf=0, usdjpy=0):
-    """Convert HST file to CSV file.
-    Args:
-        audcad: AUDCAD.
-        ...
-    """
-    for i in range(28):
-        if i == 0:
-            if audcad == 0:
-                continue
-            symbol = 'AUDCAD'
-        elif i == 1:
-            if audchf == 0:
-                continue
-            symbol = 'AUDCHF'
-        elif i == 2:
-            if audjpy == 0:
-                continue
-            symbol = 'AUDJPY'
-        elif i == 3:
-            if audnzd == 0:
-                continue
-            symbol = 'AUDNZD'
-        elif i == 4:
-            if audusd == 0:
-                continue
-            symbol = 'AUDUSD'
-        elif i == 5:
-            if cadchf == 0:
-                continue
-            symbol = 'CADCHF'
-        elif i == 6:
-            if cadjpy == 0:
-                continue
-            symbol = 'CADJPY'
-        elif i == 7:
-            if chfjpy == 0:
-                continue
-            symbol = 'CHFJPY'
-        elif i == 8:
-            if euraud == 0:
-                continue
-            symbol = 'EURAUD'
-        elif i == 9:
-            if eurcad == 0:
-                continue
-            symbol = 'EURCAD'
-        elif i == 10:
-            if eurchf == 0:
-                continue
-            symbol = 'EURCHF'
-        elif i == 11:
-            if eurgbp == 0:
-                continue
-            symbol = 'EURGBP'
-        elif i == 12:
-            if eurjpy == 0:
-                continue
-            symbol = 'EURJPY'
-        elif i == 13:
-            if eurnzd == 0:
-                continue
-            symbol = 'EURNZD'
-        elif i == 14:
-            if eurusd == 0:
-                continue 
-            symbol = 'EURUSD'
-        elif i == 15:
-            if gbpaud == 0:
-                continue
-            symbol = 'GBPAUD'
-        elif i == 16:
-            if gbpcad == 0:
-                continue
-            symbol = 'GBPCAD'
-        elif i == 17:
-            if gbpchf == 0:
-                continue
-            symbol = 'GBPCHF'
-        elif i == 18:
-            if gbpjpy == 0:
-                continue
-            symbol = 'GBPJPY'
-        elif i == 19:
-            if gbpnzd == 0:
-                continue
-            symbol = 'GBPNZD'
-        elif i == 20:
-            if gbpusd == 0:
-                continue
-            symbol = 'GBPUSD'
-        elif i == 21:
-            if nzdcad == 0:
-                continue
-            symbol = 'NZDCAD'
-        elif i == 22:
-            if nzdchf == 0:
-                continue
-            symbol = 'NZDCHF'
-        elif i == 23:
-            if nzdjpy == 0:
-                continue
-            symbol = 'NZDJPY'
-        elif i == 24:
-            if nzdusd == 0:
-                continue
-            symbol = 'NZDUSD'
-        elif i == 25:
-            if usdcad == 0:
-                continue
-            symbol = 'USDCAD'
-        elif i == 26:
-            if usdchf == 0:
-                continue
-            symbol = 'USDCHF'
-        elif i == 27:
-            if usdjpy == 0:
-                continue
-            symbol = 'USDJPY'
-        else:
-            pass
-        #
-        filename_hst = '../historical_data/' + symbol + '.hst'
-        #
-        filename_csv = '../historical_data/' + symbol + '.csv'
-        read = 0
-        datetime = []
-        open_price = []
-        low_price = []
-        high_price = []
-        close_price = []
-        volume = []
-        with open(filename_hst, 'rb') as f:
-            while True:
-                if read >= 148:
-                    buf = f.read(44)
-                    read += 44
-                    if not buf:
-                        break
-                    bar = struct.unpack('< iddddd', buf)
-                    datetime.append(
-                        time.strftime('%Y-%m-%d %H:%M:%S',
-                        time.gmtime(bar[0])))
-                    open_price.append(bar[1])
-                    high_price.append(bar[3])  #
-                    low_price.append(bar[2])  #
-                    close_price.append(bar[4])
-                    volume.append(bar[5])
-                else:
-                    buf = f.read(148)
-                    read += 148
-        data = {'0_datetime':datetime, '1_open_price':open_price,
-            '2_high_price':high_price, '3_low_price':low_price,
-            '4_close_price':close_price, '5_volume':volume}
-        result = pd.DataFrame.from_dict(data)
-        result.columns = ['Time (UTC)', 'Open', 'High', 'Low', 'Close',
-                          'Volume']
-        result = result.set_index('Time (UTC)')
-        result.to_csv(filename_csv)
-
-def convert_minute_to_period(minute, timeframe):
-    '''
-    Args:
-        minute:
-        timeframe:
-    Returns:
-        period.
-    '''
-    period = int(minute / timeframe)
-    return period
-
-def convert_symbol_to_instrument(symbol):
-    '''
-    Args:
-        symbol:
-    Returns:
-        instrument。
-    '''
-    if symbol == 'AUDCAD':
-        instrument = 'AUD_CAD'
-    elif symbol == 'AUDCHF':
-        instrument = 'AUD_CHF'
-    elif symbol == 'AUDJPY':
-        instrument = 'AUD_JPY'
-    elif symbol == 'AUDNZD':
-        instrument = 'AUD_NZD'
-    elif symbol == 'AUDUSD':
-        instrument = 'AUD_USD'
-    elif symbol == 'CADCHF':
-        instrument = 'CAD_CHF'
-    elif symbol == 'CADJPY':
-        instrument = 'CAD_JPY'
-    elif symbol == 'CHFJPY':
-        instrument = 'CHF_JPY'
-    elif symbol == 'EURAUD':
-        instrument = 'EUR_AUD'
-    elif symbol == 'EURCAD':
-        instrument = 'EUR_CAD'
-    elif symbol == 'EURCHF':
-        instrument = 'EUR_CHF'
-    elif symbol == 'EURGBP':
-        instrument = 'EUR_GBP'
-    elif symbol == 'EURJPY':
-        instrument = 'EUR_JPY'
-    elif symbol == 'EURNZD':
-        instrument = 'EUR_NZD'
-    elif symbol == 'EURUSD':
-        instrument = 'EUR_USD' 
-    elif symbol == 'GBPAUD':
-        instrument = 'GBP_AUD'
-    elif symbol == 'GBPCAD':
-        instrument = 'GBP_CAD'
-    elif symbol == 'GBPCHF':
-        instrument = 'GBP_CHF'
-    elif symbol == 'GBPJPY':
-        instrument = 'GBP_JPY'
-    elif symbol == 'GBPNZD':
-        instrument = 'GBP_NZD'
-    elif symbol == 'GBPUSD':
-        instrument = 'GBP_USD'
-    elif symbol == 'NZDCAD':
-        instrument = 'NZD_CAD'
-    elif symbol == 'NZDCHF':
-        instrument = 'NZD_CHF'
-    elif symbol == 'NZDJPY':
-        instrument = 'NZD_JPY'
-    elif symbol == 'NZDUSD':
-        instrument = 'NZD_USD'
-    elif symbol == 'USDCAD':
-        instrument = 'USD_CAD'
-    elif symbol == 'USDCHF':
-        instrument = 'USD_CHF'
-    else:
-        instrument = 'USD_JPY'
-    return instrument
-
-def convert_timeframe_to_granularity(timeframe):
-    '''
-    Args:
-        timeframe:
-    Returns:
-        granularity.
-    '''
-    if timeframe == 1:
-        granularity = 'M1'
-    elif timeframe == 5:
-        granularity = 'M5'
-    elif timeframe == 15:
-        granularity = 'M15'
-    elif timeframe == 30:
-        granularity = 'M30'
-    elif timeframe == 60:
-        granularity = 'H1'
-    elif timeframe == 240:
-        granularity = 'H4'
-    else:
-        granularity = 'D'
-    return granularity
-
-def create_temp_folder():
-    '''
-    '''
-    pathname = os.path.dirname(__file__)
-    if os.path.exists(pathname + '/temp') == False:
-        os.mkdir(pathname + '/temp')
-
-def delete_temp_folder():
-    '''
-    '''
-    pathname = os.path.dirname(__file__)
-    if os.path.exists(pathname + '/temp') == True:
-        shutil.rmtree(pathname + '/temp')
-
-def fill_invalidate_data(data):
-    '''
-    Args:
-        data:
-    Returns:
-        filled data.
-    '''
-    ret = data.copy()
-    ret[(ret==float("inf")) | (ret==float("-inf"))] = np.nan
-    ret = ret.fillna(method='ffill')
-    ret = ret.fillna(method='bfill')
-    return ret
+def fill_data(data):
+    filled_data = data.copy()
+    filled_data[(filled_data==float("inf")) | (filled_data==float("-inf"))] = (
+            np.nan)
+    filled_data = filled_data.fillna(method='ffill')
+    filled_data = filled_data.fillna(method='bfill')
+    return filled_data
 
 def forex_system():
     parser = argparse.ArgumentParser()
@@ -470,7 +308,6 @@ def forex_system():
     parser.add_argument('--start', type=str)
     parser.add_argument('--end', type=str)
     parser.add_argument('--min_trade', type=int, default=260)
-    parser.add_argument('--optimization', type=int, default=0)
     parser.add_argument('--in_sample_period', type=int, default=360)
     parser.add_argument('--out_of_sample_period', type=int, default=30)
     parser.add_argument('--start_train', type=str, default='')
@@ -485,7 +322,6 @@ def forex_system():
     start = args.start
     end = args.end
     min_trade = args.min_trade
-    optimization = args.optimization
     in_sample_period = args.in_sample_period
     out_of_sample_period = args.out_of_sample_period
     start_train = args.start_train
@@ -499,12 +335,21 @@ def forex_system():
     rranges = calling_module.RRANGES
     pnl = None
     if mode == 'backtest':
-        pnl = backtest(
-                strategy, symbol, timeframe, spread, start, end,
-                get_model=get_model, min_trade=min_trade,
-                optimization=optimization, in_sample_period=in_sample_period,
-                out_of_sample_period=out_of_sample_period, parameter=parameter,
-                rranges=rranges)
+        pnl = backtest(strategy, symbol, timeframe, spread, start, end,
+                       parameter=parameter)
+    elif mode == 'backtest_opt':
+        pnl = backtest_opt(strategy, symbol, timeframe, spread, start, end,
+                           rranges=rranges, min_trade=min_trade)
+    elif mode == 'backtest_wft':
+        pnl = backtest_wft(strategy, symbol, timeframe, spread, start, end,
+                           rranges=rranges, min_trade=min_trade,
+                           in_sample_period=in_sample_period,
+                           out_of_sample_period=out_of_sample_period)
+    elif mode == 'backtest_ml':
+        pnl = backtest_ml(strategy, symbol, timeframe, spread, start, end,
+                           get_model=get_model,
+                           in_sample_period=in_sample_period,
+                           out_of_sample_period=out_of_sample_period)
     elif mode == 'trade':
         pathname = os.path.dirname(__file__)
         temp = inspect.getmodule(inspect.stack()[1][0]).__file__
@@ -521,12 +366,12 @@ def forex_system():
                start_train=start_train, end_train=end_train)
     return pnl
 
+def get_apr(pnl, timeframe):
+    year = (len(pnl)*timeframe) / (60*24*260)
+    apr = pnl.sum() / year
+    return apr
+
 def get_base_and_quote(symbol):
-    '''
-    Args:
-        symbol:
-    Returns:
-    '''
     if symbol == 'AUDCAD':
         base = 'AUD'
         quote = 'CAD'
@@ -616,14 +461,16 @@ def get_base_and_quote(symbol):
     return base, quote
 
 def get_current_filename():
-    '''
-    Returns:
-    '''
     pathname = os.path.dirname(__file__)
     current_filename = inspect.currentframe().f_back.f_code.co_filename
     current_filename = current_filename.replace(pathname + '/', '') 
     current_filename, ext = os.path.splitext(current_filename)
     return current_filename
+
+def get_drawdown(pnl):
+    equity = (1.0+pnl).cumprod() - 1.0
+    drawdown = (equity.cummax()-equity).max()
+    return drawdown
 
 def get_historical_data(
         start, end,
@@ -631,17 +478,10 @@ def get_historical_data(
         chfjpy=0, euraud=0, eurcad=0, eurchf=0, eurgbp=0, eurjpy=0, eurnzd=0,
         eurusd=0, gbpaud=0, gbpcad=0, gbpchf=0, gbpjpy=0, gbpnzd=0, gbpusd=0,
         nzdcad=0, nzdchf=0, nzdjpy=0, nzdusd=0, usdcad=0, usdchf=0, usdjpy=0):
-    '''
-    Args:
-        start:
-        end:
-        audusd: AUDUSD.
-    '''
     start = start + ' 00:00'
     end = end + ' 00:00'
     index = pd.date_range(start, end, freq='T')
     data = pd.DataFrame(index=index)
-    #
     for i in range(28):
         if i == 0:
             if audcad == 0:
@@ -757,30 +597,24 @@ def get_historical_data(
             symbol = 'USDJPY'
         else:
             pass
-        #
         n = (
                 audcad + audchf + audjpy + audnzd + audusd + cadchf + cadjpy
               + chfjpy + euraud + eurcad + eurchf + eurgbp + eurjpy + eurnzd 
               + eurusd + gbpaud + gbpcad + gbpchf + gbpjpy + gbpnzd + gbpusd
               + nzdcad + nzdchf + nzdjpy + nzdusd + usdcad + usdchf + usdjpy)
-        #
         filename = '~/historical_data/' + symbol + '.csv'
         temp = pd.read_csv(filename, index_col=0)
         temp.index = pd.to_datetime(temp.index)
-        #
         temp.index = temp.index + timedelta(hours=2)
         data = pd.concat([data, temp], axis=1)
-    #
     label = ['open', 'high', 'low', 'close', 'volume']
     data.columns = label * n
-    #
     ohlcv_dict = OrderedDict()
     ohlcv_dict['open'] = 'first'
     ohlcv_dict['high'] = 'max'
     ohlcv_dict['low'] = 'min'
     ohlcv_dict['close'] = 'last'
     ohlcv_dict['volume'] = 'sum'
-    #
     count = 0
     for i in range(28):
         if i == 0:
@@ -926,11 +760,8 @@ def get_historical_data(
         else:
             pass
         data1 = data.iloc[:, 0+(5*(count-1)): 5+(5*(count-1))]
-        #
         data1 = data1.fillna(method='ffill')
-        #
         data1 = data1[~data1.index.duplicated()]
-         #
         data2 = data1.resample(
             '2T', label='left', closed='left').apply(ohlcv_dict)
         data3 = data1.resample(
@@ -967,7 +798,6 @@ def get_historical_data(
             '720T', label='left', closed='left').apply(ohlcv_dict)
         data1440 = data1.resample(
             '1440T', label='left', closed='left').apply(ohlcv_dict)
-        #
         data1 = data1[data1.index.dayofweek<5]
         data2 = data2[data2.index.dayofweek<5]
         data3 = data3[data3.index.dayofweek<5]
@@ -987,7 +817,6 @@ def get_historical_data(
         data480 = data480[data480.index.dayofweek<5]
         data720 = data720[data720.index.dayofweek<5]
         data1440 = data1440[data1440.index.dayofweek<5]
-        #
         filename1 =  '~/historical_data/' + symbol + '1.csv'
         filename2 =  '~/historical_data/' + symbol + '2.csv'
         filename3 =  '~/historical_data/' + symbol + '3.csv'
@@ -1028,25 +857,14 @@ def get_historical_data(
         data1440.to_csv(filename1440)
 
 def get_model_dir():
-    '''Get model directory.
-    Returns:
-        model directory.
-    '''
     dirname = os.path.dirname(__file__)
-    #print('dirname = ', dirname)
     filename = inspect.currentframe().f_back.f_code.co_filename
-    #print('filename = ', filename)
     filename = filename.replace(dirname + '/', '')
-    #print('filename = ', filename)
     filename, ext = os.path.splitext(filename)
-    #print('filename = ', filename)
     model_dir = dirname + '/' + filename
     return model_dir
 
 def get_pkl_file_path():
-    '''
-    Returns:
-    '''
     dir_name = os.path.dirname(__file__) + '/temp/'
     framerecords = inspect.stack()
     framerecord = framerecords[1]
@@ -1058,22 +876,26 @@ def get_pkl_file_path():
     for i in range(size):
         if len(str(ls[size-1-i])) < 30:
             arg_values += '_' + str(ls[size-1-i])
-        #
         else:
             arg_values += '_index'
-            
     arg_values += '.pkl'
     pkl_file_path = dir_name + func_name + arg_values
     return pkl_file_path
 
+def get_pnl(signal, symbol, timeframe, spread, start, end):
+    op = i_open(symbol, timeframe, 0)
+    if op[len(op)-1] >= 50.0:  # e.g. Cross Yen.
+        adj_spread = spread / 100.0
+    else:
+        adj_spread = spread / 10000.0
+    cost_buy = ((signal==1) & (signal.shift(1)!=1)) * adj_spread
+    cost_sell = ((signal==-1) & (signal.shift(1)!=-1)) * adj_spread
+    cost = cost_buy + cost_sell
+    pnl = ((op-op.shift(1))*signal.shift(1)-cost) / op.shift(1)
+    pnl = pnl[start:end]
+    return pnl
+
 def get_randomwalk_data(mean=0.0, std=0.01/np.sqrt(1440), skew=0.0):
-    '''Get randomwalk data.
-    Args:
-        mean: mean.
-        std: standard deviation.
-        skew: skew.
-    '''
-    #
     mean = mean / 6
     std = std / np.sqrt(6)
     skew = skew * np.sqrt(6)
@@ -1091,7 +913,6 @@ def get_randomwalk_data(mean=0.0, std=0.01/np.sqrt(1440), skew=0.0):
     volume = pd.DataFrame([6]*len(randomwalk1), index=randomwalk1.index,
                        columns=['volume'])
     randomwalk1 = pd.concat([randomwalk1, volume], axis=1)
-    #
     ohlcv_dict = OrderedDict()
     ohlcv_dict['open'] = 'first'
     ohlcv_dict['high'] = 'max'
@@ -1153,7 +974,6 @@ def get_randomwalk_data(mean=0.0, std=0.01/np.sqrt(1440), skew=0.0):
     randomwalk480 = randomwalk480[randomwalk480.index.dayofweek<5]
     randomwalk720 = randomwalk720[randomwalk720.index.dayofweek<5]
     randomwalk1440 = randomwalk1440[randomwalk1440.index.dayofweek<5]
-    #
     randomwalk1.to_csv('~/historical_data/RANDOM1.csv')
     randomwalk2.to_csv('~/historical_data/RANDOM2.csv')
     randomwalk3.to_csv('~/historical_data/RANDOM3.csv')
@@ -1174,81 +994,12 @@ def get_randomwalk_data(mean=0.0, std=0.01/np.sqrt(1440), skew=0.0):
     randomwalk720.to_csv('~/historical_data/RANDOM720.csv')
     randomwalk1440.to_csv('~/historical_data/RANDOM1440.csv')
 
-def get_pnl(signal, symbol, timeframe, spread, start, end):
-    op = i_open(symbol, timeframe, 0)
-    if op[len(op)-1] >= 50.0:  # e.g. Cross Yen.
-        adj_spread = spread / 100.0
-    else:
-        adj_spread = spread / 10000.0
-    cost_buy = ((signal==1) & (signal.shift(1)!=1)) * adj_spread
-    cost_sell = ((signal==-1) & (signal.shift(1)!=-1)) * adj_spread
-    cost = cost_buy + cost_sell
-    pnl = ((op-op.shift(1))*signal.shift(1)-cost) / op.shift(1)
-    pnl = pnl[start:end]
-    return pnl
-
-def get_trades(signal, start, end):
-    trade = (signal>signal.shift(1)).astype(int)
-    trade = trade[start:end]
-    trades = trade.sum()
-    return trades
-
 def get_sharpe(pnl, timeframe):
     mean = pnl.mean()
     std = pnl.std()
     multiplier = np.sqrt(60*24*260/timeframe)
     sharpe = mean / std * multiplier
     return sharpe
-
-def get_apr(pnl, timeframe):
-    year = (len(pnl)*timeframe) / (60*24*260)
-    apr = pnl.sum() / year
-    return apr
-
-def get_drawdown(pnl):
-    equity = (1.0+pnl).cumprod() - 1.0
-    drawdown = (equity.cummax()-equity).max()
-    return drawdown
-
-def get_signal_of_god(symbol, timeframe, longer_timeframe):
-    '''Get signal of god.
-    Args:
-        symbol:
-        timeframe:
-        longer_timeframe:
-    Returns:
-        signal of god.
-    '''
-    pkl_file_path = get_pkl_file_path()  # Must put this first.
-    ret = restore_pkl(pkl_file_path)
-    if ret is None:
-        op = i_open(symbol, timeframe, 0)
-
-        high = op.resample(str(longer_timeframe)+'T').max()
-        high = high[high.index.dayofweek<5]
-        temp = pd.concat([op, high], axis=1)
-        high = temp.iloc[:, 1]
-        high = fill_invalidate_data(high)
-
-        low = op.resample(str(longer_timeframe)+'T').min()
-        low = low[low.index.dayofweek<5]
-        temp = pd.concat([op, low], axis=1)
-        low = temp.iloc[:, 1]
-        low = fill_invalidate_data(low)
-
-        buy = op == low
-        buy = fill_invalidate_data(buy)
-        buy = buy.astype(int)
-
-        sell = op == high
-        sell = fill_invalidate_data(sell)
-        sell = sell.astype(int)
-        ret = buy - sell
-        ret[ret==0] = np.nan
-        ret = fill_invalidate_data(ret)
-        ret = ret.astype(int)
-        save_pkl(ret, pkl_file_path)
-    return ret
 
 def get_signal(buy_entry, buy_exit, sell_entry, sell_exit, symbol, timeframe):
     buy = buy_entry.copy()
@@ -1266,19 +1017,45 @@ def get_signal(buy_entry, buy_exit, sell_entry, sell_exit, symbol, timeframe):
     signal = signal.astype(int)
     return signal
 
-def i_close(symbol, timeframe, shift):
-    '''
-    Args:
-        symbol:
-        timeframe:
-        shift:
-    Returns:
-    '''
+def get_signal_of_god(symbol, timeframe, longer_timeframe):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
-    #
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        op = i_open(symbol, timeframe, 0)
+        high = op.resample(str(longer_timeframe)+'T').max()
+        high = high[high.index.dayofweek<5]
+        temp = pd.concat([op, high], axis=1)
+        high = temp.iloc[:, 1]
+        high = fill_data(high)
+        low = op.resample(str(longer_timeframe)+'T').min()
+        low = low[low.index.dayofweek<5]
+        temp = pd.concat([op, low], axis=1)
+        low = temp.iloc[:, 1]
+        low = fill_data(low)
+        buy = op == low
+        buy = fill_data(buy)
+        buy = buy.astype(int)
+        sell = op == high
+        sell = fill_data(sell)
+        sell = sell.astype(int)
+        ret = buy - sell
+        ret[ret==0] = np.nan
+        ret = fill_data(ret)
+        ret = ret.astype(int)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
+def get_trades(signal, start, end):
+    trade = (signal>signal.shift(1)).astype(int)
+    trade = trade[start:end]
+    trades = trade.sum()
+    return trades
+
+def i_close(symbol, timeframe, shift):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
     if g_oanda is not None:
-        instrument = convert_symbol_to_instrument(symbol)
-        granularity = convert_timeframe_to_granularity(timeframe)
+        instrument = to_instrument(symbol)
+        granularity = to_granularity(timeframe)
         temp = g_oanda.get_history(
             instrument=instrument, granularity=granularity, count=COUNT)
         index = pd.Series(np.zeros(COUNT))
@@ -1289,7 +1066,6 @@ def i_close(symbol, timeframe, shift):
             index = pd.to_datetime(index)
             ret.index = index
         ret = ret.shift(shift)
-    #
     else:
         ret = restore_pkl(pkl_file_path)
         if ret is None:
@@ -1300,18 +1076,11 @@ def i_close(symbol, timeframe, shift):
             temp.index = index
             ret = temp.iloc[:, 3]
             ret = ret.shift(shift)
-            ret = fill_invalidate_data(ret)
+            ret = fill_data(ret)
             save_pkl(ret, pkl_file_path)
     return ret
 
 def i_daily_high(symbol, timeframe, shift):
-    '''
-    Args:
-        symbol:
-        timeframe:
-        shift:
-    Returns:
-    '''
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
@@ -1323,25 +1092,17 @@ def i_daily_high(symbol, timeframe, shift):
         ret = high.copy()
         ret[ret<temp] = np.nan
         ret = ret.fillna(method='ffill')
-        # Is there any other way?
         while(True):
             ret[((time_hour(index)!=0) | (time_minute(index)!=0))
             & (ret < ret.shift(1))] = np.nan
             if ret.isnull().sum()==0:
                 break
             ret = ret.fillna(method='ffill')
-        ret = fill_invalidate_data(ret)
+        ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
 def i_daily_low(symbol, timeframe, shift):
-    '''
-    Args:
-        symbol:
-        timeframe:
-        shift:
-    Returns:
-    '''
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
@@ -1353,25 +1114,17 @@ def i_daily_low(symbol, timeframe, shift):
         ret = low.copy()
         ret[ret>temp] = np.nan
         ret = ret.fillna(method='ffill')
-        # Is there any other way?
         while(True):
             ret[((time_hour(index)!=0) | (time_minute(index)!=0))
             & (ret > ret.shift(1))] = np.nan
             if ret.isnull().sum()==0:
                 break
             ret = ret.fillna(method='ffill')
-        ret = fill_invalidate_data(ret)
+        ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
 def i_daily_open(symbol, timeframe, shift):
-    '''
-    Args:
-        symbol:
-        timeframe:
-        shift:
-    Returns:
-    '''
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
@@ -1379,23 +1132,16 @@ def i_daily_open(symbol, timeframe, shift):
         index = op.index
         ret = op.copy()
         ret[(time_hour(index)!=0) | (time_minute(index)!=0)] = np.nan
-        ret = fill_invalidate_data(ret)
+        ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
 def i_high(symbol, timeframe, shift):
-    '''
-    Args:
-        symbol:
-        timeframe:
-        shift:
-    Returns:
-    '''
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     #
     if g_oanda is not None:
-        instrument = convert_symbol_to_instrument(symbol)
-        granularity = convert_timeframe_to_granularity(timeframe)
+        instrument = to_instrument(symbol)
+        granularity = to_granularity(timeframe)
         temp = g_oanda.get_history(
             instrument=instrument, granularity=granularity, count=COUNT)
         index = pd.Series(np.zeros(COUNT))
@@ -1406,7 +1152,6 @@ def i_high(symbol, timeframe, shift):
             index = pd.to_datetime(index)
             ret.index = index
         ret = ret.shift(shift)
-    #
     else:
         ret = restore_pkl(pkl_file_path)
         if ret is None:
@@ -1417,19 +1162,11 @@ def i_high(symbol, timeframe, shift):
             temp.index = index
             ret = temp.iloc[:, 1]
             ret = ret.shift(shift)
-            ret = fill_invalidate_data(ret)
+            ret = fill_data(ret)
             save_pkl(ret, pkl_file_path)
     return ret
 
 def i_highest(symbol, timeframe, period, shift):
-    '''
-    Args:
-        symbol:
-        timeframe:
-        period:
-        shift:
-    Returns:
-    '''
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
@@ -1438,23 +1175,14 @@ def i_highest(symbol, timeframe, period, shift):
             argmax = high.argmax()
             ret = period - 1 - argmax
             return ret
-
         high = i_high(symbol, timeframe, shift)
         ret = high.rolling(window=period).apply(func)
-        ret = fill_invalidate_data(ret)
+        ret = fill_data(ret)
         ret = ret.astype(int)
         save_pkl(ret, pkl_file_path)
     return ret
 
 def i_hl_band(symbol, timeframe, period, shift):
-    '''
-    Args:
-        symbol:
-        timeframe:
-        period:
-        shift: 
-    Returns:
-    '''
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
@@ -1464,31 +1192,15 @@ def i_hl_band(symbol, timeframe, period, shift):
         ret['high'] = high.rolling(window=period).max()
         ret['low'] = low.rolling(window=period).min()
         ret['middle'] = (ret['high'] + ret['low']) / 2
-        ret = fill_invalidate_data(ret)
+        ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
 def i_ku_close(timeframe, shift, aud=0, cad=0, chf=0, eur=0, gbp=0, jpy=0,
                nzd=0, usd=0):
-    '''
-    Args:
-        timeframe:
-        shift:
-        aud:
-        cad:
-        chf:
-        eur:
-        gbp:
-        jpy:
-        nzd:
-        usd:
-    Returns:
-        Ku-Power。
-    '''
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
-        #
         audusd = 0.0
         cadusd = 0.0
         chfusd = 0.0
@@ -1510,7 +1222,6 @@ def i_ku_close(timeframe, shift, aud=0, cad=0, chf=0, eur=0, gbp=0, jpy=0,
             jpyusd = -np.log(i_close('USDJPY', timeframe, shift))
         if nzd == 1:
             nzdusd = np.log(i_close('NZDUSD', timeframe, shift))
-        #
         n = aud + cad + chf + eur + gbp + jpy + nzd + usd
         a = (audusd * aud + cadusd * cad + chfusd * chf + eurusd * eur
              + gbpusd * gbp + jpyusd * jpy + nzdusd * nzd) / n
@@ -1531,55 +1242,24 @@ def i_ku_close(timeframe, shift, aud=0, cad=0, chf=0, eur=0, gbp=0, jpy=0,
             ret['NZD'] = nzdusd - a
         if usd == 1:
             ret['USD'] = -a
-        ret = fill_invalidate_data(ret)
+        ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
 def i_ku_roc(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
              jpy=0, nzd=0, usd=0):
-    '''
-    Args:
-        timeframe:
-        period:
-        shift:
-        aud:
-        cad:
-        chf:
-        eur:
-        gbp:
-        jpy:
-        nzd:
-        usd:
-    Returns:
-    '''
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
         ku_close = i_ku_close(timeframe, shift, aud=aud, cad=cad, chf=chf,
                               eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
         ret = ku_close - ku_close.shift(period)
-        ret = fill_invalidate_data(ret)
+        ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
 def i_ku_zscore(timeframe, period, ma_method, shift, aud=0, cad=0, chf=0,
                 eur=0, gbp=0, jpy=0, nzd=0, usd=0):
-    '''
-    Args:
-        timeframe:
-        period:
-        ma_method:
-        shift: 
-        aud:
-        cad:
-        chf:
-        eur:
-        gbp:
-        jpy:
-        nzd:
-        usd:
-    Returns:
-    '''
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
@@ -1592,53 +1272,29 @@ def i_ku_zscore(timeframe, period, ma_method, shift, aud=0, cad=0, chf=0,
             mean = ku_close.ewm(span=period).mean()
             std = ku_close.ewm(span=period).std()
         std = std.mean(axis=1)
-        ret = (ku_close - mean).div(std, axis=0)  #
-        ret = fill_invalidate_data(ret)
+        ret = (ku_close - mean).div(std, axis=0)
+        ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
 def i_ku_zscore2(timeframe, shift, aud=0, cad=0, chf=0,
                 eur=0, gbp=0, jpy=0, nzd=0, usd=0):
-    '''
-    Args:
-        timeframe:
-        period:
-        ma_method:
-        shift:
-        aud:
-        cad: 
-        chf:
-        eur:
-        gbp:
-        jpy:
-        nzd:
-        usd:
-    Returns:
-    '''
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
         ku_close = i_ku_close(timeframe, shift, aud=aud, cad=cad, chf=chf,
                               eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
         std = ku_close.std(axis=1)
-        ret = ku_close.div(std, axis=0)  #
-        ret = fill_invalidate_data(ret)
+        ret = ku_close.div(std, axis=0)
+        ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
 def i_low(symbol, timeframe, shift):
-    '''
-    Args:
-        symbol:
-        timeframe:
-        shift:
-    Returns:
-    '''
     pkl_file_path = get_pkl_file_path()  # Must put this first.
-    #
     if g_oanda is not None:
-        instrument = convert_symbol_to_instrument(symbol)
-        granularity = convert_timeframe_to_granularity(timeframe)
+        instrument = to_instrument(symbol)
+        granularity = to_granularity(timeframe)
         temp = g_oanda.get_history(
             instrument=instrument, granularity=granularity, count=COUNT)
         index = pd.Series(np.zeros(COUNT))
@@ -1649,7 +1305,6 @@ def i_low(symbol, timeframe, shift):
             index = pd.to_datetime(index)
             ret.index = index
         ret = ret.shift(shift)
-    #
     else:
         ret = restore_pkl(pkl_file_path)
         if ret is None:
@@ -1660,19 +1315,11 @@ def i_low(symbol, timeframe, shift):
             temp.index = index
             ret = temp.iloc[:, 2]
             ret = ret.shift(shift)
-            ret = fill_invalidate_data(ret)
+            ret = fill_data(ret)
             save_pkl(ret, pkl_file_path)
     return ret
 
 def i_lowest(symbol, timeframe, period, shift):
-    '''
-    Args:
-        symbol:
-        timeframe:
-        period:
-        shift:
-    Returns:
-    '''
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
@@ -1681,24 +1328,14 @@ def i_lowest(symbol, timeframe, period, shift):
             argmin = low.argmin()
             ret = period - 1 - argmin
             return ret
-
         low = i_low(symbol, timeframe, shift)
         ret = low.rolling(window=period).apply(func)
-        ret = fill_invalidate_data(ret)
+        ret = fill_data(ret)
         ret = ret.astype(int)
         save_pkl(ret, pkl_file_path)
     return ret
 
 def i_ma(symbol, timeframe, period, ma_method, shift):
-    '''
-    Args:
-        symbol
-        timeframe:
-        period:
-        ma_method:
-        shift:
-    Returns:
-    '''
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
@@ -1707,19 +1344,11 @@ def i_ma(symbol, timeframe, period, ma_method, shift):
             ret = close.rolling(window=period).mean()
         elif ma_method == 'MODE_EMA':
             ret = close.ewm(span=period).mean()
-        ret = fill_invalidate_data(ret)
+        ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
 def i_moment_duration(symbol, timeframe, period, shift):
-    '''
-    Args:
-        symbol:
-        timeframe:
-        period:
-        shift:
-    Returns:
-    '''
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
@@ -1730,24 +1359,16 @@ def i_moment_duration(symbol, timeframe, period, shift):
             above *= close > close.shift(1+i)
             below *= close < close.shift(1+i)
         ret = above - below
-        ret = fill_invalidate_data(ret)
+        ret = fill_data(ret)
         ret = ret.astype(int)
         save_pkl(ret, pkl_file_path)
     return ret
 
 def i_open(symbol, timeframe, shift):
-    '''
-    Args:
-        symbol:
-        timeframe:
-        shift:
-    Returns:
-    '''
     pkl_file_path = get_pkl_file_path()  # Must put this first.
-    #
     if g_oanda is not None:
-        instrument = convert_symbol_to_instrument(symbol)
-        granularity = convert_timeframe_to_granularity(timeframe)
+        instrument = to_instrument(symbol)
+        granularity = to_granularity(timeframe)
         temp = g_oanda.get_history(
             instrument=instrument, granularity=granularity, count=COUNT)
         index = pd.Series(np.zeros(COUNT))
@@ -1758,7 +1379,6 @@ def i_open(symbol, timeframe, shift):
             index = pd.to_datetime(index)
             ret.index = index
         ret = ret.shift(shift)
-    #
     else:
         ret = restore_pkl(pkl_file_path)
         if ret is None:
@@ -1769,28 +1389,12 @@ def i_open(symbol, timeframe, shift):
             temp.index = index
             ret = temp.iloc[:, 0]
             ret = ret.shift(shift)
-            ret = fill_invalidate_data(ret)
+            ret = fill_data(ret)
             save_pkl(ret, pkl_file_path)
     return ret
 
 def i_percentrank(timeframe, period, ma_method, shift, aud=0, cad=0, chf=0,
                   eur=0, gbp=0, jpy=0, nzd=0, usd=0):
-    '''
-    Args:
-        symbol:
-        timeframe:
-        period:
-        shift:
-        aud:
-        cad:
-        chf:
-        eur:
-        gbp:
-        jpy:
-        nzd:
-        usd:
-    Returns:
-    '''
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
@@ -1802,19 +1406,11 @@ def i_percentrank(timeframe, period, ma_method, shift, aud=0, cad=0, chf=0,
         ret = temp.rank(axis=1, method='first')
         ret -= 1
         ret /= (n - 1)
-        ret = fill_invalidate_data(ret)
+        ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
 def i_resistance(symbol, timeframe, period, shift):
-    '''
-    Args:
-        symbol:
-        timeframe:
-        period:
-        shift:
-    Returns:
-    '''
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
@@ -1840,37 +1436,21 @@ def i_resistance(symbol, timeframe, period, shift):
         for i in range(1, size):
             ret[i] = func(high[0:i+1], i, period)
         ret = pd.Series(ret, index=index)
-        ret = fill_invalidate_data(ret)
+        ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
 def i_roc(symbol, timeframe, period, shift):
-    '''
-    Args:
-        symbol:
-        timeframe:
-        period:
-        shift:
-    Returns:
-    '''
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
         close = i_close(symbol, timeframe, shift)
         ret = (close / close.shift(period) - 1.0) * 100.0
-        ret = fill_invalidate_data(ret)
+        ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
 def i_support(symbol, timeframe, period, shift):
-    '''
-    Args:
-        symbol:
-        timeframe:
-        period:
-        shift:
-    Returns:
-    '''
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
@@ -1887,7 +1467,6 @@ def i_support(symbol, timeframe, period, shift):
                     break
             ret = low[lowest]
             return ret
-
         low = i_low(symbol, timeframe, shift)
         size = len(low)
         ret = np.empty(size)
@@ -1896,20 +1475,11 @@ def i_support(symbol, timeframe, period, shift):
         for i in range(1, size):
             ret[i] = func(low[0:i+1], i, period)
         ret = pd.Series(ret, index=index)
-        ret = fill_invalidate_data(ret)
+        ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
 def i_trend_duration(symbol, timeframe, period, ma_method, shift):
-    '''
-    Args:
-        symbol:
-        timeframe:
-        period:
-        ma_method:
-        shift:
-    Returns:
-    '''
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
@@ -1923,21 +1493,12 @@ def i_trend_duration(symbol, timeframe, period, ma_method, shift):
         below = below * (
                 below.groupby((below!=below.shift()).cumsum()).cumcount()+1)
         ret = above - below
-        ret = fill_invalidate_data(ret)
+        ret = fill_data(ret)
         ret = ret.astype(int)
         save_pkl(ret, pkl_file_path)
     return ret
 
 def i_zscore(symbol, timeframe, period, ma_method, shift):
-    '''
-    Args:
-        symbol:
-        timeframe:
-        period:
-        ma_method:
-        shift:
-    Returns:
-    '''
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
@@ -1949,7 +1510,7 @@ def i_zscore(symbol, timeframe, period, ma_method, shift):
             mean = close.ewm(span=period).mean()
             std = close.ewm(span=period).std()
         ret = (close - mean) / std
-        ret = fill_invalidate_data(ret)
+        ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
 
@@ -1976,31 +1537,22 @@ def optimize_parameter(strategy, symbol, timeframe, spread, start, end,
     return parameter
 
 def order_close(ticket):
-    '''
-    Args:
-        ticket:
-    '''
     g_oanda.close_trade(g_access_id, ticket)
  
 def order_send(symbol, units, side):
-    '''
-    Args:
-        symbol:
-        units:
-        side:
-    Returns:
-    '''
-    #
-    instrument = convert_symbol_to_instrument(symbol)
+    instrument = to_instrument(symbol)
     response = g_oanda.create_order(
             account_id=g_access_id, instrument=instrument, units=units,
             side=side, type='market')
     ticket = response['tradeOpened']['id']
     return ticket
 
+def remove_folder(folder):
+    pathname = os.path.dirname(__file__)
+    if os.path.exists(pathname + '/' + folder) == True:
+        shutil.rmtree(pathname + '/' + folder)
+
 def rename_historical_data_filename():
-    '''Rename historical data filename.
-    '''
     for symbol in ['AUDCAD', 'AUDCHF', 'AUDJPY', 'AUDNZD', 'AUDUSD', 'CADCHF',
                    'CADJPY', 'CHFJPY', 'EURAUD', 'EURCAD', 'EURCHF', 'EURGBP',
                    'EURJPY', 'EURNZD', 'EURUSD', 'GBPAUD', 'GBPCAD', 'GBPCHF',
@@ -2011,12 +1563,6 @@ def rename_historical_data_filename():
             os.rename(old_name, new_name)
 
 def restore_model(filename):
-    '''Restore model.
-    Args:
-        filename:
-    Returns:
-        model.
-    '''
     pathname = os.path.dirname(__file__) + '/' + filename
     if os.path.exists(filename) == True:
         ret = joblib.load(pathname + '/' + filename + '.pkl')
@@ -2025,11 +1571,6 @@ def restore_model(filename):
     return ret
 
 def restore_pkl(pkl_file_path):
-    '''
-    Args:
-        pkl_file_path
-    Returns:
-    '''
     if g_oanda is None and os.path.exists(pkl_file_path) == True:
         ret = joblib.load(pkl_file_path)
     else:
@@ -2037,59 +1578,31 @@ def restore_pkl(pkl_file_path):
     return ret
 
 def save_model(model, filename):
-    '''Save model.
-    Args:
-        model:
-        filename:
-    '''
     pathname = os.path.dirname(__file__) + '/' + filename
     if os.path.exists(pathname) == False:
         os.mkdir(pathname)
     joblib.dump(model, pathname + '/' + filename + '.pkl') 
 
 def save_pkl(data, pkl_file_path):
-    '''
-    Args:
-        data:
-        pkl_file_path:
-    '''
     if g_oanda is None:
-        create_temp_folder()
+        create_folder('temp')
         joblib.dump(data, pkl_file_path)
 
 def seconds():
-    '''
-    Returns:
-    '''    
     seconds = datetime.now().second
     return seconds
 
 def send_mail(subject, some_text, fromaddr, toaddr, host, port, password):
-    '''
-    Args:
-        subject:
-        some_text:
-    '''
     msg = MIMEText(some_text)
     msg['Subject'] = subject
     msg['From'] = fromaddr
     msg['To'] = toaddr
-#    s = smtplib.SMTP_SSL(host, port)
-#    s.login(fromaddr, password)
-#    s.send_message(msg)
-#    s.quit()
     with smtplib.SMTP_SSL(host, port) as s:
         s.login(fromaddr, password)
         s.send_message(msg)
 
 def send_signal_to_mt4(filename, signal):
-    '''
-    Args:
-        filename:
-        signal:
-    '''
     f = open(filename, 'w')
-    #
     f.write(str(int(signal.iloc[len(signal)-1] + 2)))
     f.close()
 
@@ -2117,8 +1630,8 @@ def signal(strategy, symbol, timeframe, ea, parameter, start_train, end_train):
                               access_token=g_access_token)
     second_before = 0
     pre_history_time = None
-    instrument = convert_symbol_to_instrument(symbol)
-    granularity = convert_timeframe_to_granularity(timeframe)
+    instrument = to_instrument(symbol)
+    granularity = to_granularity(timeframe)
     while True:
         second_now = seconds()
         if second_now != second_before:
@@ -2149,42 +1662,258 @@ def signal(strategy, symbol, timeframe, ea, parameter, start_train, end_train):
                       timeframe, signal.iloc[end_row])
 
 def time_day_of_week(index):
-    '''
-    Args:
-        index:
-    Returns:
-    '''
-    #
     time_day_of_week = pd.Series(index.dayofweek, index=index) + 1
     time_day_of_week[time_day_of_week==7] = 0
     return time_day_of_week
 
 def time_hour(index):
-    '''
-    Args:
-        index:
-    Returns:
-    '''
     time_hour = pd.Series(index.hour, index=index)
     return time_hour
 
 def time_minute(index):
-    '''
-    Args:
-        index:
-    Returns:
-    '''
     time_minute = pd.Series(index.minute, index=index)
     return time_minute
 
 def time_month(index):
-    '''
-    Args:
-        index:
-    Returns:
-    '''
     time_month = pd.Series(index.month, index=index)
     return time_month
+
+def to_csv_file(
+        audcad=0, audchf=0, audjpy=0, audnzd=0, audusd=0, cadchf=0, cadjpy=0,
+        chfjpy=0, euraud=0, eurcad=0, eurchf=0, eurgbp=0, eurjpy=0, eurnzd=0,
+        eurusd=0, gbpaud=0, gbpcad=0, gbpchf=0, gbpjpy=0, gbpnzd=0, gbpusd=0,
+        nzdcad=0, nzdchf=0, nzdjpy=0, nzdusd=0, usdcad=0, usdchf=0, usdjpy=0):
+    for i in range(28):
+        if i == 0:
+            if audcad == 0:
+                continue
+            symbol = 'AUDCAD'
+        elif i == 1:
+            if audchf == 0:
+                continue
+            symbol = 'AUDCHF'
+        elif i == 2:
+            if audjpy == 0:
+                continue
+            symbol = 'AUDJPY'
+        elif i == 3:
+            if audnzd == 0:
+                continue
+            symbol = 'AUDNZD'
+        elif i == 4:
+            if audusd == 0:
+                continue
+            symbol = 'AUDUSD'
+        elif i == 5:
+            if cadchf == 0:
+                continue
+            symbol = 'CADCHF'
+        elif i == 6:
+            if cadjpy == 0:
+                continue
+            symbol = 'CADJPY'
+        elif i == 7:
+            if chfjpy == 0:
+                continue
+            symbol = 'CHFJPY'
+        elif i == 8:
+            if euraud == 0:
+                continue
+            symbol = 'EURAUD'
+        elif i == 9:
+            if eurcad == 0:
+                continue
+            symbol = 'EURCAD'
+        elif i == 10:
+            if eurchf == 0:
+                continue
+            symbol = 'EURCHF'
+        elif i == 11:
+            if eurgbp == 0:
+                continue
+            symbol = 'EURGBP'
+        elif i == 12:
+            if eurjpy == 0:
+                continue
+            symbol = 'EURJPY'
+        elif i == 13:
+            if eurnzd == 0:
+                continue
+            symbol = 'EURNZD'
+        elif i == 14:
+            if eurusd == 0:
+                continue 
+            symbol = 'EURUSD'
+        elif i == 15:
+            if gbpaud == 0:
+                continue
+            symbol = 'GBPAUD'
+        elif i == 16:
+            if gbpcad == 0:
+                continue
+            symbol = 'GBPCAD'
+        elif i == 17:
+            if gbpchf == 0:
+                continue
+            symbol = 'GBPCHF'
+        elif i == 18:
+            if gbpjpy == 0:
+                continue
+            symbol = 'GBPJPY'
+        elif i == 19:
+            if gbpnzd == 0:
+                continue
+            symbol = 'GBPNZD'
+        elif i == 20:
+            if gbpusd == 0:
+                continue
+            symbol = 'GBPUSD'
+        elif i == 21:
+            if nzdcad == 0:
+                continue
+            symbol = 'NZDCAD'
+        elif i == 22:
+            if nzdchf == 0:
+                continue
+            symbol = 'NZDCHF'
+        elif i == 23:
+            if nzdjpy == 0:
+                continue
+            symbol = 'NZDJPY'
+        elif i == 24:
+            if nzdusd == 0:
+                continue
+            symbol = 'NZDUSD'
+        elif i == 25:
+            if usdcad == 0:
+                continue
+            symbol = 'USDCAD'
+        elif i == 26:
+            if usdchf == 0:
+                continue
+            symbol = 'USDCHF'
+        elif i == 27:
+            if usdjpy == 0:
+                continue
+            symbol = 'USDJPY'
+        else:
+            pass
+        filename_hst = '../historical_data/' + symbol + '.hst'
+        filename_csv = '../historical_data/' + symbol + '.csv'
+        read = 0
+        datetime = []
+        open_price = []
+        low_price = []
+        high_price = []
+        close_price = []
+        volume = []
+        with open(filename_hst, 'rb') as f:
+            while True:
+                if read >= 148:
+                    buf = f.read(44)
+                    read += 44
+                    if not buf:
+                        break
+                    bar = struct.unpack('< iddddd', buf)
+                    datetime.append(
+                        time.strftime('%Y-%m-%d %H:%M:%S',
+                        time.gmtime(bar[0])))
+                    open_price.append(bar[1])
+                    high_price.append(bar[3])  # it's not mistake.
+                    low_price.append(bar[2])  # it's not mistake too.
+                    close_price.append(bar[4])
+                    volume.append(bar[5])
+                else:
+                    buf = f.read(148)
+                    read += 148
+        data = {'0_datetime':datetime, '1_open_price':open_price,
+            '2_high_price':high_price, '3_low_price':low_price,
+            '4_close_price':close_price, '5_volume':volume}
+        result = pd.DataFrame.from_dict(data)
+        result.columns = ['Time (UTC)', 'Open', 'High', 'Low', 'Close',
+                          'Volume']
+        result = result.set_index('Time (UTC)')
+        result.to_csv(filename_csv)
+
+def to_period(minute, timeframe):
+    period = int(minute / timeframe)
+    return period
+
+def to_instrument(symbol):
+    if symbol == 'AUDCAD':
+        instrument = 'AUD_CAD'
+    elif symbol == 'AUDCHF':
+        instrument = 'AUD_CHF'
+    elif symbol == 'AUDJPY':
+        instrument = 'AUD_JPY'
+    elif symbol == 'AUDNZD':
+        instrument = 'AUD_NZD'
+    elif symbol == 'AUDUSD':
+        instrument = 'AUD_USD'
+    elif symbol == 'CADCHF':
+        instrument = 'CAD_CHF'
+    elif symbol == 'CADJPY':
+        instrument = 'CAD_JPY'
+    elif symbol == 'CHFJPY':
+        instrument = 'CHF_JPY'
+    elif symbol == 'EURAUD':
+        instrument = 'EUR_AUD'
+    elif symbol == 'EURCAD':
+        instrument = 'EUR_CAD'
+    elif symbol == 'EURCHF':
+        instrument = 'EUR_CHF'
+    elif symbol == 'EURGBP':
+        instrument = 'EUR_GBP'
+    elif symbol == 'EURJPY':
+        instrument = 'EUR_JPY'
+    elif symbol == 'EURNZD':
+        instrument = 'EUR_NZD'
+    elif symbol == 'EURUSD':
+        instrument = 'EUR_USD' 
+    elif symbol == 'GBPAUD':
+        instrument = 'GBP_AUD'
+    elif symbol == 'GBPCAD':
+        instrument = 'GBP_CAD'
+    elif symbol == 'GBPCHF':
+        instrument = 'GBP_CHF'
+    elif symbol == 'GBPJPY':
+        instrument = 'GBP_JPY'
+    elif symbol == 'GBPNZD':
+        instrument = 'GBP_NZD'
+    elif symbol == 'GBPUSD':
+        instrument = 'GBP_USD'
+    elif symbol == 'NZDCAD':
+        instrument = 'NZD_CAD'
+    elif symbol == 'NZDCHF':
+        instrument = 'NZD_CHF'
+    elif symbol == 'NZDJPY':
+        instrument = 'NZD_JPY'
+    elif symbol == 'NZDUSD':
+        instrument = 'NZD_USD'
+    elif symbol == 'USDCAD':
+        instrument = 'USD_CAD'
+    elif symbol == 'USDCHF':
+        instrument = 'USD_CHF'
+    else:
+        instrument = 'USD_JPY'
+    return instrument
+
+def to_granularity(timeframe):
+    if timeframe == 1:
+        granularity = 'M1'
+    elif timeframe == 5:
+        granularity = 'M5'
+    elif timeframe == 15:
+        granularity = 'M15'
+    elif timeframe == 30:
+        granularity = 'M30'
+    elif timeframe == 60:
+        granularity = 'H1'
+    elif timeframe == 240:
+        granularity = 'H4'
+    else:
+        granularity = 'D'
+    return granularity
 
 def trade(strategy, symbol, timeframe, ea, parameter, start_train, end_train,
           mail, mt4):
@@ -2212,13 +1941,13 @@ def trade(strategy, symbol, timeframe, ea, parameter, start_train, end_train,
                               access_token=g_access_token)
     second_before = 0
     pre_history_time = None
-    instrument = convert_symbol_to_instrument(symbol)
-    granularity = convert_timeframe_to_granularity(timeframe)
+    instrument = to_instrument(symbol)
+    granularity = to_granularity(timeframe)
     if mt4 == 1:
         folder_ea = config['DEFAULT']['folder_ea']
         filename = folder_ea + '/' + ea + '.csv'
         f = open(filename, 'w')
-        f.write(str(2))  # 
+        f.write(str(2))
         f.close()
     pos = 0
     ticket = 0
