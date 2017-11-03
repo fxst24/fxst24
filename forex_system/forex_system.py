@@ -16,6 +16,7 @@ from collections import OrderedDict
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from numba import float64, int64, jit
+from pandas_datareader import data as web
 from scipy import optimize
 from scipy.stats import pearson3
 from sklearn.externals import joblib
@@ -472,389 +473,50 @@ def get_drawdown(pnl):
     drawdown = (equity.cummax()-equity).max()
     return drawdown
 
-def get_historical_data(
-        start, end,
-        audcad=0, audchf=0, audjpy=0, audnzd=0, audusd=0, cadchf=0, cadjpy=0,
-        chfjpy=0, euraud=0, eurcad=0, eurchf=0, eurgbp=0, eurjpy=0, eurnzd=0,
-        eurusd=0, gbpaud=0, gbpcad=0, gbpchf=0, gbpjpy=0, gbpnzd=0, gbpusd=0,
-        nzdcad=0, nzdchf=0, nzdjpy=0, nzdusd=0, usdcad=0, usdchf=0, usdjpy=0):
+def get_historical_data(symbol, start, end):
     start = start + ' 00:00'
     end = end + ' 00:00'
     index = pd.date_range(start, end, freq='T')
-    data = pd.DataFrame(index=index)
-    for i in range(28):
-        if i == 0:
-            if audcad == 0:
-                continue
-            symbol = 'AUDCAD'
-        elif i == 1:
-            if audchf == 0:
-                continue
-            symbol = 'AUDCHF'
-        elif i == 2:
-            if audjpy == 0:
-                continue
-            symbol = 'AUDJPY'
-        elif i == 3:
-            if audnzd == 0:
-                continue
-            symbol = 'AUDNZD'
-        elif i == 4:
-            if audusd == 0:
-                continue
-            symbol = 'AUDUSD'
-        elif i == 5:
-            if cadchf == 0:
-                continue
-            symbol = 'CADCHF'
-        elif i == 6:
-            if cadjpy == 0:
-                continue
-            symbol = 'CADJPY'
-        elif i == 7:
-            if chfjpy == 0:
-                continue
-            symbol = 'CHFJPY'
-        elif i == 8:
-            if euraud == 0:
-                continue
-            symbol = 'EURAUD'
-        elif i == 9:
-            if eurcad == 0:
-                continue
-            symbol = 'EURCAD'
-        elif i == 10:
-            if eurchf == 0:
-                continue
-            symbol = 'EURCHF'
-        elif i == 11:
-            if eurgbp == 0:
-                continue
-            symbol = 'EURGBP'
-        elif i == 12:
-            if eurjpy == 0:
-                continue
-            symbol = 'EURJPY'
-        elif i == 13:
-            if eurnzd == 0:
-                continue
-            symbol = 'EURNZD'
-        elif i == 14:
-            if eurusd == 0:
-                continue 
-            symbol = 'EURUSD'
-        elif i == 15:
-            if gbpaud == 0:
-                continue
-            symbol = 'GBPAUD'
-        elif i == 16:
-            if gbpcad == 0:
-                continue
-            symbol = 'GBPCAD'
-        elif i == 17:
-            if gbpchf == 0:
-                continue
-            symbol = 'GBPCHF'
-        elif i == 18:
-            if gbpjpy == 0:
-                continue
-            symbol = 'GBPJPY'
-        elif i == 19:
-            if gbpnzd == 0:
-                continue
-            symbol = 'GBPNZD'
-        elif i == 20:
-            if gbpusd == 0:
-                continue
-            symbol = 'GBPUSD'
-        elif i == 21:
-            if nzdcad == 0:
-                continue
-            symbol = 'NZDCAD'
-        elif i == 22:
-            if nzdchf == 0:
-                continue
-            symbol = 'NZDCHF'
-        elif i == 23:
-            if nzdjpy == 0:
-                continue
-            symbol = 'NZDJPY'
-        elif i == 24:
-            if nzdusd == 0:
-                continue
-            symbol = 'NZDUSD'
-        elif i == 25:
-            if usdcad == 0:
-                continue
-            symbol = 'USDCAD'
-        elif i == 26:
-            if usdchf == 0:
-                continue
-            symbol = 'USDCHF'
-        elif i == 27:
-            if usdjpy == 0:
-                continue
-            symbol = 'USDJPY'
-        else:
-            pass
-        n = (
-                audcad + audchf + audjpy + audnzd + audusd + cadchf + cadjpy
-              + chfjpy + euraud + eurcad + eurchf + eurgbp + eurjpy + eurnzd 
-              + eurusd + gbpaud + gbpcad + gbpchf + gbpjpy + gbpnzd + gbpusd
-              + nzdcad + nzdchf + nzdjpy + nzdusd + usdcad + usdchf + usdjpy)
-        filename = '~/historical_data/' + symbol + '.csv'
-        temp = pd.read_csv(filename, index_col=0)
-        temp.index = pd.to_datetime(temp.index)
-        temp.index = temp.index + timedelta(hours=2)
-        data = pd.concat([data, temp], axis=1)
+    data1 = pd.DataFrame(index=index)
+    filename = './historical_data/' + symbol + '.csv'
+    temp = pd.read_csv(filename, index_col=0)
+    temp.index = pd.to_datetime(temp.index)
+    temp.index = temp.index + timedelta(hours=2)
+    data1 = pd.concat([data1, temp], axis=1)
     label = ['open', 'high', 'low', 'close', 'volume']
-    data.columns = label * n
+    data1.columns = label
     ohlcv_dict = OrderedDict()
     ohlcv_dict['open'] = 'first'
     ohlcv_dict['high'] = 'max'
     ohlcv_dict['low'] = 'min'
     ohlcv_dict['close'] = 'last'
     ohlcv_dict['volume'] = 'sum'
-    count = 0
-    for i in range(28):
-        if i == 0:
-            if audcad == 0:
-                continue
-            symbol = 'AUDCAD'
-            count = count + 1
-        elif i == 1:
-            if audchf == 0:
-                continue
-            symbol = 'AUDCHF'
-            count = count + 1
-        elif i == 2:
-            if audjpy == 0:
-                continue
-            symbol = 'AUDJPY'
-            count = count + 1
-        elif i == 3:
-            if audnzd == 0:
-                continue
-            symbol = 'AUDNZD'
-            count = count + 1
-        elif i == 4:
-            if audusd == 0:
-                continue
-            symbol = 'AUDUSD'
-            count = count + 1
-        elif i == 5:
-            if cadchf == 0:
-                continue
-            symbol = 'CADCHF'
-            count = count + 1
-        elif i == 6:
-            if cadjpy == 0:
-                continue
-            symbol = 'CADJPY'
-            count = count + 1
-        elif i == 7:
-            if chfjpy == 0:
-                continue
-            symbol = 'CHFJPY'
-            count = count + 1
-        elif i == 8:
-            if euraud == 0:
-                continue
-            symbol = 'EURAUD'
-            count = count + 1
-        elif i == 9:
-            if eurcad == 0:
-                continue
-            symbol = 'EURCAD'
-            count = count + 1
-        elif i == 10:
-            if eurchf == 0:
-                continue
-            symbol = 'EURCHF'
-            count = count + 1
-        elif i == 11:
-            if eurgbp == 0:
-                continue
-            symbol = 'EURGBP'
-            count = count + 1
-        elif i == 12:
-            if eurjpy == 0:
-                continue
-            symbol = 'EURJPY'
-            count = count + 1
-        elif i == 13:
-            if eurnzd == 0:
-                continue
-            symbol = 'EURNZD'
-            count = count + 1
-        elif i == 14:
-            if eurusd == 0:
-                continue 
-            symbol = 'EURUSD'
-            count = count + 1
-        elif i == 15:
-            if gbpaud == 0:
-                continue
-            symbol = 'GBPAUD'
-            count = count + 1
-        elif i == 16:
-            if gbpcad == 0:
-                continue
-            symbol = 'GBPCAD'
-            count = count + 1
-        elif i == 17:
-            if gbpchf == 0:
-                continue
-            symbol = 'GBPCHF'
-            count = count + 1
-        elif i == 18:
-            if gbpjpy == 0:
-                continue
-            symbol = 'GBPJPY'
-            count = count + 1
-        elif i == 19:
-            if gbpnzd == 0:
-                continue
-            symbol = 'GBPNZD'
-            count = count + 1
-        elif i == 20:
-            if gbpusd == 0:
-                continue
-            symbol = 'GBPUSD'
-            count = count + 1
-        elif i == 21:
-            if nzdcad == 0:
-                continue
-            symbol = 'NZDCAD'
-            count = count + 1
-        elif i == 22:
-            if nzdchf == 0:
-                continue
-            symbol = 'NZDCHF'
-            count = count + 1
-        elif i == 23:
-            if nzdjpy == 0:
-                continue
-            symbol = 'NZDJPY'
-            count = count + 1
-        elif i == 24:
-            if nzdusd == 0:
-                continue
-            symbol = 'NZDUSD'
-            count = count + 1
-        elif i == 25:
-            if usdcad == 0:
-                continue
-            symbol = 'USDCAD'
-            count = count + 1
-        elif i == 26:
-            if usdchf == 0:
-                continue
-            symbol = 'USDCHF'
-            count = count + 1
-        elif i == 27:
-            if usdjpy == 0:
-                continue
-            symbol = 'USDJPY'
-            count = count + 1
+    data1 = data1.fillna(method='ffill')
+    data1 = data1[~data1.index.duplicated()]
+    for i in [1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60, 120, 180, 240, 360,
+              480, 720, 1440]:
+        if i == 1:
+            data = data1.copy()
         else:
-            pass
-        data1 = data.iloc[:, 0+(5*(count-1)): 5+(5*(count-1))]
-        data1 = data1.fillna(method='ffill')
-        data1 = data1[~data1.index.duplicated()]
-        data2 = data1.resample(
-            '2T', label='left', closed='left').apply(ohlcv_dict)
-        data3 = data1.resample(
-            '3T', label='left', closed='left').apply(ohlcv_dict)
-        data4 = data1.resample(
-            '4T', label='left', closed='left').apply(ohlcv_dict)
-        data5 = data1.resample(
-            '5T', label='left', closed='left').apply(ohlcv_dict)
-        data6 = data1.resample(
-            '6T', label='left', closed='left').apply(ohlcv_dict)
-        data10 = data1.resample(
-            '10T', label='left', closed='left').apply(ohlcv_dict)
-        data12 = data1.resample(
-            '12T', label='left', closed='left').apply(ohlcv_dict)
-        data15 = data1.resample(
-            '15T', label='left', closed='left').apply(ohlcv_dict)
-        data20 = data1.resample(
-            '20T', label='left', closed='left').apply(ohlcv_dict)
-        data30 = data1.resample(
-            '30T', label='left', closed='left').apply(ohlcv_dict)
-        data60 = data1.resample(
-            '60T', label='left', closed='left').apply(ohlcv_dict)
-        data120 = data1.resample(
-            '120T', label='left', closed='left').apply(ohlcv_dict)
-        data180 = data1.resample(
-            '180T', label='left', closed='left').apply(ohlcv_dict)
-        data240 = data1.resample(
-            '240T', label='left', closed='left').apply(ohlcv_dict)
-        data360 = data1.resample(
-            '360T', label='left', closed='left').apply(ohlcv_dict)
-        data480 = data1.resample(
-            '480T', label='left', closed='left').apply(ohlcv_dict)
-        data720 = data1.resample(
-            '720T', label='left', closed='left').apply(ohlcv_dict)
-        data1440 = data1.resample(
-            '1440T', label='left', closed='left').apply(ohlcv_dict)
-        data1 = data1[data1.index.dayofweek<5]
-        data2 = data2[data2.index.dayofweek<5]
-        data3 = data3[data3.index.dayofweek<5]
-        data4 = data4[data4.index.dayofweek<5]
-        data5 = data5[data5.index.dayofweek<5]
-        data6 = data6[data6.index.dayofweek<5]
-        data10 = data10[data10.index.dayofweek<5]
-        data12 = data12[data12.index.dayofweek<5]
-        data15 = data15[data15.index.dayofweek<5]
-        data20 = data20[data20.index.dayofweek<5]
-        data30 = data30[data30.index.dayofweek<5]
-        data60 = data60[data60.index.dayofweek<5]
-        data120 = data120[data120.index.dayofweek<5]
-        data180 = data180[data180.index.dayofweek<5]
-        data240 = data240[data240.index.dayofweek<5]
-        data360 = data360[data360.index.dayofweek<5]
-        data480 = data480[data480.index.dayofweek<5]
-        data720 = data720[data720.index.dayofweek<5]
-        data1440 = data1440[data1440.index.dayofweek<5]
-        filename1 =  '~/historical_data/' + symbol + '1.csv'
-        filename2 =  '~/historical_data/' + symbol + '2.csv'
-        filename3 =  '~/historical_data/' + symbol + '3.csv'
-        filename4 =  '~/historical_data/' + symbol + '4.csv'
-        filename5 =  '~/historical_data/' + symbol + '5.csv'
-        filename6 =  '~/historical_data/' + symbol + '6.csv'
-        filename10 =  '~/historical_data/' + symbol + '10.csv'
-        filename12 =  '~/historical_data/' + symbol + '12.csv'
-        filename15 =  '~/historical_data/' + symbol + '15.csv'
-        filename20 =  '~/historical_data/' + symbol + '20.csv'
-        filename30 =  '~/historical_data/' + symbol + '30.csv'
-        filename60 =  '~/historical_data/' + symbol + '60.csv'
-        filename120 =  '~/historical_data/' + symbol + '120.csv'
-        filename180 =  '~/historical_data/' + symbol + '180.csv'
-        filename240 =  '~/historical_data/' + symbol + '240.csv'
-        filename360 =  '~/historical_data/' + symbol + '360.csv'
-        filename480 =  '~/historical_data/' + symbol + '480.csv'
-        filename720 =  '~/historical_data/' + symbol + '720.csv'
-        filename1440 =  '~/historical_data/' + symbol + '1440.csv'
-        data1.to_csv(filename1)
-        data2.to_csv(filename2)
-        data3.to_csv(filename3)
-        data4.to_csv(filename4)
-        data5.to_csv(filename5)
-        data6.to_csv(filename6)
-        data10.to_csv(filename10)
-        data12.to_csv(filename12)
-        data15.to_csv(filename15)
-        data20.to_csv(filename20)
-        data30.to_csv(filename30)
-        data60.to_csv(filename60)
-        data120.to_csv(filename120)
-        data180.to_csv(filename180)
-        data240.to_csv(filename240)
-        data360.to_csv(filename360)
-        data480.to_csv(filename480)
-        data720.to_csv(filename720)
-        data1440.to_csv(filename1440)
+            data = data1.resample(
+                    str(i)+'T', label='left', closed='left').apply(ohlcv_dict)
+        data = data[data.index.dayofweek<5]
+        filename =  './historical_data/' + symbol + str(i) + '.csv'
+        data.to_csv(filename)
+
+def get_historical_data_from_yahoo(symbol):
+    start = datetime(2001, 1, 1)
+    end = datetime(2101, 1, 1)
+    data = i_close('USDJPY', 1440, 0)
+    temp = web.DataReader(symbol, 'yahoo', start, end)
+    data = pd.concat([data, temp], axis=1, join_axes=[data.index])
+    data = fill_data(data)
+    data = data[data.index.dayofweek<5]
+    data = data.drop('close', axis=1)
+    data = data.drop('Close', axis=1)
+    data.columns = ['open', 'high', 'low', 'close', 'volume']
+    filename =  './historical_data/' + symbol + '1440.csv'
+    data.to_csv(filename)
 
 def get_model_dir():
     dirname = os.path.dirname(__file__)
@@ -1051,6 +713,22 @@ def get_trades(signal, start, end):
     trades = trade.sum()
     return trades
 
+def i_atr(symbol, timeframe, period, shift):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    atr = restore_pkl(pkl_file_path)
+    if atr is None:
+        high = i_high(symbol, timeframe, shift)
+        low = i_low(symbol, timeframe, shift)
+        close = i_close(symbol, timeframe, shift)
+        temp = high - low
+        temp = pd.concat([temp, high - close.shift(1)], axis=1)
+        temp = pd.concat([temp, close.shift(1) - low], axis=1)
+        tr = temp.max(axis=1)
+        atr = tr.rolling(window=period).mean()
+        atr = fill_data(atr)
+        save_pkl(atr, pkl_file_path)
+    return atr
+
 def i_close(symbol, timeframe, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     if g_oanda is not None:
@@ -1069,7 +747,7 @@ def i_close(symbol, timeframe, shift):
     else:
         ret = restore_pkl(pkl_file_path)
         if ret is None:
-            filename = ('~/historical_data/' + symbol + str(timeframe) +
+            filename = ('~/py/historical_data/' + symbol + str(timeframe) +
                 '.csv')
             temp = pd.read_csv(filename, index_col=0, header=0)
             index = pd.to_datetime(temp.index)
@@ -1136,6 +814,39 @@ def i_daily_open(symbol, timeframe, shift):
         save_pkl(ret, pkl_file_path)
     return ret
 
+# For USDJPY only.
+def i_event(symbol, timeframe, before, after):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    event = restore_pkl(pkl_file_path)
+    if event is None:
+        close = i_close(symbol, timeframe, 0)
+        index = close.index
+        temp = pd.Series(index=index)
+        hour = time_hour(index)
+        minute = time_minute(index)
+        b = int(before / timeframe)
+        a = int(after / timeframe)
+        if symbol == 'USDJPY':
+            temp[(hour==2) & (minute==0)] = 1  # (2, 0)
+            temp[(hour==14) & (minute==30)] = 1  # (14, 30)
+            temp[(hour==15) & (minute==30)] = 1  # (15, 30)
+            temp[(hour==15) & (minute==35)] = 1  # (15, 35)
+            temp[(hour==16) & (minute==0)] = 1  # (16, 0)
+            temp[(hour==16) & (minute==55)] = 1  # (16, 55)
+            temp[(hour==17) & (minute==0)] = 1  # (17, 0)
+        temp = temp.fillna(0)
+        event = temp.copy()
+        for i in range(b):
+            event += temp.shift(-i-1)
+        for i in range(a):
+            event += temp.shift(i+1)    
+        event = event.fillna(0)
+        event[event>1] = 1
+        event = fill_data(event)
+        event = event.astype(int)
+        save_pkl(event, pkl_file_path)
+    return event
+
 def i_high(symbol, timeframe, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     #
@@ -1155,7 +866,7 @@ def i_high(symbol, timeframe, shift):
     else:
         ret = restore_pkl(pkl_file_path)
         if ret is None:
-            filename = ('~/historical_data/' + symbol + str(timeframe) +
+            filename = ('~/py/historical_data/' + symbol + str(timeframe) +
                 '.csv')
             temp = pd.read_csv(filename, index_col=0, header=0)
             index = pd.to_datetime(temp.index)
@@ -1258,37 +969,19 @@ def i_ku_roc(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
         save_pkl(ret, pkl_file_path)
     return ret
 
-def i_ku_zscore(timeframe, period, ma_method, shift, aud=0, cad=0, chf=0,
-                eur=0, gbp=0, jpy=0, nzd=0, usd=0):
+def i_ku_zscore(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
+                jpy=0, nzd=0, usd=0):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
-    ret = restore_pkl(pkl_file_path)
-    if ret is None:
+    ku_zscore = restore_pkl(pkl_file_path)
+    if ku_zscore is None:
         ku_close = i_ku_close(timeframe, shift, aud=aud, cad=cad, chf=chf,
                               eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
-        if ma_method == 'MODE_SMA':
-            mean = ku_close.rolling(window=period).mean()
-            std = ku_close.rolling(window=period).std()
-        elif ma_method == 'MODE_EMA':
-            mean = ku_close.ewm(span=period).mean()
-            std = ku_close.ewm(span=period).std()
-        std = std.mean(axis=1)
-        ret = (ku_close - mean).div(std, axis=0)
-        ret = fill_data(ret)
-        save_pkl(ret, pkl_file_path)
-    return ret
-
-def i_ku_zscore2(timeframe, shift, aud=0, cad=0, chf=0,
-                eur=0, gbp=0, jpy=0, nzd=0, usd=0):
-    pkl_file_path = get_pkl_file_path()  # Must put this first.
-    ret = restore_pkl(pkl_file_path)
-    if ret is None:
-        ku_close = i_ku_close(timeframe, shift, aud=aud, cad=cad, chf=chf,
-                              eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
-        std = ku_close.std(axis=1)
-        ret = ku_close.div(std, axis=0)
-        ret = fill_data(ret)
-        save_pkl(ret, pkl_file_path)
-    return ret
+        mean = ku_close.rolling(window=period).mean()
+        std = ku_close.rolling(window=period).std()
+        ku_zscore = (ku_close-mean) / std
+        ku_zscore = fill_data(ku_zscore)
+        save_pkl(ku_zscore, pkl_file_path)
+    return ku_zscore
 
 def i_low(symbol, timeframe, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
@@ -1308,7 +1001,7 @@ def i_low(symbol, timeframe, shift):
     else:
         ret = restore_pkl(pkl_file_path)
         if ret is None:
-            filename = ('~/historical_data/' + symbol + str(timeframe) +
+            filename = ('~/py/historical_data/' + symbol + str(timeframe) +
                 '.csv')
             temp = pd.read_csv(filename, index_col=0, header=0)
             index = pd.to_datetime(temp.index)
@@ -1335,18 +1028,15 @@ def i_lowest(symbol, timeframe, period, shift):
         save_pkl(ret, pkl_file_path)
     return ret
 
-def i_ma(symbol, timeframe, period, ma_method, shift):
+def i_ma(symbol, timeframe, period, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
-    ret = restore_pkl(pkl_file_path)
-    if ret is None:
+    ma = restore_pkl(pkl_file_path)
+    if ma is None:
         close = i_close(symbol, timeframe, shift)
-        if ma_method == 'MODE_SMA':
-            ret = close.rolling(window=period).mean()
-        elif ma_method == 'MODE_EMA':
-            ret = close.ewm(span=period).mean()
-        ret = fill_data(ret)
-        save_pkl(ret, pkl_file_path)
-    return ret
+        ma = close.rolling(window=period).mean()
+        ma = fill_data(ma)
+        save_pkl(ma, pkl_file_path)
+    return ma
 
 def i_moment_duration(symbol, timeframe, period, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
@@ -1382,7 +1072,7 @@ def i_open(symbol, timeframe, shift):
     else:
         ret = restore_pkl(pkl_file_path)
         if ret is None:
-            filename = ('~/historical_data/' + symbol + str(timeframe) +
+            filename = ('~/py/historical_data/' + symbol + str(timeframe) +
                 '.csv')
             temp = pd.read_csv(filename, index_col=0, header=0)
             index = pd.to_datetime(temp.index)
@@ -1393,22 +1083,21 @@ def i_open(symbol, timeframe, shift):
             save_pkl(ret, pkl_file_path)
     return ret
 
-def i_percentrank(timeframe, period, ma_method, shift, aud=0, cad=0, chf=0,
-                  eur=0, gbp=0, jpy=0, nzd=0, usd=0):
+def i_percentrank(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
+                  jpy=0, nzd=0, usd=0):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
-    ret = restore_pkl(pkl_file_path)
-    if ret is None:
+    percentrank = restore_pkl(pkl_file_path)
+    if percentrank is None:
         temp = i_ku_zscore(
-                timeframe, period, ma_method, shift, aud=aud, cad=cad, chf=chf,
-                eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
+                timeframe, period, shift, aud=aud, cad=cad, chf=chf, eur=eur,
+                gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
         n = aud + cad + chf + eur + gbp + jpy + nzd + usd
-        #
-        ret = temp.rank(axis=1, method='first')
-        ret -= 1
-        ret /= (n - 1)
-        ret = fill_data(ret)
-        save_pkl(ret, pkl_file_path)
-    return ret
+        percentrank = temp.rank(axis=1, method='first')
+        percentrank -= 1
+        percentrank /= (n - 1)
+        percentrank = fill_data(percentrank)
+        save_pkl(percentrank, pkl_file_path)
+    return percentrank
 
 def i_resistance(symbol, timeframe, period, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
@@ -1450,6 +1139,27 @@ def i_roc(symbol, timeframe, period, shift):
         save_pkl(ret, pkl_file_path)
     return ret
 
+def i_se(symbol, timeframe, period, lookback, method, shift):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    se = restore_pkl(pkl_file_path)
+    if se is None:
+        close = i_close(symbol, timeframe, shift)
+        if method == 'mean':
+            ma = i_ma(symbol, timeframe, period, shift)
+            error = close - ma.shift(1)
+        elif method == 'drift':
+            temp = (close-close.shift(period)) / period
+            drift = close + temp
+            error = close - drift.shift(1)
+        elif method == 'naive':
+            error = close - close.shift(1)
+        mean = error.rolling(window=lookback).mean()
+        std = error.rolling(window=lookback).std()
+        se = (error-mean) / std
+        se = fill_data(se)
+        save_pkl(se, pkl_file_path)
+    return se
+
 def i_support(symbol, timeframe, period, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
@@ -1479,40 +1189,109 @@ def i_support(symbol, timeframe, period, shift):
         save_pkl(ret, pkl_file_path)
     return ret
 
-def i_trend_duration(symbol, timeframe, period, ma_method, shift):
+def i_trend_duration(symbol, timeframe, period, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
-    ret = restore_pkl(pkl_file_path)
-    if ret is None:
+    trend_duration = restore_pkl(pkl_file_path)
+    if trend_duration is None:
         high = i_high(symbol, timeframe, shift)
         low = i_low(symbol, timeframe, shift)
-        ma = i_ma(symbol, timeframe, period, 'MODE_SMA', shift)
+        ma = i_ma(symbol, timeframe, period, shift)
         above = low > ma
         above = above * (
                 above.groupby((above!=above.shift()).cumsum()).cumcount()+1)
         below = high < ma
         below = below * (
                 below.groupby((below!=below.shift()).cumsum()).cumcount()+1)
-        ret = above - below
-        ret = fill_data(ret)
-        ret = ret.astype(int)
-        save_pkl(ret, pkl_file_path)
+        trend_duration = above - below
+        trend_duration = fill_data(trend_duration)
+        trend_duration = trend_duration.astype(int)
+        save_pkl(trend_duration, pkl_file_path)
+    return trend_duration
+
+def i_trend_duration2(symbol, timeframe, period, shift):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    trend_duration = restore_pkl(pkl_file_path)
+    if trend_duration is None:
+        close = i_close(symbol, timeframe, shift)
+        up = close > close.shift(1)
+        up = up.astype(int)
+        down = close < close.shift(1)
+        down = down.astype(int)
+        up_down = up - down
+        up_down =up_down.fillna(0)
+        close2 = up_down.cumsum()
+        ma = close2.rolling(window=period).mean()
+        above = close2 > ma
+        above = above * (
+                above.groupby((above!=above.shift()).cumsum()).cumcount()+1)
+        below = close2 < ma
+        below = below * (
+                below.groupby((below!=below.shift()).cumsum()).cumcount()+1)
+        trend_duration = above - below
+        trend_duration = fill_data(trend_duration)
+        trend_duration = trend_duration.astype(int)
+        save_pkl(trend_duration, pkl_file_path)
+    return trend_duration
+
+def i_volume(symbol, timeframe, shift):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    if g_oanda is not None:
+        instrument = to_instrument(symbol)
+        granularity = to_granularity(timeframe)
+        temp = g_oanda.get_history(
+            instrument=instrument, granularity=granularity, count=COUNT)
+        index = pd.Series(np.zeros(COUNT))
+        ret = pd.Series(np.zeros(COUNT))
+        for i in range(COUNT):
+            index[i] = temp['candles'][i]['time']
+            ret[i] = temp['candles'][i]['volumeBid']
+            index = pd.to_datetime(index)
+            ret.index = index
+        ret = ret.shift(shift)
+    else:
+        ret = restore_pkl(pkl_file_path)
+        if ret is None:
+            filename = ('~/historical_data/' + symbol + str(timeframe) +
+                '.csv')
+            temp = pd.read_csv( filename, index_col=0, header=0)
+            index = pd.to_datetime(temp.index)
+            temp.index = index
+            ret = temp.iloc[:, 4]
+            ret = ret.shift(shift)
+            ret = fill_data(ret)
+            save_pkl(ret, pkl_file_path)
     return ret
 
-def i_zscore(symbol, timeframe, period, ma_method, shift):
+def i_zscore(symbol, timeframe, period, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
-    ret = restore_pkl(pkl_file_path)
-    if ret is None:
+    zscore = restore_pkl(pkl_file_path)
+    if zscore is None:
         close = i_close(symbol, timeframe, shift)
-        if ma_method == 'MODE_SMA':
-            mean = close.rolling(window=period).mean()
-            std = close.rolling(window=period).std()
-        elif ma_method == 'MODE_EMA':
-            mean = close.ewm(span=period).mean()
-            std = close.ewm(span=period).std()
-        ret = (close - mean) / std
-        ret = fill_data(ret)
-        save_pkl(ret, pkl_file_path)
-    return ret
+        mean = close.rolling(window=period).mean()
+        std = close.rolling(window=period).std()
+        zscore = (close - mean) / std
+        zscore = fill_data(zscore)
+        save_pkl(zscore, pkl_file_path)
+    return zscore
+
+def i_zscore2(symbol, timeframe, period, shift):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    zscore = restore_pkl(pkl_file_path)
+    if zscore is None:
+        close = i_close(symbol, timeframe, shift)
+        up = close > close.shift(1)
+        up = up.astype(int)
+        down = close < close.shift(1)
+        down = down.astype(int)
+        up_down = up - down
+        up_down =up_down.fillna(0)
+        close2 = up_down.cumsum()
+        mean2 = close2.rolling(window=period).mean()
+        std2 = close2.rolling(window=period).std()
+        zscore = (close2 - mean2) / std2
+        zscore = fill_data(zscore)
+        save_pkl(zscore, pkl_file_path)
+    return zscore
 
 def optimize_parameter(strategy, symbol, timeframe, spread, start, end,
                        min_trade, rranges):
@@ -1558,8 +1337,8 @@ def rename_historical_data_filename():
                    'EURJPY', 'EURNZD', 'EURUSD', 'GBPAUD', 'GBPCAD', 'GBPCHF',
                    'GBPJPY', 'GBPNZD', 'GBPUSD', 'NZDCAD', 'NZDCHF', 'NZDJPY',
                    'NZDUSD', 'USDCAD', 'USDCHF', 'USDJPY']:
-        new_name = '../historical_data/' + symbol + '.csv'
-        for old_name in glob.glob('../historical_data/' + symbol + '*'):
+        new_name = './historical_data/' + symbol + '.csv'
+        for old_name in glob.glob('./historical_data/' + symbol + '*'):
             os.rename(old_name, new_name)
 
 def restore_model(filename):
@@ -1653,13 +1432,20 @@ def signal(strategy, symbol, timeframe, ea, parameter, start_train, end_train):
                     price = open0[len(open0)-1]
                     if signal.iloc[end_row] != signal.iloc[end_row-1]:
                         subject = ea
-                        some_text = (symbol + ' ' + str(signal.iloc[end_row])
-                        + ' ' + str(price))
+                        some_text = (
+                                'Symbol: ' + symbol + '\n'
+                                + 'Signal: ' + str(signal.iloc[end_row]) + '\n'
+                                + 'Price: ' + str(price))
                         send_mail(subject, some_text, fromaddr, toaddr,
                                   host, port, password)
                 now = datetime.now()
                 print(now.strftime('%Y.%m.%d %H:%M:%S'), ea, symbol,
                       timeframe, signal.iloc[end_row])
+
+def time_day(index):
+    time_day = pd.Series(index.day, index=index)
+    return time_day
+
 
 def time_day_of_week(index):
     time_day_of_week = pd.Series(index.dayofweek, index=index) + 1
@@ -1678,162 +1464,48 @@ def time_month(index):
     time_month = pd.Series(index.month, index=index)
     return time_month
 
-def to_csv_file(
-        audcad=0, audchf=0, audjpy=0, audnzd=0, audusd=0, cadchf=0, cadjpy=0,
-        chfjpy=0, euraud=0, eurcad=0, eurchf=0, eurgbp=0, eurjpy=0, eurnzd=0,
-        eurusd=0, gbpaud=0, gbpcad=0, gbpchf=0, gbpjpy=0, gbpnzd=0, gbpusd=0,
-        nzdcad=0, nzdchf=0, nzdjpy=0, nzdusd=0, usdcad=0, usdchf=0, usdjpy=0):
-    for i in range(28):
-        if i == 0:
-            if audcad == 0:
-                continue
-            symbol = 'AUDCAD'
-        elif i == 1:
-            if audchf == 0:
-                continue
-            symbol = 'AUDCHF'
-        elif i == 2:
-            if audjpy == 0:
-                continue
-            symbol = 'AUDJPY'
-        elif i == 3:
-            if audnzd == 0:
-                continue
-            symbol = 'AUDNZD'
-        elif i == 4:
-            if audusd == 0:
-                continue
-            symbol = 'AUDUSD'
-        elif i == 5:
-            if cadchf == 0:
-                continue
-            symbol = 'CADCHF'
-        elif i == 6:
-            if cadjpy == 0:
-                continue
-            symbol = 'CADJPY'
-        elif i == 7:
-            if chfjpy == 0:
-                continue
-            symbol = 'CHFJPY'
-        elif i == 8:
-            if euraud == 0:
-                continue
-            symbol = 'EURAUD'
-        elif i == 9:
-            if eurcad == 0:
-                continue
-            symbol = 'EURCAD'
-        elif i == 10:
-            if eurchf == 0:
-                continue
-            symbol = 'EURCHF'
-        elif i == 11:
-            if eurgbp == 0:
-                continue
-            symbol = 'EURGBP'
-        elif i == 12:
-            if eurjpy == 0:
-                continue
-            symbol = 'EURJPY'
-        elif i == 13:
-            if eurnzd == 0:
-                continue
-            symbol = 'EURNZD'
-        elif i == 14:
-            if eurusd == 0:
-                continue 
-            symbol = 'EURUSD'
-        elif i == 15:
-            if gbpaud == 0:
-                continue
-            symbol = 'GBPAUD'
-        elif i == 16:
-            if gbpcad == 0:
-                continue
-            symbol = 'GBPCAD'
-        elif i == 17:
-            if gbpchf == 0:
-                continue
-            symbol = 'GBPCHF'
-        elif i == 18:
-            if gbpjpy == 0:
-                continue
-            symbol = 'GBPJPY'
-        elif i == 19:
-            if gbpnzd == 0:
-                continue
-            symbol = 'GBPNZD'
-        elif i == 20:
-            if gbpusd == 0:
-                continue
-            symbol = 'GBPUSD'
-        elif i == 21:
-            if nzdcad == 0:
-                continue
-            symbol = 'NZDCAD'
-        elif i == 22:
-            if nzdchf == 0:
-                continue
-            symbol = 'NZDCHF'
-        elif i == 23:
-            if nzdjpy == 0:
-                continue
-            symbol = 'NZDJPY'
-        elif i == 24:
-            if nzdusd == 0:
-                continue
-            symbol = 'NZDUSD'
-        elif i == 25:
-            if usdcad == 0:
-                continue
-            symbol = 'USDCAD'
-        elif i == 26:
-            if usdchf == 0:
-                continue
-            symbol = 'USDCHF'
-        elif i == 27:
-            if usdjpy == 0:
-                continue
-            symbol = 'USDJPY'
-        else:
-            pass
-        filename_hst = '../historical_data/' + symbol + '.hst'
-        filename_csv = '../historical_data/' + symbol + '.csv'
-        read = 0
-        datetime = []
-        open_price = []
-        low_price = []
-        high_price = []
-        close_price = []
-        volume = []
-        with open(filename_hst, 'rb') as f:
-            while True:
-                if read >= 148:
-                    buf = f.read(44)
-                    read += 44
-                    if not buf:
-                        break
-                    bar = struct.unpack('< iddddd', buf)
-                    datetime.append(
-                        time.strftime('%Y-%m-%d %H:%M:%S',
-                        time.gmtime(bar[0])))
-                    open_price.append(bar[1])
-                    high_price.append(bar[3])  # it's not mistake.
-                    low_price.append(bar[2])  # it's not mistake too.
-                    close_price.append(bar[4])
-                    volume.append(bar[5])
-                else:
-                    buf = f.read(148)
-                    read += 148
-        data = {'0_datetime':datetime, '1_open_price':open_price,
-            '2_high_price':high_price, '3_low_price':low_price,
-            '4_close_price':close_price, '5_volume':volume}
-        result = pd.DataFrame.from_dict(data)
-        result.columns = ['Time (UTC)', 'Open', 'High', 'Low', 'Close',
-                          'Volume']
-        result = result.set_index('Time (UTC)')
-        result.to_csv(filename_csv)
+def time_week_of_month(index):
+    day = time_day(index)
+    time_week_of_month = (np.ceil(day / 7)).astype(int)
+    return time_week_of_month
+
+def to_csv_file(symbol):
+    filename_hst = './historical_data/' + symbol + '.hst'
+    filename_csv = './historical_data/' + symbol + '.csv'
+    read = 0
+    datetime = []
+    open_price = []
+    low_price = []
+    high_price = []
+    close_price = []
+    volume = []
+    with open(filename_hst, 'rb') as f:
+        while True:
+            if read >= 148:
+                buf = f.read(44)
+                read += 44
+                if not buf:
+                    break
+                bar = struct.unpack('< iddddd', buf)
+                datetime.append(
+                    time.strftime('%Y-%m-%d %H:%M:%S',
+                    time.gmtime(bar[0])))
+                open_price.append(bar[1])
+                high_price.append(bar[3])  # it's not mistake.
+                low_price.append(bar[2])  # it's not mistake too.
+                close_price.append(bar[4])
+                volume.append(bar[5])
+            else:
+                buf = f.read(148)
+                read += 148
+    data = {'0_datetime':datetime, '1_open_price':open_price,
+        '2_high_price':high_price, '3_low_price':low_price,
+        '4_close_price':close_price, '5_volume':volume}
+    result = pd.DataFrame.from_dict(data)
+    result.columns = ['Time (UTC)', 'Open', 'High', 'Low', 'Close',
+                      'Volume']
+    result = result.set_index('Time (UTC)')
+    result.to_csv(filename_csv)
 
 def to_period(minute, timeframe):
     period = int(minute / timeframe)
