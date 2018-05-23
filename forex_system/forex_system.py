@@ -16,10 +16,13 @@ from collections import OrderedDict
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from numba import float64, int64, jit
-from pandas_datareader import data as web
+#from pandas_datareader import data as web
 from scipy import optimize
 from scipy.stats import pearson3
 from sklearn.externals import joblib
+
+import pandas.plotting._converter as pandacnv
+pandacnv.register()
 
 UNITS = 100000
 COUNT = 500
@@ -473,6 +476,47 @@ def get_drawdown(pnl):
     drawdown = (equity.cummax()-equity).max()
     return drawdown
 
+def get_durations(ret, timeframe):
+    cum_ret = (ret + 1.0).cumprod() - 1.0
+    cum_ret = np.array(cum_ret)
+    @jit(float64(float64[:]), nopython=True, cache=True)
+    def func(cum_ret):
+        length = len(cum_ret)
+        high_watermark = np.zeros(length)
+        drawdown = np.zeros(length)
+        duration = np.zeros(length)
+        for i in range(length):
+            if i == 0:
+                high_watermark[0] = cum_ret[0]
+            else:
+                if high_watermark[i - 1] >= cum_ret[i]:
+                    high_watermark[i] = high_watermark[i - 1]
+                else:
+                    high_watermark[i] = cum_ret[i];
+            if np.abs(1.0 + cum_ret[i]) < EPS:
+                drawdown[i] = drawdown[i - 1]
+            else:
+                drawdown[i] = ((1.0 + high_watermark[i]) /
+                (1.0 + cum_ret[i]) - 1.0)
+        for i in range(length):
+            if i == 0:
+                duration[0] = drawdown[0]
+            else:
+                if drawdown[i] == 0.0:
+                    duration[i] = 0
+                else:
+                    duration[i] = duration[i - 1] + 1;
+        for i in range(length):
+            if i == 0:
+                durations = duration[0];
+            else:
+                if duration[i] > durations:
+                    durations = duration[i]
+        durations = durations / (1440 / timeframe)
+        return durations
+    durations = int(func(cum_ret))
+    return durations
+
 def get_historical_data(symbol, start, end):
     start = start + ' 00:00'
     end = end + ' 00:00'
@@ -543,6 +587,19 @@ def get_pkl_file_path():
     arg_values += '.pkl'
     pkl_file_path = dir_name + func_name + arg_values
     return pkl_file_path
+
+#def get_pnl(signal, symbol, timeframe, spread, start, end):
+#    op = i_open(symbol, timeframe, 0)
+#    if op[len(op)-1] >= 50.0:  # e.g. Cross Yen.
+#        adj_spread = spread / 100.0
+#    else:
+#        adj_spread = spread / 10000.0
+#    cost_buy = ((signal==1) & (signal.shift(1)!=1)) * adj_spread
+#    cost_sell = ((signal==-1) & (signal.shift(1)!=-1)) * adj_spread
+#    cost = cost_buy + cost_sell
+#    pnl = ((op-op.shift(1))*signal.shift(1)-cost) / op.shift(1)
+#    pnl = pnl[start:end]
+#    return pnl
 
 def get_pnl(signal, symbol, timeframe, spread, start, end):
     op = i_open(symbol, timeframe, 0)
@@ -660,7 +717,10 @@ def get_sharpe(pnl, timeframe):
     mean = pnl.mean()
     std = pnl.std()
     multiplier = np.sqrt(60*24*260/timeframe)
-    sharpe = mean / std * multiplier
+    if std == 0:
+        sharpe = 0.0
+    else:
+        sharpe = mean / std * multiplier
     return sharpe
 
 def get_signal(buy_entry, buy_exit, sell_entry, sell_exit, symbol, timeframe):
@@ -713,10 +773,24 @@ def get_trades(signal, start, end):
     trades = trade.sum()
     return trades
 
+def i_anomaly_detection(symbol, timeframe, long_period, short_period, shift):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        close = i_close(symbol, timeframe, shift)
+        log_diff = np.log(close) - np.log(close.shift(1))
+        short_mean = log_diff.rolling(window=short_period).mean()
+        mean = short_mean.rolling(window=long_period).mean()
+        std = short_mean.rolling(window=long_period).std()
+        ret = (short_mean-mean) / std
+        ret = fill_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
 def i_atr(symbol, timeframe, period, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
-    atr = restore_pkl(pkl_file_path)
-    if atr is None:
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
         high = i_high(symbol, timeframe, shift)
         low = i_low(symbol, timeframe, shift)
         close = i_close(symbol, timeframe, shift)
@@ -724,10 +798,10 @@ def i_atr(symbol, timeframe, period, shift):
         temp = pd.concat([temp, high - close.shift(1)], axis=1)
         temp = pd.concat([temp, close.shift(1) - low], axis=1)
         tr = temp.max(axis=1)
-        atr = tr.rolling(window=period).mean()
-        atr = fill_data(atr)
-        save_pkl(atr, pkl_file_path)
-    return atr
+        ret = tr.rolling(window=period).mean()
+        ret = fill_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
 
 def i_close(symbol, timeframe, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
@@ -814,7 +888,6 @@ def i_daily_open(symbol, timeframe, shift):
         save_pkl(ret, pkl_file_path)
     return ret
 
-# For USDJPY only.
 def i_event(symbol, timeframe, before, after):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     event = restore_pkl(pkl_file_path)
@@ -822,18 +895,15 @@ def i_event(symbol, timeframe, before, after):
         close = i_close(symbol, timeframe, 0)
         index = close.index
         temp = pd.Series(index=index)
+        week_of_month = time_week_of_month(index)
+        day_of_week = time_day_of_week(index)
         hour = time_hour(index)
         minute = time_minute(index)
         b = int(before / timeframe)
         a = int(after / timeframe)
-        if symbol == 'USDJPY':
-            temp[(hour==2) & (minute==0)] = 1  # (2, 0)
-            temp[(hour==14) & (minute==30)] = 1  # (14, 30)
-            temp[(hour==15) & (minute==30)] = 1  # (15, 30)
-            temp[(hour==15) & (minute==35)] = 1  # (15, 35)
-            temp[(hour==16) & (minute==0)] = 1  # (16, 0)
-            temp[(hour==16) & (minute==55)] = 1  # (16, 55)
-            temp[(hour==17) & (minute==0)] = 1  # (17, 0)
+        # US-NFP
+        temp[(week_of_month==1) & (day_of_week==5) & (hour==15)
+            & (minute==30)] = 1
         temp = temp.fillna(0)
         event = temp.copy()
         for i in range(b):
@@ -907,6 +977,30 @@ def i_hl_band(symbol, timeframe, period, shift):
         save_pkl(ret, pkl_file_path)
     return ret
 
+def i_integral(symbol, timeframe, period, shift):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    integral = restore_pkl(pkl_file_path)
+    if integral is None:
+        close = i_close(symbol, timeframe, shift)
+        mean = close.rolling(window=period).mean()
+        std = close.rolling(window=period).std()
+        zscore = (close-mean) / std
+        integral = zscore.rolling(window=period).sum()
+        integral = fill_data(integral)
+        save_pkl(integral, pkl_file_path)
+    return integral
+
+def i_kairi(symbol, timeframe, period, shift):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    kairi = restore_pkl(pkl_file_path)
+    if kairi is None:
+        close = i_close(symbol, timeframe, shift)
+        mean = close.rolling(window=period).mean()
+        kairi = (close-mean) / mean * 100.0
+        kairi = fill_data(kairi)
+        save_pkl(kairi, pkl_file_path)
+    return kairi
+
 def i_ku_close(timeframe, shift, aud=0, cad=0, chf=0, eur=0, gbp=0, jpy=0,
                nzd=0, usd=0):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
@@ -966,6 +1060,32 @@ def i_ku_roc(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
                               eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
         ret = ku_close - ku_close.shift(period)
         ret = fill_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
+def i_ku_trend_duration(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0,
+                        gbp=0, jpy=0, nzd=0, usd=0):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        ku_close = i_ku_close(timeframe, shift, aud, cad, chf, eur, gbp, jpy,
+                              nzd, usd)
+        ku_ma = ku_close.rolling(window=period).mean()
+        n_col = len(ku_close.columns)
+        above = pd.DataFrame(columns=ku_close.columns)
+        below = pd.DataFrame(columns=ku_close.columns)
+        for i in range(n_col):
+            above.iloc[:, i] = (ku_close > ku_ma).iloc[:, i]
+            above.iloc[:, i] = above.iloc[:, i] * (above.iloc[:, i].groupby(
+                    (above.iloc[:, i]!=above.iloc[:, i].shift()).cumsum()
+                    ).cumcount()+1)
+            below.iloc[:, i] = (ku_close < ku_ma).iloc[:, i]
+            below.iloc[:, i] = below.iloc[:, i] * (below.iloc[:, i].groupby(
+                    (below.iloc[:, i]!=below.iloc[:, i].shift()).cumsum()
+                    ).cumcount()+1)
+        ret = above - below
+        ret = fill_data(ret)
+        ret = ret.astype(int)
         save_pkl(ret, pkl_file_path)
     return ret
 
@@ -1049,6 +1169,66 @@ def i_moment_duration(symbol, timeframe, period, shift):
             above *= close > close.shift(1+i)
             below *= close < close.shift(1+i)
         ret = above - below
+        ret = fill_data(ret)
+        ret = ret.astype(int)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
+def i_no_buy_entry_zone(symbol, timeframe, shift):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        close = i_close(symbol, timeframe, shift)
+        if close.iloc[len(close)-1] >= 50:
+            ten_pips = np.floor(close*10) - (np.floor(close)*10)
+        else:
+            ten_pips = np.floor(close*1000) - (np.floor(close)*1000)
+        ret = ten_pips < 2.0
+        ret = fill_data(ret)
+        ret = ret.astype(int)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
+def i_no_buy_position_zone(symbol, timeframe, shift):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        close = i_close(symbol, timeframe, shift)
+        if close.iloc[len(close)-1] >= 50:
+            ten_pips = np.floor(close*10) - (np.floor(close)*10)
+        else:
+            ten_pips = np.floor(close*1000) - (np.floor(close)*1000)
+        ret = ten_pips < 1.0
+        ret = fill_data(ret)
+        ret = ret.astype(int)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
+def i_no_sell_entry_zone(symbol, timeframe, shift):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        close = i_close(symbol, timeframe, shift)
+        if close.iloc[len(close)-1] >= 50:
+            ten_pips = np.floor(close*10) - (np.floor(close)*10)
+        else:
+            ten_pips = np.floor(close*1000) - (np.floor(close)*1000)
+        ret = ten_pips > 8.0
+        ret = fill_data(ret)
+        ret = ret.astype(int)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
+def i_no_sell_position_zone(symbol, timeframe, shift):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        close = i_close(symbol, timeframe, shift)
+        if close.iloc[len(close)-1] >= 50:
+            ten_pips = np.floor(close*10) - (np.floor(close)*10)
+        else:
+            ten_pips = np.floor(close*1000) - (np.floor(close)*1000)
+        ret = ten_pips > 9.0
         ret = fill_data(ret)
         ret = ret.astype(int)
         save_pkl(ret, pkl_file_path)
@@ -1212,24 +1392,28 @@ def i_trend_duration2(symbol, timeframe, period, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     trend_duration = restore_pkl(pkl_file_path)
     if trend_duration is None:
-        close = i_close(symbol, timeframe, shift)
-        up = close > close.shift(1)
-        up = up.astype(int)
-        down = close < close.shift(1)
-        down = down.astype(int)
-        up_down = up - down
-        up_down =up_down.fillna(0)
-        close2 = up_down.cumsum()
-        ma = close2.rolling(window=period).mean()
-        above = close2 > ma
-        above = above * (
-                above.groupby((above!=above.shift()).cumsum()).cumcount()+1)
-        below = close2 < ma
-        below = below * (
-                below.groupby((below!=below.shift()).cumsum()).cumcount()+1)
-        trend_duration = above - below
+        high = i_high(symbol, timeframe, shift)
+        low = i_low(symbol, timeframe, shift)
+        ma = i_ma(symbol, timeframe, period, shift)
+        kairi = i_kairi(symbol, timeframe, period, shift)
+        above = (low > ma) * kairi
+        below = (high < ma) * kairi
+        size = len(above)
+        above2 = pd.Series(np.zeros(size), index=high.index)
+        below2 = pd.Series(np.zeros(size), index=high.index)
+        above2.iloc[0] = kairi.iloc[0]
+        below2.iloc[0] = kairi.iloc[0]
+        for i in range(1, size):
+            if above.iloc[i] > 0.0:
+                above2[i] = above2[i-1] + kairi[i]
+            else:
+                above2[i] = 0.0
+            if below.iloc[i] < 0.0:
+                below2[i] = below2[i-1] + kairi[i]
+            else:
+                below2[i] = 0.0
+        trend_duration = above2 + below2
         trend_duration = fill_data(trend_duration)
-        trend_duration = trend_duration.astype(int)
         save_pkl(trend_duration, pkl_file_path)
     return trend_duration
 
@@ -1251,7 +1435,7 @@ def i_volume(symbol, timeframe, shift):
     else:
         ret = restore_pkl(pkl_file_path)
         if ret is None:
-            filename = ('~/historical_data/' + symbol + str(timeframe) +
+            filename = ('~/py/historical_data/' + symbol + str(timeframe) +
                 '.csv')
             temp = pd.read_csv( filename, index_col=0, header=0)
             index = pd.to_datetime(temp.index)
@@ -1302,6 +1486,13 @@ def optimize_parameter(strategy, symbol, timeframe, spread, start, end,
         signal = get_signal(buy_entry, buy_exit, sell_entry, sell_exit, symbol,
                             timeframe)
         pnl = get_pnl(signal, symbol, timeframe, spread, start, end)
+
+#        mean = pnl.mean()
+#        std = pnl.std()
+#        threshold = 3.0
+#        pnl[(pnl-mean)/std>threshold] = threshold * std + mean
+#        pnl[(pnl-mean)/std<-threshold] = -threshold * std + mean
+
         trades = get_trades(signal, start, end)
         sharpe = get_sharpe(pnl, timeframe)
         years = (end-start).total_seconds() / (60*60*24*365)
@@ -1331,15 +1522,10 @@ def remove_folder(folder):
     if os.path.exists(pathname + '/' + folder) == True:
         shutil.rmtree(pathname + '/' + folder)
 
-def rename_historical_data_filename():
-    for symbol in ['AUDCAD', 'AUDCHF', 'AUDJPY', 'AUDNZD', 'AUDUSD', 'CADCHF',
-                   'CADJPY', 'CHFJPY', 'EURAUD', 'EURCAD', 'EURCHF', 'EURGBP',
-                   'EURJPY', 'EURNZD', 'EURUSD', 'GBPAUD', 'GBPCAD', 'GBPCHF',
-                   'GBPJPY', 'GBPNZD', 'GBPUSD', 'NZDCAD', 'NZDCHF', 'NZDJPY',
-                   'NZDUSD', 'USDCAD', 'USDCHF', 'USDJPY']:
-        new_name = './historical_data/' + symbol + '.csv'
-        for old_name in glob.glob('./historical_data/' + symbol + '*'):
-            os.rename(old_name, new_name)
+def rename_historical_data_filename(symbol):
+    new_name = './historical_data/' + symbol + '.csv'
+    for old_name in glob.glob('./historical_data/' + symbol + '*'):
+        os.rename(old_name, new_name)
 
 def restore_model(filename):
     pathname = os.path.dirname(__file__) + '/' + filename
@@ -1448,6 +1634,7 @@ def time_day(index):
 
 
 def time_day_of_week(index):
+    # 0-Sunday,1,2,3,4,5,6
     time_day_of_week = pd.Series(index.dayofweek, index=index) + 1
     time_day_of_week[time_day_of_week==7] = 0
     return time_day_of_week
@@ -1506,10 +1693,6 @@ def to_csv_file(symbol):
                       'Volume']
     result = result.set_index('Time (UTC)')
     result.to_csv(filename_csv)
-
-def to_period(minute, timeframe):
-    period = int(minute / timeframe)
-    return period
 
 def to_instrument(symbol):
     if symbol == 'AUDCAD':
@@ -1586,6 +1769,10 @@ def to_granularity(timeframe):
     else:
         granularity = 'D'
     return granularity
+
+def to_period(minute, timeframe):
+    period = int(minute / timeframe)
+    return period
 
 def trade(strategy, symbol, timeframe, ea, parameter, start_train, end_train,
           mail, mt4):
