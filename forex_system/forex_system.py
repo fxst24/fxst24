@@ -1116,21 +1116,17 @@ def i_ma(symbol, timeframe, period, shift):
         save_pkl(ret, pkl_file_path)
     return ret
 
-def i_no_entry(symbol, timeframe, period, pip, shift):
+def i_no_entry(symbol, timeframe, period, pct, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
         ret = pd.DataFrame()
         close = i_close(symbol, timeframe, shift)
         hl_band = i_hl_band(symbol, timeframe, period, shift)
-        if close.iloc[len(close)-1] >= 50:
-            from_upper = (hl_band['high']-close) * 100.0
-            from_lower = (close-hl_band['low']) * 100.0
-        else:
-            from_upper = (hl_band['high']-close) * 10000.0
-            from_lower = (close-hl_band['low']) * 10000.0
-        ret['buy'] = from_lower < pip
-        ret['sell'] = from_upper < pip
+        from_upper = (hl_band['high']-close) / close * 100.0
+        from_lower = (close-hl_band['low']) / hl_band['low'] * 100.0
+        ret['buy'] = from_lower < pct
+        ret['sell'] = from_upper < pct
         ret = fill_data(ret)
         ret = ret.astype(int)
         save_pkl(ret, pkl_file_path)
