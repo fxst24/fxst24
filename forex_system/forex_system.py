@@ -15,7 +15,7 @@ import time
 from collections import OrderedDict
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
-from numba import float64, int64, jit
+from numba import float64, jit
 #from pandas_datareader import data as web
 from scipy import optimize
 from scipy.stats import pearson3
@@ -60,7 +60,7 @@ def backtest(strategy, symbol, timeframe, spread, start, end, parameter):
     if parameter is not None:
         report.iloc[0, 6] = np.round(parameter, 3)
     report = report.dropna(axis=1)
-    pd.set_option('display.width', 1000)
+    pd.set_option('display.max_columns', 100)
     print(report)
     equity = (1.0+pnl).cumprod() - 1.0
     ax=plt.subplot()
@@ -138,7 +138,7 @@ def backtest_ml(strategy, symbol, timeframe, spread, start, end, get_model,
     report.iloc[i, 5] = str(np.round(drawdown, 3))
     report = report.iloc[0:i+1, :]
     report = report.dropna(axis=1)
-    pd.set_option('display.width', 1000)
+    pd.set_option('display.max_columns', 100)
     print(report)
     equity = (1.0+pnl).cumprod() - 1.0
     ax=plt.subplot()
@@ -186,7 +186,7 @@ def backtest_opt(strategy, symbol, timeframe, spread, start, end, rranges,
     if parameter is not None:
         report.iloc[0, 6] = np.round(parameter, 3)
     report = report.dropna(axis=1)
-    pd.set_option('display.width', 1000)
+    pd.set_option('display.max_columns', 100)
     print(report)
     equity = (1.0+pnl).cumprod() - 1.0
     ax=plt.subplot()
@@ -268,7 +268,7 @@ def backtest_wft(strategy, symbol, timeframe, spread, start, end, rranges,
     report.iloc[i, 6] = ''
     report = report.iloc[0:i+1, :]
     report = report.dropna(axis=1)
-    pd.set_option('display.width', 1000)
+    pd.set_option('display.max_columns', 100)
     print(report)
     equity = (1.0+pnl).cumprod() - 1.0
     ax=plt.subplot()
@@ -297,8 +297,7 @@ def empty_folder(folder):
 
 def fill_data(data):
     filled_data = data.copy()
-    filled_data[(filled_data==float("inf")) | (filled_data==float("-inf"))] = (
-            np.nan)
+    filled_data[(filled_data==np.inf) | (filled_data==-np.inf)] = np.nan
     filled_data = filled_data.fillna(method='ffill')
     filled_data = filled_data.fillna(method='bfill')
     return filled_data
@@ -548,19 +547,19 @@ def get_historical_data(symbol, start, end):
         filename =  './historical_data/' + symbol + str(i) + '.csv'
         data.to_csv(filename)
 
-def get_historical_data_from_yahoo(symbol):
-    start = datetime(2001, 1, 1)
-    end = datetime(2101, 1, 1)
-    data = i_close('USDJPY', 1440, 0)
-    temp = web.DataReader(symbol, 'yahoo', start, end)
-    data = pd.concat([data, temp], axis=1, join_axes=[data.index])
-    data = fill_data(data)
-    data = data[data.index.dayofweek<5]
-    data = data.drop('close', axis=1)
-    data = data.drop('Close', axis=1)
-    data.columns = ['open', 'high', 'low', 'close', 'volume']
-    filename =  './historical_data/' + symbol + '1440.csv'
-    data.to_csv(filename)
+#def get_historical_data_from_yahoo(symbol):
+#    start = datetime(2001, 1, 1)
+#    end = datetime(2101, 1, 1)
+#    data = i_close('USDJPY', 1440, 0)
+#    temp = web.DataReader(symbol, 'yahoo', start, end)
+#    data = pd.concat([data, temp], axis=1, join_axes=[data.index])
+#    data = fill_data(data)
+#    data = data[data.index.dayofweek<5]
+#    data = data.drop('close', axis=1)
+#    data = data.drop('Close', axis=1)
+#    data.columns = ['open', 'high', 'low', 'close', 'volume']
+#    filename =  './historical_data/' + symbol + '1440.csv'
+#    data.to_csv(filename)
 
 def get_model_dir():
     dirname = os.path.dirname(__file__)
@@ -587,19 +586,6 @@ def get_pkl_file_path():
     arg_values += '.pkl'
     pkl_file_path = dir_name + func_name + arg_values
     return pkl_file_path
-
-#def get_pnl(signal, symbol, timeframe, spread, start, end):
-#    op = i_open(symbol, timeframe, 0)
-#    if op[len(op)-1] >= 50.0:  # e.g. Cross Yen.
-#        adj_spread = spread / 100.0
-#    else:
-#        adj_spread = spread / 10000.0
-#    cost_buy = ((signal==1) & (signal.shift(1)!=1)) * adj_spread
-#    cost_sell = ((signal==-1) & (signal.shift(1)!=-1)) * adj_spread
-#    cost = cost_buy + cost_sell
-#    pnl = ((op-op.shift(1))*signal.shift(1)-cost) / op.shift(1)
-#    pnl = pnl[start:end]
-#    return pnl
 
 def get_pnl(signal, symbol, timeframe, spread, start, end):
     op = i_open(symbol, timeframe, 0)
@@ -773,20 +759,6 @@ def get_trades(signal, start, end):
     trades = trade.sum()
     return trades
 
-def i_anomaly_detection(symbol, timeframe, long_period, short_period, shift):
-    pkl_file_path = get_pkl_file_path()  # Must put this first.
-    ret = restore_pkl(pkl_file_path)
-    if ret is None:
-        close = i_close(symbol, timeframe, shift)
-        log_diff = np.log(close) - np.log(close.shift(1))
-        short_mean = log_diff.rolling(window=short_period).mean()
-        mean = short_mean.rolling(window=long_period).mean()
-        std = short_mean.rolling(window=long_period).std()
-        ret = (short_mean-mean) / std
-        ret = fill_data(ret)
-        save_pkl(ret, pkl_file_path)
-    return ret
-
 def i_atr(symbol, timeframe, period, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
@@ -890,8 +862,8 @@ def i_daily_open(symbol, timeframe, shift):
 
 def i_event(symbol, timeframe, before, after):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
-    event = restore_pkl(pkl_file_path)
-    if event is None:
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
         close = i_close(symbol, timeframe, 0)
         index = close.index
         temp = pd.Series(index=index)
@@ -905,17 +877,17 @@ def i_event(symbol, timeframe, before, after):
         temp[(week_of_month==1) & (day_of_week==5) & (hour==15)
             & (minute==30)] = 1
         temp = temp.fillna(0)
-        event = temp.copy()
+        ret = temp.copy()
         for i in range(b):
-            event += temp.shift(-i-1)
+            ret += temp.shift(-i-1)
         for i in range(a):
-            event += temp.shift(i+1)    
-        event = event.fillna(0)
-        event[event>1] = 1
-        event = fill_data(event)
-        event = event.astype(int)
-        save_pkl(event, pkl_file_path)
-    return event
+            ret += temp.shift(i+1)    
+        ret = ret.fillna(0)
+        ret[ret>1] = 1
+        ret = fill_data(ret)
+        ret = ret.astype(int)
+        save_pkl(ret, pkl_file_path)
+    return ret
 
 def i_high(symbol, timeframe, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
@@ -976,19 +948,6 @@ def i_hl_band(symbol, timeframe, period, shift):
         ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
-
-def i_integral(symbol, timeframe, period, shift):
-    pkl_file_path = get_pkl_file_path()  # Must put this first.
-    integral = restore_pkl(pkl_file_path)
-    if integral is None:
-        close = i_close(symbol, timeframe, shift)
-        mean = close.rolling(window=period).mean()
-        std = close.rolling(window=period).std()
-        zscore = (close-mean) / std
-        integral = zscore.rolling(window=period).sum()
-        integral = fill_data(integral)
-        save_pkl(integral, pkl_file_path)
-    return integral
 
 def i_kairi(symbol, timeframe, period, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
@@ -1092,16 +1051,16 @@ def i_ku_trend_duration(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0,
 def i_ku_zscore(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
                 jpy=0, nzd=0, usd=0):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
-    ku_zscore = restore_pkl(pkl_file_path)
-    if ku_zscore is None:
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
         ku_close = i_ku_close(timeframe, shift, aud=aud, cad=cad, chf=chf,
                               eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
         mean = ku_close.rolling(window=period).mean()
         std = ku_close.rolling(window=period).std()
-        ku_zscore = (ku_close-mean) / std
-        ku_zscore = fill_data(ku_zscore)
-        save_pkl(ku_zscore, pkl_file_path)
-    return ku_zscore
+        ret = (ku_close-mean) / std
+        ret = fill_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
 
 def i_low(symbol, timeframe, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
@@ -1150,85 +1109,29 @@ def i_lowest(symbol, timeframe, period, shift):
 
 def i_ma(symbol, timeframe, period, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
-    ma = restore_pkl(pkl_file_path)
-    if ma is None:
-        close = i_close(symbol, timeframe, shift)
-        ma = close.rolling(window=period).mean()
-        ma = fill_data(ma)
-        save_pkl(ma, pkl_file_path)
-    return ma
-
-def i_moment_duration(symbol, timeframe, period, shift):
-    pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
         close = i_close(symbol, timeframe, shift)
-        above = 1
-        below = 1
-        for i in range(period):
-            above *= close > close.shift(1+i)
-            below *= close < close.shift(1+i)
-        ret = above - below
+        ret = close.rolling(window=period).mean()
         ret = fill_data(ret)
-        ret = ret.astype(int)
         save_pkl(ret, pkl_file_path)
     return ret
 
-def i_no_buy_entry_zone(symbol, timeframe, shift):
+def i_no_entry(symbol, timeframe, period, pip, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
+        ret = pd.DataFrame()
         close = i_close(symbol, timeframe, shift)
+        hl_band = i_hl_band(symbol, timeframe, period, shift)
         if close.iloc[len(close)-1] >= 50:
-            ten_pips = np.floor(close*10) - (np.floor(close)*10)
+            from_upper = (hl_band['high']-close) * 100.0
+            from_lower = (close-hl_band['low']) * 100.0
         else:
-            ten_pips = np.floor(close*1000) - (np.floor(close)*1000)
-        ret = ten_pips < 2.0
-        ret = fill_data(ret)
-        ret = ret.astype(int)
-        save_pkl(ret, pkl_file_path)
-    return ret
-
-def i_no_buy_position_zone(symbol, timeframe, shift):
-    pkl_file_path = get_pkl_file_path()  # Must put this first.
-    ret = restore_pkl(pkl_file_path)
-    if ret is None:
-        close = i_close(symbol, timeframe, shift)
-        if close.iloc[len(close)-1] >= 50:
-            ten_pips = np.floor(close*10) - (np.floor(close)*10)
-        else:
-            ten_pips = np.floor(close*1000) - (np.floor(close)*1000)
-        ret = ten_pips < 1.0
-        ret = fill_data(ret)
-        ret = ret.astype(int)
-        save_pkl(ret, pkl_file_path)
-    return ret
-
-def i_no_sell_entry_zone(symbol, timeframe, shift):
-    pkl_file_path = get_pkl_file_path()  # Must put this first.
-    ret = restore_pkl(pkl_file_path)
-    if ret is None:
-        close = i_close(symbol, timeframe, shift)
-        if close.iloc[len(close)-1] >= 50:
-            ten_pips = np.floor(close*10) - (np.floor(close)*10)
-        else:
-            ten_pips = np.floor(close*1000) - (np.floor(close)*1000)
-        ret = ten_pips > 8.0
-        ret = fill_data(ret)
-        ret = ret.astype(int)
-        save_pkl(ret, pkl_file_path)
-    return ret
-
-def i_no_sell_position_zone(symbol, timeframe, shift):
-    pkl_file_path = get_pkl_file_path()  # Must put this first.
-    ret = restore_pkl(pkl_file_path)
-    if ret is None:
-        close = i_close(symbol, timeframe, shift)
-        if close.iloc[len(close)-1] >= 50:
-            ten_pips = np.floor(close*10) - (np.floor(close)*10)
-        else:
-            ten_pips = np.floor(close*1000) - (np.floor(close)*1000)
-        ret = ten_pips > 9.0
+            from_upper = (hl_band['high']-close) * 10000.0
+            from_lower = (close-hl_band['low']) * 10000.0
+        ret['buy'] = from_lower < pip
+        ret['sell'] = from_upper < pip
         ret = fill_data(ret)
         ret = ret.astype(int)
         save_pkl(ret, pkl_file_path)
@@ -1266,45 +1169,15 @@ def i_open(symbol, timeframe, shift):
 def i_percentrank(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
                   jpy=0, nzd=0, usd=0):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
-    percentrank = restore_pkl(pkl_file_path)
-    if percentrank is None:
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
         temp = i_ku_zscore(
                 timeframe, period, shift, aud=aud, cad=cad, chf=chf, eur=eur,
                 gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
         n = aud + cad + chf + eur + gbp + jpy + nzd + usd
-        percentrank = temp.rank(axis=1, method='first')
-        percentrank -= 1
-        percentrank /= (n - 1)
-        percentrank = fill_data(percentrank)
-        save_pkl(percentrank, pkl_file_path)
-    return percentrank
-
-def i_resistance(symbol, timeframe, period, shift):
-    pkl_file_path = get_pkl_file_path()  # Must put this first.
-    ret = restore_pkl(pkl_file_path)
-    if ret is None:
-        @jit(float64(float64[:], int64, int64), nopython=True, cache=True)
-        def func(high, i, period):
-            highest = i - period
-            while(True):
-                if high[highest] > high[i]:
-                    break
-                else:
-                    highest -= 1
-                if highest < 0:
-                    highest = i
-                    break
-            ret = high[highest]
-            return ret
-
-        high = i_high(symbol, timeframe, shift)
-        size = len(high)
-        ret = np.empty(size)
-        index = high.index
-        high = np.array(high)
-        for i in range(1, size):
-            ret[i] = func(high[0:i+1], i, period)
-        ret = pd.Series(ret, index=index)
+        ret = temp.rank(axis=1, method='first')
+        ret -= 1
+        ret /= (n - 1)
         ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
@@ -1319,60 +1192,10 @@ def i_roc(symbol, timeframe, period, shift):
         save_pkl(ret, pkl_file_path)
     return ret
 
-def i_se(symbol, timeframe, period, lookback, method, shift):
-    pkl_file_path = get_pkl_file_path()  # Must put this first.
-    se = restore_pkl(pkl_file_path)
-    if se is None:
-        close = i_close(symbol, timeframe, shift)
-        if method == 'mean':
-            ma = i_ma(symbol, timeframe, period, shift)
-            error = close - ma.shift(1)
-        elif method == 'drift':
-            temp = (close-close.shift(period)) / period
-            drift = close + temp
-            error = close - drift.shift(1)
-        elif method == 'naive':
-            error = close - close.shift(1)
-        mean = error.rolling(window=lookback).mean()
-        std = error.rolling(window=lookback).std()
-        se = (error-mean) / std
-        se = fill_data(se)
-        save_pkl(se, pkl_file_path)
-    return se
-
-def i_support(symbol, timeframe, period, shift):
+def i_trend_duration(symbol, timeframe, period, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
-        @jit(float64(float64[:], int64, int64), nopython=True, cache=True)
-        def func(low, i, period):
-            lowest = i - period
-            while(True):
-                if low[lowest] < low[i]:
-                    break
-                else:
-                    lowest -= 1
-                if lowest < 0:
-                    lowest = i
-                    break
-            ret = low[lowest]
-            return ret
-        low = i_low(symbol, timeframe, shift)
-        size = len(low)
-        ret = np.empty(size)
-        index = low.index
-        low = np.array(low)
-        for i in range(1, size):
-            ret[i] = func(low[0:i+1], i, period)
-        ret = pd.Series(ret, index=index)
-        ret = fill_data(ret)
-        save_pkl(ret, pkl_file_path)
-    return ret
-
-def i_trend_duration(symbol, timeframe, period, shift):
-    pkl_file_path = get_pkl_file_path()  # Must put this first.
-    trend_duration = restore_pkl(pkl_file_path)
-    if trend_duration is None:
         high = i_high(symbol, timeframe, shift)
         low = i_low(symbol, timeframe, shift)
         ma = i_ma(symbol, timeframe, period, shift)
@@ -1382,40 +1205,10 @@ def i_trend_duration(symbol, timeframe, period, shift):
         below = high < ma
         below = below * (
                 below.groupby((below!=below.shift()).cumsum()).cumcount()+1)
-        trend_duration = above - below
-        trend_duration = fill_data(trend_duration)
-        trend_duration = trend_duration.astype(int)
-        save_pkl(trend_duration, pkl_file_path)
-    return trend_duration
-
-def i_trend_duration2(symbol, timeframe, period, shift):
-    pkl_file_path = get_pkl_file_path()  # Must put this first.
-    trend_duration = restore_pkl(pkl_file_path)
-    if trend_duration is None:
-        high = i_high(symbol, timeframe, shift)
-        low = i_low(symbol, timeframe, shift)
-        ma = i_ma(symbol, timeframe, period, shift)
-        kairi = i_kairi(symbol, timeframe, period, shift)
-        above = (low > ma) * kairi
-        below = (high < ma) * kairi
-        size = len(above)
-        above2 = pd.Series(np.zeros(size), index=high.index)
-        below2 = pd.Series(np.zeros(size), index=high.index)
-        above2.iloc[0] = kairi.iloc[0]
-        below2.iloc[0] = kairi.iloc[0]
-        for i in range(1, size):
-            if above.iloc[i] > 0.0:
-                above2[i] = above2[i-1] + kairi[i]
-            else:
-                above2[i] = 0.0
-            if below.iloc[i] < 0.0:
-                below2[i] = below2[i-1] + kairi[i]
-            else:
-                below2[i] = 0.0
-        trend_duration = above2 + below2
-        trend_duration = fill_data(trend_duration)
-        save_pkl(trend_duration, pkl_file_path)
-    return trend_duration
+        ret= (above - below) / period
+        ret = fill_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
 
 def i_volume(symbol, timeframe, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
@@ -1448,34 +1241,15 @@ def i_volume(symbol, timeframe, shift):
 
 def i_zscore(symbol, timeframe, period, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
-    zscore = restore_pkl(pkl_file_path)
-    if zscore is None:
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
         close = i_close(symbol, timeframe, shift)
         mean = close.rolling(window=period).mean()
         std = close.rolling(window=period).std()
-        zscore = (close - mean) / std
-        zscore = fill_data(zscore)
-        save_pkl(zscore, pkl_file_path)
-    return zscore
-
-def i_zscore2(symbol, timeframe, period, shift):
-    pkl_file_path = get_pkl_file_path()  # Must put this first.
-    zscore = restore_pkl(pkl_file_path)
-    if zscore is None:
-        close = i_close(symbol, timeframe, shift)
-        up = close > close.shift(1)
-        up = up.astype(int)
-        down = close < close.shift(1)
-        down = down.astype(int)
-        up_down = up - down
-        up_down =up_down.fillna(0)
-        close2 = up_down.cumsum()
-        mean2 = close2.rolling(window=period).mean()
-        std2 = close2.rolling(window=period).std()
-        zscore = (close2 - mean2) / std2
-        zscore = fill_data(zscore)
-        save_pkl(zscore, pkl_file_path)
-    return zscore
+        ret = (close-mean) / std
+        ret = fill_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
 
 def optimize_parameter(strategy, symbol, timeframe, spread, start, end,
                        min_trade, rranges):
@@ -1486,12 +1260,6 @@ def optimize_parameter(strategy, symbol, timeframe, spread, start, end,
         signal = get_signal(buy_entry, buy_exit, sell_entry, sell_exit, symbol,
                             timeframe)
         pnl = get_pnl(signal, symbol, timeframe, spread, start, end)
-
-#        mean = pnl.mean()
-#        std = pnl.std()
-#        threshold = 3.0
-#        pnl[(pnl-mean)/std>threshold] = threshold * std + mean
-#        pnl[(pnl-mean)/std<-threshold] = -threshold * std + mean
 
         trades = get_trades(signal, start, end)
         sharpe = get_sharpe(pnl, timeframe)
@@ -1516,11 +1284,6 @@ def order_send(symbol, units, side):
             side=side, type='market')
     ticket = response['tradeOpened']['id']
     return ticket
-
-def remove_folder(folder):
-    pathname = os.path.dirname(__file__)
-    if os.path.exists(pathname + '/' + folder) == True:
-        shutil.rmtree(pathname + '/' + folder)
 
 def rename_historical_data_filename(symbol):
     new_name = './historical_data/' + symbol + '.csv'
