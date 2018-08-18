@@ -8,7 +8,6 @@ import numpy as np
 import oandapy
 import os
 import pandas as pd
-import shutil
 import smtplib
 import struct
 import time
