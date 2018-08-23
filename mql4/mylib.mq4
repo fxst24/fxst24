@@ -4,7 +4,7 @@
 
 #define EPS 0.00001
 
-void email(int BuyEntry, int BuyExit, int SellEntry, int SellExit) {
+void email(int BuyEntry, int BuyExit, int SellEntry, int SellExit, string strategy) {
     bool res;
     static int BuyEntrySendMail = 0;
     static int BuyExitSendMail = 0;
@@ -13,34 +13,25 @@ void email(int BuyEntry, int BuyExit, int SellEntry, int SellExit) {
 
     // BuyExit
     if (BuyExit==1 && BuyExitSendMail==0 && BuyEntrySendMail==1) {
-        res = SendMail("MeanReversionExitOnly", "Type:BuyExit\nSymol:" + Symbol() + "\nPrice:" + Bid);
+        res = SendMail(strategy, "Type:BuyExit\nSymol:" + Symbol() + "\nPrice:" + Bid);
         BuyExitSendMail = 1;
         BuyEntrySendMail = 0;
     }
     // SellExit
     if (SellExit==1 && SellExitSendMail==0 && SellEntrySendMail==1) {
-        res = SendMail("MeanReversionExitOnly",
-                                   "Type:SellExit\n"
-                                   + "Symol:" + Symbol() + "\n"
-                                   + "Price:" + Ask);
+        res = SendMail(strategy, "Type:SellExit\n" + "Symol:" + Symbol() + "\n" + "Price:" + Ask);
         SellExitSendMail = 1;
         SellEntrySendMail = 0;
     }
     // BuyEntry
     if (BuyEntry==1 && BuyEntrySendMail==0) {
-        res = SendMail("MeanReversionExitOnly",
-                       "Type:BuyEntry\n"
-                       + "Symol:" + Symbol() + "\n"
-                       + "Price:" + Ask);
+        res = SendMail(strategy, "Type:BuyEntry\n" + "Symol:" + Symbol() + "\n" + "Price:" + Ask);
         BuyEntrySendMail = 1;
         BuyExitSendMail = 0;
     }
     // SellEntry
     if (SellEntry==1 && SellEntrySendMail==0) {
-        res = SendMail("MeanReversionExitOnly",
-                        "Type:SellEntry\n"
-                       + "Symol:" + Symbol() + "\n"
-                       + "Price:" + Bid);
+        res = SendMail(strategy, "Type:SellEntry\n" + "Symol:" + Symbol() + "\n" + "Price:" + Bid);
         SellEntrySendMail = 1;
         SellExitSendMail = 0;
     }
@@ -97,7 +88,6 @@ double iNoEntryLevel(string symbol, int timeframe, string type, int period, doub
             else {
                 ret = 0;
             }
-            Print((close-lband)/lband*100.0);
         }
     }
     else if (type == "sell") {
@@ -112,7 +102,6 @@ double iNoEntryLevel(string symbol, int timeframe, string type, int period, doub
             else {
                 ret = 0;
             }
-            Print((hband-close)/close*100.0);
         }
     }
     else {
