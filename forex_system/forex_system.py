@@ -14,7 +14,7 @@ import time
 from collections import OrderedDict
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
-from numba import float64, jit
+from numba import float64, int64, jit
 #from pandas_datareader import data as web
 from scipy import optimize
 from scipy.stats import pearson3
@@ -32,36 +32,37 @@ g_environment = None
 g_access_token = None
 g_access_id = None
 
-def backtest(strategy, symbol, timeframe, spread, start, end, parameter):
+def backtest(ea, symbol, timeframe, spread, start, end, inputs):
     empty_folder('temp')
     create_folder('temp')
     start = datetime.strptime(start + ' 00:00', '%Y.%m.%d %H:%M')
     end = datetime.strptime(end + ' 00:00', '%Y.%m.%d %H:%M')
     end -= timedelta(minutes=timeframe)
     report =  pd.DataFrame(
-            index=[''], columns=['start', 'end', 'trades', 'apr', 'sharpe',
-                  'drawdown', 'parameter'])
-    buy_entry, buy_exit, sell_entry, sell_exit = strategy(
-            parameter, symbol, timeframe)
-    signal = get_signal(buy_entry, buy_exit, sell_entry, sell_exit, symbol,
-                        timeframe)
-    pnl = get_pnl(signal, symbol, timeframe, spread, start, end)
-    trades = get_trades(signal, start, end)
-    apr = get_apr(pnl, timeframe)
-    sharpe = get_sharpe(pnl, timeframe)
-    drawdown = get_drawdown(pnl)
+            index=[''], columns=['start', 'end', 'profit', 'tt', 'pf', 'ep',
+                  'dd', 'ddr', 'inputs'])
+    position = ea(inputs, symbol, timeframe)
+    profit = calc_profit(position, symbol, timeframe, spread)
+    tnp = calc_total_net_profit(profit, start, end)
+    tt = calc_total_trades(position, start, end)
+    pf = calc_profit_factor(profit, position, start, end)
+    ep = tnp / tt
+    dd, ddr = calc_drawdown(profit[start:end])
     report.iloc[0, 0] = start.strftime('%Y.%m.%d')
     report.iloc[0, 1] = end.strftime('%Y.%m.%d')
-    report.iloc[0, 2] = str(trades)
-    report.iloc[0, 3] = str(np.round(apr, 3))
-    report.iloc[0, 4] = str(np.round(sharpe, 3))
-    report.iloc[0, 5] = str(np.round(drawdown, 3))
-    if parameter is not None:
-        report.iloc[0, 6] = np.round(parameter, 3)
+    report.iloc[0, 2] = str(np.round(profit[start:end].sum(), 3))
+    report.iloc[0, 3] = str(tt)
+    report.iloc[0, 4] = str(np.round(pf, 3))
+    report.iloc[0, 5] = str(np.round(ep, 3))
+    report.iloc[0, 6] = str(np.round(dd, 3))
+    report.iloc[0, 7] = str(np.round(ddr, 3))
+    if inputs is not None:
+        report.iloc[0, 8] = np.round(inputs, 3)
     report = report.dropna(axis=1)
     pd.set_option('display.max_columns', 100)
+    pd.set_option('display.width', 1000)
     print(report)
-    equity = (1.0+pnl).cumprod() - 1.0
+    equity = profit[start:end].cumsum()
     ax=plt.subplot()
     ax.set_xticklabels(equity.index, rotation=45)
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
@@ -74,9 +75,9 @@ def backtest(strategy, symbol, timeframe, spread, start, end, parameter):
     plt.show()
     plt.close()
     empty_folder('temp')
-    return pnl
+    return profit
 
-def backtest_ml(strategy, symbol, timeframe, spread, start, end, get_model,
+def backtest_ml(ea, symbol, timeframe, spread, start, end, get_model,
                 in_sample_period, out_of_sample_period):
     empty_folder('temp')
     create_folder('temp')
@@ -84,8 +85,8 @@ def backtest_ml(strategy, symbol, timeframe, spread, start, end, get_model,
     end = datetime.strptime(end + ' 00:00', '%Y.%m.%d %H:%M')
     end -= timedelta(minutes=timeframe)
     report =  pd.DataFrame(
-            index=[['']*1000], columns=['start_test', 'end_test', 'trades',
-                  'apr', 'sharpe', 'drawdown'])
+            index=[['']*1000], columns=['start_test', 'end_test', 'profit',
+                  'tt', 'pf', 'ep', 'dd', 'ddr'])
     end_test = start
     i = 0
     while True:
@@ -102,44 +103,47 @@ def backtest_ml(strategy, symbol, timeframe, spread, start, end, get_model,
         end_test = (start_test + timedelta(days=out_of_sample_period)
             - timedelta(minutes=timeframe))
         get_model(symbol, timeframe, start_train, end_train)
-        buy_entry, buy_exit, sell_entry, sell_exit = strategy(
-                None, symbol, timeframe)
-        signal = get_signal(buy_entry, buy_exit, sell_entry, sell_exit,
-                          symbol, timeframe)
-        pnl = get_pnl(signal, symbol, timeframe, spread, start_test,
-                      end_test)
-        trades = get_trades(signal, start_test, end_test)
-        apr = get_apr(pnl, timeframe)
-        sharpe = get_sharpe(pnl, timeframe)
-        drawdown = get_drawdown(pnl)
+        position = ea(None, symbol, timeframe)
+        profit = calc_profit(position, symbol, timeframe, spread)
+        tnp = calc_total_net_profit(profit, start_test, end_test)
+        tt = calc_total_trades(position, start_test, end_test)
+        pf = calc_profit_factor(profit, position, start_test, end_test)
+        ep = tnp / tt
+        dd, ddr = calc_drawdown(profit[start_test:end_test])
         report.iloc[i, 0] = start_test.strftime('%Y.%m.%d')
         report.iloc[i, 1] = end_test.strftime('%Y.%m.%d')
-        report.iloc[i, 2] = str(trades)
-        report.iloc[i, 3] = str(np.round(apr, 3))
-        report.iloc[i, 4] = str(np.round(sharpe, 3))
-        report.iloc[i, 5] = str(np.round(drawdown, 3))
+        report.iloc[i, 2] = str(np.round(profit[start_test:end_test].sum(), 3))
+        report.iloc[i, 3] = str(tt)
+        report.iloc[i, 4] = str(np.round(pf, 3))
+        report.iloc[i, 5] = str(np.round(ep, 3))
+        report.iloc[i, 6] = str(np.round(dd, 3))
+        report.iloc[i, 7] = str(np.round(ddr, 3))
         if i == 0:
-            temp = signal[start_test:end_test]
+            temp = position[start_test:end_test]
         else:
-            temp = temp.append(signal[start_test:end_test])
+            temp = temp.append(position[start_test:end_test])
         i += 1
-    signal = temp
-    pnl = get_pnl(signal, symbol, timeframe, spread, start_all, end_all)
-    trades = get_trades(signal, start_all, end_all)
-    apr = get_apr(pnl, timeframe)
-    sharpe = get_sharpe(pnl, timeframe)
-    drawdown = get_drawdown(pnl)
+    position = temp
+    profit = calc_profit(position, symbol, timeframe, spread)
+    tnp = calc_total_net_profit(profit, start_all, end_all)
+    tt = calc_total_trades(position, start_all, end_all)
+    pf = calc_profit_factor(profit, position, start_all, end_all)
+    ep = tnp / tt
+    dd, ddr = calc_drawdown(profit[start_all:end_all])
     report.iloc[i, 0] = start_all.strftime('%Y.%m.%d')
     report.iloc[i, 1] = end_all.strftime('%Y.%m.%d')
-    report.iloc[i, 2] = str(trades)
-    report.iloc[i, 3] = str(np.round(apr, 3))
-    report.iloc[i, 4] = str(np.round(sharpe, 3))
-    report.iloc[i, 5] = str(np.round(drawdown, 3))
+    report.iloc[i, 2] = str(np.round(profit[start_all:end_all].sum(), 3))
+    report.iloc[i, 3] = str(tt)
+    report.iloc[i, 4] = str(np.round(pf, 3))
+    report.iloc[i, 5] = str(np.round(ep, 3))
+    report.iloc[i, 6] = str(np.round(dd, 3))
+    report.iloc[i, 7] = str(np.round(ddr, 3))
     report = report.iloc[0:i+1, :]
     report = report.dropna(axis=1)
     pd.set_option('display.max_columns', 100)
+    pd.set_option('display.width', 1000)
     print(report)
-    equity = (1.0+pnl).cumprod() - 1.0
+    equity = profit[start_all:end_all].cumsum()
     ax=plt.subplot()
     ax.set_xticklabels(equity.index, rotation=45)
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
@@ -152,9 +156,9 @@ def backtest_ml(strategy, symbol, timeframe, spread, start, end, get_model,
     plt.show()
     plt.close()
     empty_folder('temp')
-    return pnl
+    return profit
 
-def backtest_opt(strategy, symbol, timeframe, spread, start, end, rranges,
+def backtest_opt(ea, symbol, timeframe, spread, start, end, rranges,
                  min_trade):
     empty_folder('temp')
     create_folder('temp')
@@ -162,32 +166,32 @@ def backtest_opt(strategy, symbol, timeframe, spread, start, end, rranges,
     end = datetime.strptime(end + ' 00:00', '%Y.%m.%d %H:%M')
     end -= timedelta(minutes=timeframe)
     report =  pd.DataFrame(
-            index=[''], columns=['start', 'end', 'trades', 'apr', 'sharpe',
-                  'drawdown', 'parameter'])
-    parameter = optimize_parameter(
-            strategy, symbol, timeframe, spread, start, end, min_trade,
-            rranges)
-    buy_entry, buy_exit, sell_entry, sell_exit = strategy(
-            parameter, symbol, timeframe)
-    signal = get_signal(buy_entry, buy_exit, sell_entry, sell_exit, symbol,
-                        timeframe)
-    pnl = get_pnl(signal, symbol, timeframe, spread, start, end)
-    trades = get_trades(signal, start, end)
-    apr = get_apr(pnl, timeframe)
-    sharpe = get_sharpe(pnl, timeframe)
-    drawdown = get_drawdown(pnl)
+            index=[''], columns=['start', 'end', 'profit', 'tt', 'pf', 'ep',
+                  'dd', 'ddr', 'inputs'])
+    inputs = optimize_inputs(ea, symbol, timeframe, spread, start, end,
+                             min_trade, rranges)
+    position = ea(inputs, symbol, timeframe)
+    profit = calc_profit(position, symbol, timeframe, spread)
+    tnp = calc_total_net_profit(profit, start, end)
+    tt = calc_total_trades(position, start, end)
+    pf = calc_profit_factor(profit, position, start, end)
+    ep = tnp / tt
+    dd, ddr = calc_drawdown(profit[start:end])
     report.iloc[0, 0] = start.strftime('%Y.%m.%d')
     report.iloc[0, 1] = end.strftime('%Y.%m.%d')
-    report.iloc[0, 2] = str(trades)
-    report.iloc[0, 3] = str(np.round(apr, 3))
-    report.iloc[0, 4] = str(np.round(sharpe, 3))
-    report.iloc[0, 5] = str(np.round(drawdown, 3))
-    if parameter is not None:
-        report.iloc[0, 6] = np.round(parameter, 3)
+    report.iloc[0, 2] = str(np.round(profit[start:end].sum(), 3))
+    report.iloc[0, 3] = str(tt)
+    report.iloc[0, 4] = str(np.round(pf, 3))
+    report.iloc[0, 5] = str(np.round(ep, 3))
+    report.iloc[0, 6] = str(np.round(dd, 3))
+    report.iloc[0, 7] = str(np.round(ddr, 3))
+    if inputs is not None:
+        report.iloc[0, 8] = np.round(inputs, 3)
     report = report.dropna(axis=1)
     pd.set_option('display.max_columns', 100)
+    pd.set_option('display.width', 1000)
     print(report)
-    equity = (1.0+pnl).cumprod() - 1.0
+    equity = profit[start:end].cumsum()
     ax=plt.subplot()
     ax.set_xticklabels(equity.index, rotation=45)
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
@@ -200,18 +204,18 @@ def backtest_opt(strategy, symbol, timeframe, spread, start, end, rranges,
     plt.show()
     plt.close()
     empty_folder('temp')
-    return pnl
+    return profit
 
-def backtest_wft(strategy, symbol, timeframe, spread, start, end, rranges,
-                 min_trade, in_sample_period, out_of_sample_period):
+def backtest_wft(ea, symbol, timeframe, spread, start, end, rranges, min_trade,
+                 in_sample_period, out_of_sample_period):
     empty_folder('temp')
     create_folder('temp')
     start = datetime.strptime(start + ' 00:00', '%Y.%m.%d %H:%M')
     end = datetime.strptime(end + ' 00:00', '%Y.%m.%d %H:%M')
     end -= timedelta(minutes=timeframe)
     report =  pd.DataFrame(
-            index=[['']*1000], columns=['start_test', 'end_test', 'trades',
-                  'apr', 'sharpe', 'drawdown', 'parameter'])
+            index=[['']*1000], columns=['start_test', 'end_test', 'profit',
+                  'tt', 'pf', 'ep', 'dd', 'ddr', 'inputs'])
     end_test = start
     i = 0
     while True:
@@ -227,49 +231,51 @@ def backtest_wft(strategy, symbol, timeframe, spread, start, end, rranges,
             break
         end_test = (start_test + timedelta(days=out_of_sample_period)
             - timedelta(minutes=timeframe))
-        parameter = optimize_parameter(
-            strategy, symbol, timeframe, spread, start_train,
-            end_train, min_trade, rranges)
-        buy_entry, buy_exit, sell_entry, sell_exit = strategy(
-                parameter, symbol, timeframe)
-        signal = get_signal(buy_entry, buy_exit, sell_entry, sell_exit,
-                          symbol, timeframe)
-        pnl = get_pnl(signal, symbol, timeframe, spread, start_test,
-                      end_test)
-        trades = get_trades(signal, start_test, end_test)
-        apr = get_apr(pnl, timeframe)
-        sharpe = get_sharpe(pnl, timeframe)
-        drawdown = get_drawdown(pnl)
+        inputs = optimize_inputs(ea, symbol, timeframe, spread, start_train,
+                                 end_train, min_trade, rranges)
+        position = ea(inputs, symbol, timeframe)
+        profit = calc_profit(position, symbol, timeframe, spread)
+        tnp = calc_total_net_profit(profit, start_test, end_test)
+        tt = calc_total_trades(position, start_test, end_test)
+        pf = calc_profit_factor(profit, position, start_test, end_test)
+        ep = tnp / tt
+        dd, ddr = calc_drawdown(profit[start_test:end_test])
         report.iloc[i, 0] = start_test.strftime('%Y.%m.%d')
         report.iloc[i, 1] = end_test.strftime('%Y.%m.%d')
-        report.iloc[i, 2] = str(trades)
-        report.iloc[i, 3] = str(np.round(apr, 3))
-        report.iloc[i, 4] = str(np.round(sharpe, 3))
-        report.iloc[i, 5] = str(np.round(drawdown, 3))
-        report.iloc[i, 6] = np.round(parameter, 3)
+        report.iloc[i, 2] = str(np.round(profit[start_test:end_test].sum(), 3))
+        report.iloc[i, 3] = str(tt)
+        report.iloc[i, 4] = str(np.round(pf, 3))
+        report.iloc[i, 5] = str(np.round(ep, 3))
+        report.iloc[i, 6] = str(np.round(dd, 3))
+        report.iloc[i, 7] = str(np.round(ddr, 3))
+        report.iloc[i, 8] = np.round(inputs, 3)
         if i == 0:
-            temp = signal[start_test:end_test]
+            temp = position[start_test:end_test]
         else:
-            temp = temp.append(signal[start_test:end_test])
+            temp = temp.append(position[start_test:end_test])
         i += 1
-    signal = temp
-    pnl = get_pnl(signal, symbol, timeframe, spread, start_all, end_all)
-    trades = get_trades(signal, start_all, end_all)
-    apr = get_apr(pnl, timeframe)
-    sharpe = get_sharpe(pnl, timeframe)
-    drawdown = get_drawdown(pnl)
+    position = temp
+    profit = calc_profit(position, symbol, timeframe, spread)
+    tnp = calc_total_net_profit(profit, start_all, end_all)
+    tt = calc_total_trades(position, start_all, end_all)
+    pf = calc_profit_factor(profit, position, start_all, end_all)
+    ep = tnp / tt
+    dd, ddr = calc_drawdown(profit[start_all:end_all])
     report.iloc[i, 0] = start_all.strftime('%Y.%m.%d')
     report.iloc[i, 1] = end_all.strftime('%Y.%m.%d')
-    report.iloc[i, 2] = str(trades)
-    report.iloc[i, 3] = str(np.round(apr, 3))
-    report.iloc[i, 4] = str(np.round(sharpe, 3))
-    report.iloc[i, 5] = str(np.round(drawdown, 3))
-    report.iloc[i, 6] = ''
+    report.iloc[i, 2] = str(np.round(profit[start_all:end_all].sum(), 3))
+    report.iloc[i, 3] = str(tt)
+    report.iloc[i, 4] = str(np.round(pf, 3))
+    report.iloc[i, 5] = str(np.round(ep, 3))
+    report.iloc[i, 6] = str(np.round(dd, 3))
+    report.iloc[i, 7] = str(np.round(ddr, 3))
+    report.iloc[i, 8] = ''
     report = report.iloc[0:i+1, :]
     report = report.dropna(axis=1)
     pd.set_option('display.max_columns', 100)
+    pd.set_option('display.width', 1000)
     print(report)
-    equity = (1.0+pnl).cumprod() - 1.0
+    equity = profit[start_all:end_all].cumsum()
     ax=plt.subplot()
     ax.set_xticklabels(equity.index, rotation=45)
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
@@ -282,7 +288,90 @@ def backtest_wft(strategy, symbol, timeframe, spread, start, end, rranges,
     plt.show()
     plt.close()
     empty_folder('temp')
-    return pnl
+    return profit
+
+def calc_drawdown(profit):
+    equity = profit.cumsum()
+    drawdown = (equity.cummax()-equity).max()
+    drawdown_relative = drawdown / equity.cummax().max() * 100.0
+    return drawdown, drawdown_relative
+
+def calc_position(buy_entry, buy_exit, sell_entry, sell_exit, lots):
+    buy = buy_entry.copy()
+    buy[buy_entry==False] = np.nan
+    buy[buy_exit==True] = 0.0
+    buy.iloc[0] = 0.0
+    buy = buy.fillna(method='ffill')
+    sell = sell_entry.copy()
+    sell[sell_entry==False] = np.nan
+    sell[sell_exit==True] = 0.0
+    sell.iloc[0] = 0.0
+    sell = sell.fillna(method='ffill')
+    position = (buy-sell) * lots * UNITS
+    position = position.fillna(0.0)
+    position = position.astype(int)
+    return position
+
+def calc_profit(position, symbol, timeframe, spread):
+    op = i_open(symbol, timeframe, 0)
+    if op[len(op)-1] >= 50.0:  # e.g. Cross Yen.
+        adj_spread = spread / 100.0
+    else:
+        adj_spread = spread / 10000.0
+    buy_position = position * (position>0)
+    sell_position = position * (position<0)
+    buy_cost = ((buy_position>0)&(buy_position.shift(1)<=0)) * adj_spread
+    sell_cost = ((sell_position<0)&(sell_position.shift(1)>=0)) * adj_spread
+    buy_profit = (op-op.shift(1)-buy_cost)*buy_position.shift(1)
+    sell_profit =(op-op.shift(1)+sell_cost)*sell_position.shift(1)
+    profit = buy_profit + sell_profit
+    return profit
+
+def calc_profit_factor(profit, position, start, end):
+    profit = profit[start:end]
+    profit = np.array(profit)
+    position = position.shift(1)[start:end]
+    position.iloc[0] = 0.0
+    position = position.astype(int)
+    position = np.array(position)
+    res = np.zeros(len(profit))
+
+    @jit(float64[:](float64[:], float64[:], int64[:]), nopython=True,
+         cache=True)
+    def func(res, profit, position):
+        length = len(profit)
+        temp = 0
+        cnt = 0
+        for i in range(length):
+            if position[i] != 0:
+                temp += profit[i]
+            else:
+                res[cnt] = temp
+                temp = 0
+                cnt += 1
+        return res
+    res = func(res, profit, position)
+    gross_profit = np.sum(res[res>0.0])
+    gross_loss = np.sum(res[res<0.0])
+    gross_loss = np.abs(gross_loss)
+    if gross_loss != 0:
+        profit_factor = gross_profit / gross_loss
+    else:
+        profit_factor = np.nan
+    return profit_factor
+
+def calc_total_net_profit(profit, start, end):
+    total_net_profit = profit[start:end].sum()
+    return total_net_profit
+
+def calc_total_trades(position, start, end):
+    buy_position = position * (position>0)
+    sell_position = position * (position<0)
+    buy_trades = (buy_position<buy_position.shift(1)).astype(int)
+    sell_trades = (sell_position>sell_position.shift(1)).astype(int)
+    total_trades = (buy_trades+sell_trades)[start:end]
+    total_trades = total_trades.sum()
+    return total_trades
 
 def create_folder(folder):
     pathname = os.path.dirname(__file__)
@@ -331,24 +420,24 @@ def forex_system():
     mail = args.mail
     mt4 = args.mt4
     calling_module = inspect.getmodule(inspect.stack()[1][0])
-    strategy = calling_module.strategy
+    ea = calling_module.ea
     get_model = calling_module.get_model
-    parameter = calling_module.PARAMETER
+    inputs = calling_module.INPUTS
     rranges = calling_module.RRANGES
-    pnl = None
+    profit = None
     if mode == 'backtest':
-        pnl = backtest(strategy, symbol, timeframe, spread, start, end,
-                       parameter=parameter)
+        profit = backtest(ea, symbol, timeframe, spread, start, end,
+                       inputs=inputs)
     elif mode == 'backtest_opt':
-        pnl = backtest_opt(strategy, symbol, timeframe, spread, start, end,
+        profit = backtest_opt(ea, symbol, timeframe, spread, start, end,
                            rranges=rranges, min_trade=min_trade)
     elif mode == 'backtest_wft':
-        pnl = backtest_wft(strategy, symbol, timeframe, spread, start, end,
+        profit = backtest_wft(ea, symbol, timeframe, spread, start, end,
                            rranges=rranges, min_trade=min_trade,
                            in_sample_period=in_sample_period,
                            out_of_sample_period=out_of_sample_period)
     elif mode == 'backtest_ml':
-        pnl = backtest_ml(strategy, symbol, timeframe, spread, start, end,
+        profit = backtest_ml(ea, symbol, timeframe, spread, start, end,
                            get_model=get_model,
                            in_sample_period=in_sample_period,
                            out_of_sample_period=out_of_sample_period)
@@ -357,21 +446,16 @@ def forex_system():
         temp = inspect.getmodule(inspect.stack()[1][0]).__file__
         temp = temp.replace(pathname + '/', '') 
         ea, ext = os.path.splitext(temp)
-        trade(strategy, symbol, timeframe, ea, parameter=parameter,
+        trade(ea, symbol, timeframe, ea, inputs=inputs,
               start_train=start_train, end_train=end_train, mail=mail, mt4=mt4)
     elif mode == 'signal':
         pathname = os.path.dirname(__file__)
         temp = inspect.getmodule(inspect.stack()[1][0]).__file__
         temp = temp.replace(pathname + '/', '') 
-        ea, ext = os.path.splitext(temp)
-        signal(strategy, symbol, timeframe, ea, parameter=parameter,
+        file_name, ext = os.path.splitext(temp)
+        signal(ea, symbol, timeframe, file_name, inputs=inputs,
                start_train=start_train, end_train=end_train)
-    return pnl
-
-def get_apr(pnl, timeframe):
-    year = (len(pnl)*timeframe) / (60*24*260)
-    apr = pnl.sum() / year
-    return apr
+    return profit
 
 def get_base_and_quote(symbol):
     if symbol == 'AUDCAD':
@@ -469,52 +553,6 @@ def get_current_filename():
     current_filename, ext = os.path.splitext(current_filename)
     return current_filename
 
-def get_drawdown(pnl):
-    equity = (1.0+pnl).cumprod() - 1.0
-    drawdown = (equity.cummax()-equity).max()
-    return drawdown
-
-def get_durations(ret, timeframe):
-    cum_ret = (ret + 1.0).cumprod() - 1.0
-    cum_ret = np.array(cum_ret)
-    @jit(float64(float64[:]), nopython=True, cache=True)
-    def func(cum_ret):
-        length = len(cum_ret)
-        high_watermark = np.zeros(length)
-        drawdown = np.zeros(length)
-        duration = np.zeros(length)
-        for i in range(length):
-            if i == 0:
-                high_watermark[0] = cum_ret[0]
-            else:
-                if high_watermark[i - 1] >= cum_ret[i]:
-                    high_watermark[i] = high_watermark[i - 1]
-                else:
-                    high_watermark[i] = cum_ret[i];
-            if np.abs(1.0 + cum_ret[i]) < EPS:
-                drawdown[i] = drawdown[i - 1]
-            else:
-                drawdown[i] = ((1.0 + high_watermark[i]) /
-                (1.0 + cum_ret[i]) - 1.0)
-        for i in range(length):
-            if i == 0:
-                duration[0] = drawdown[0]
-            else:
-                if drawdown[i] == 0.0:
-                    duration[i] = 0
-                else:
-                    duration[i] = duration[i - 1] + 1;
-        for i in range(length):
-            if i == 0:
-                durations = duration[0];
-            else:
-                if duration[i] > durations:
-                    durations = duration[i]
-        durations = durations / (1440 / timeframe)
-        return durations
-    durations = int(func(cum_ret))
-    return durations
-
 def get_historical_data(symbol, start, end):
     start = start + ' 00:00'
     end = end + ' 00:00'
@@ -546,20 +584,6 @@ def get_historical_data(symbol, start, end):
         filename =  './historical_data/' + symbol + str(i) + '.csv'
         data.to_csv(filename)
 
-#def get_historical_data_from_yahoo(symbol):
-#    start = datetime(2001, 1, 1)
-#    end = datetime(2101, 1, 1)
-#    data = i_close('USDJPY', 1440, 0)
-#    temp = web.DataReader(symbol, 'yahoo', start, end)
-#    data = pd.concat([data, temp], axis=1, join_axes=[data.index])
-#    data = fill_data(data)
-#    data = data[data.index.dayofweek<5]
-#    data = data.drop('close', axis=1)
-#    data = data.drop('Close', axis=1)
-#    data.columns = ['open', 'high', 'low', 'close', 'volume']
-#    filename =  './historical_data/' + symbol + '1440.csv'
-#    data.to_csv(filename)
-
 def get_model_dir():
     dirname = os.path.dirname(__file__)
     filename = inspect.currentframe().f_back.f_code.co_filename
@@ -585,19 +609,6 @@ def get_pkl_file_path():
     arg_values += '.pkl'
     pkl_file_path = dir_name + func_name + arg_values
     return pkl_file_path
-
-def get_pnl(signal, symbol, timeframe, spread, start, end):
-    op = i_open(symbol, timeframe, 0)
-    if op[len(op)-1] >= 50.0:  # e.g. Cross Yen.
-        adj_spread = spread / 100.0
-    else:
-        adj_spread = spread / 10000.0
-    cost_buy = ((signal==1) & (signal.shift(1)!=1)) * adj_spread
-    cost_sell = ((signal==-1) & (signal.shift(1)!=-1)) * adj_spread
-    cost = cost_buy + cost_sell
-    pnl = ((op-op.shift(1))*signal.shift(1)-cost) / op.shift(1)
-    pnl = pnl[start:end]
-    return pnl
 
 def get_randomwalk_data(mean=0.0, std=0.01/np.sqrt(1440), skew=0.0):
     mean = mean / 6
@@ -697,66 +708,6 @@ def get_randomwalk_data(mean=0.0, std=0.01/np.sqrt(1440), skew=0.0):
     randomwalk480.to_csv('~/py/historical_data/RANDOM480.csv')
     randomwalk720.to_csv('~/py/historical_data/RANDOM720.csv')
     randomwalk1440.to_csv('~/py/historical_data/RANDOM1440.csv')
-
-def get_sharpe(pnl, timeframe):
-    mean = pnl.mean()
-    std = pnl.std()
-    multiplier = np.sqrt(60*24*260/timeframe)
-    if std == 0:
-        sharpe = 0.0
-    else:
-        sharpe = mean / std * multiplier
-    return sharpe
-
-def get_signal(buy_entry, buy_exit, sell_entry, sell_exit, symbol, timeframe):
-    buy = buy_entry.copy()
-    buy[buy_entry==False] = np.nan
-    buy[buy_exit==True] = 0.0
-    buy.iloc[0] = 0.0
-    buy = buy.fillna(method='ffill')
-    sell = sell_entry.copy()
-    sell[sell_entry==False] = np.nan
-    sell[sell_exit==True] = 0.0
-    sell.iloc[0] = 0.0
-    sell = sell.fillna(method='ffill')
-    signal = buy - sell
-    signal = signal.fillna(0.0)
-    signal = signal.astype(int)
-    return signal
-
-def get_signal_of_god(symbol, timeframe, longer_timeframe):
-    pkl_file_path = get_pkl_file_path()  # Must put this first.
-    ret = restore_pkl(pkl_file_path)
-    if ret is None:
-        op = i_open(symbol, timeframe, 0)
-        high = op.resample(str(longer_timeframe)+'T').max()
-        high = high[high.index.dayofweek<5]
-        temp = pd.concat([op, high], axis=1)
-        high = temp.iloc[:, 1]
-        high = fill_data(high)
-        low = op.resample(str(longer_timeframe)+'T').min()
-        low = low[low.index.dayofweek<5]
-        temp = pd.concat([op, low], axis=1)
-        low = temp.iloc[:, 1]
-        low = fill_data(low)
-        buy = op == low
-        buy = fill_data(buy)
-        buy = buy.astype(int)
-        sell = op == high
-        sell = fill_data(sell)
-        sell = sell.astype(int)
-        ret = buy - sell
-        ret[ret==0] = np.nan
-        ret = fill_data(ret)
-        ret = ret.astype(int)
-        save_pkl(ret, pkl_file_path)
-    return ret
-
-def get_trades(signal, start, end):
-    trade = (signal>signal.shift(1)).astype(int)
-    trade = trade[start:end]
-    trades = trade.sum()
-    return trades
 
 def i_atr(symbol, timeframe, period, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
@@ -1116,7 +1067,7 @@ def i_ma(symbol, timeframe, period, shift):
         save_pkl(ret, pkl_file_path)
     return ret
 
-def i_no_entry(symbol, timeframe, period, pct, shift):
+def i_no_entry_level(symbol, timeframe, period, pct, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
@@ -1246,28 +1197,26 @@ def i_zscore(symbol, timeframe, period, shift):
         save_pkl(ret, pkl_file_path)
     return ret
 
-def optimize_parameter(strategy, symbol, timeframe, spread, start, end,
-                       min_trade, rranges):
-    def func(parameter, strategy, symbol, timeframe, spread, start, end,
-             min_trade):
-        buy_entry, buy_exit, sell_entry, sell_exit = strategy(
-                parameter, symbol, timeframe)
-        signal = get_signal(buy_entry, buy_exit, sell_entry, sell_exit, symbol,
-                            timeframe)
-        pnl = get_pnl(signal, symbol, timeframe, spread, start, end)
-
-        trades = get_trades(signal, start, end)
-        sharpe = get_sharpe(pnl, timeframe)
+def optimize_inputs(ea, symbol, timeframe, spread, start, end, min_trade,
+                       rranges):
+    def func(inputs, ea, symbol, timeframe, spread, start, end, min_trade):
+        position = ea(inputs, symbol, timeframe)
+        profit = calc_profit(position, symbol, timeframe, spread)
+        #tnp = calc_total_net_profit(profit, start, end)
+        tt = calc_total_trades(position, start, end)
+        pf = calc_profit_factor(profit, position, start, end)
+        #ep = tnp / tt
+        #dd, ddr = calc_drawdown(profit[start:end])
         years = (end-start).total_seconds() / (60*60*24*365)
-        if trades / years < min_trade:
-            sharpe = 0.0
-        return -sharpe
+        if tt / years < min_trade:
+            pf = 0.0
+        return -pf
 
-    parameter = optimize.brute(
+    inputs = optimize.brute(
             func, rranges, args=(
-                    strategy, symbol, timeframe, spread, start, end,
-                    min_trade), finish=None)
-    return parameter
+                    ea, symbol, timeframe, spread, start, end, min_trade),
+                    finish=None)
+    return inputs
 
 def order_close(ticket):
     g_oanda.close_trade(g_access_id, ticket)
@@ -1329,7 +1278,7 @@ def send_signal_to_mt4(filename, signal):
     f.write(str(int(signal.iloc[len(signal)-1] + 2)))
     f.close()
 
-def signal(strategy, symbol, timeframe, ea, parameter, start_train, end_train):
+def signal(ea, symbol, timeframe, file_name, inputs, start_train, end_train):
     global g_oanda
     global g_environment
     global g_access_token
@@ -1367,24 +1316,21 @@ def signal(strategy, symbol, timeframe, ea, parameter, start_train, end_train):
                 history_time = history['candles'][COUNT-1]['time']
                 if history_time != pre_history_time:
                     pre_history_time = history_time
-                    buy_entry, buy_exit, sell_entry, sell_exit = (
-                            strategy(parameter, symbol, timeframe))
-                    signal = get_signal(buy_entry, buy_exit, sell_entry,
-                                        sell_exit, symbol,timeframe)
-                    end_row = len(signal) - 1
+                    position = ea(inputs, symbol, timeframe)
+                    end_row = len(position) - 1
                     open0 = i_open(symbol, timeframe, 0)
                     price = open0[len(open0)-1]
-                    if signal.iloc[end_row] != signal.iloc[end_row-1]:
-                        subject = ea
+                    if position.iloc[end_row] != position.iloc[end_row-1]:
+                        subject = file_name
                         some_text = (
-                                'Symbol: ' + symbol + '\n'
-                                + 'Signal: ' + str(signal.iloc[end_row]) + '\n'
+                                'Symbol: ' + symbol + '\n' + 'Signal: '
+                                + str(position.iloc[end_row]) + '\n'
                                 + 'Price: ' + str(price))
                         send_mail(subject, some_text, fromaddr, toaddr,
                                   host, port, password)
                 now = datetime.now()
-                print(now.strftime('%Y.%m.%d %H:%M:%S'), ea, symbol,
-                      timeframe, signal.iloc[end_row])
+                print(now.strftime('%Y.%m.%d %H:%M:%S'), file_name, symbol,
+                      timeframe, position.iloc[end_row])
 
 def time_day(index):
     time_day = pd.Series(index.day, index=index)
@@ -1532,7 +1478,7 @@ def to_period(minute, timeframe):
     period = int(minute / timeframe)
     return period
 
-def trade(strategy, symbol, timeframe, ea, parameter, start_train, end_train,
+def trade(ea, symbol, timeframe, file_name, inputs, start_train, end_train,
           mail, mt4):
     global g_oanda
     global g_environment
@@ -1562,7 +1508,7 @@ def trade(strategy, symbol, timeframe, ea, parameter, start_train, end_train,
     granularity = to_granularity(timeframe)
     if mt4 == 1:
         folder_ea = config['DEFAULT']['folder_ea']
-        filename = folder_ea + '/' + ea + '.csv'
+        filename = folder_ea + '/' + file_name + '.csv'
         f = open(filename, 'w')
         f.write(str(2))
         f.close()
@@ -1580,12 +1526,8 @@ def trade(strategy, symbol, timeframe, ea, parameter, start_train, end_train,
                 history_time = history['candles'][COUNT-1]['time']
                 if history_time != pre_history_time:
                     pre_history_time = history_time
-                    buy_entry, buy_exit, sell_entry, sell_exit = (
-                            strategy(parameter, symbol, timeframe))
-                    signal = get_signal(
-                            buy_entry, buy_exit, sell_entry, sell_exit, symbol,
-                            timeframe)
-                    end_row = len(signal) - 1
+                    position = ea(inputs, symbol, timeframe)
+                    end_row = len(position) - 1
                     open0 = i_open(symbol, timeframe, 0)
                     price = open0[len(open0)-1]
                     if (pos == 1 and signal.iloc[end_row] != 1):
@@ -1593,7 +1535,7 @@ def trade(strategy, symbol, timeframe, ea, parameter, start_train, end_train,
                         order_close(ticket)
                         ticket = 0
                         if mail == 1:
-                            subject = ea
+                            subject = file_name
                             some_text = (symbol + ' ' +
                                          str(signal.iloc[end_row]) + ' '
                                          + str(price))
@@ -1606,7 +1548,7 @@ def trade(strategy, symbol, timeframe, ea, parameter, start_train, end_train,
                         order_close(ticket)
                         ticket = 0
                         if mail == 1:
-                            subject = ea
+                            subject = file_name
                             some_text = (symbol + ' ' +
                                          str(signal.iloc[end_row]) + ' '
                                          + str(price))
@@ -1619,7 +1561,7 @@ def trade(strategy, symbol, timeframe, ea, parameter, start_train, end_train,
                         ticket = order_send(symbol, np.abs(signal[end_row]),
                                             'buy')
                         if mail == 1:
-                            subject = ea
+                            subject = file_name
                             some_text = (symbol + ' ' +
                                          str(signal.iloc[end_row]) + ' '
                                          + str(price))
@@ -1632,7 +1574,7 @@ def trade(strategy, symbol, timeframe, ea, parameter, start_train, end_train,
                         ticket = order_send(symbol, np.abs(signal[end_row]),
                                             'sell')
                         if mail == 1:
-                            subject = ea
+                            subject = file_name
                             some_text = (symbol + ' ' +
                                          str(signal.iloc[end_row]) + ' '
                                          + str(price))
@@ -1641,5 +1583,5 @@ def trade(strategy, symbol, timeframe, ea, parameter, start_train, end_train,
                         if mt4 == 1:
                             send_signal_to_mt4(filename, signal)
                 now = datetime.now()
-                print(now.strftime('%Y.%m.%d %H:%M:%S'), ea, symbol,
+                print(now.strftime('%Y.%m.%d %H:%M:%S'), file_name, symbol,
                       timeframe, signal.iloc[end_row])
