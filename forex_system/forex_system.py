@@ -50,14 +50,14 @@ def backtest(ea, symbol, timeframe, spread, start, end, inputs):
     dd, ddr = calc_drawdown(profit[start:end])
     report.iloc[0, 0] = start.strftime('%Y.%m.%d')
     report.iloc[0, 1] = end.strftime('%Y.%m.%d')
-    report.iloc[0, 2] = str(np.round(profit[start:end].sum(), 3))
+    report.iloc[0, 2] = str(np.round(profit[start:end].sum(), 2))
     report.iloc[0, 3] = str(tt)
-    report.iloc[0, 4] = str(np.round(pf, 3))
-    report.iloc[0, 5] = str(np.round(ep, 3))
-    report.iloc[0, 6] = str(np.round(dd, 3))
-    report.iloc[0, 7] = str(np.round(ddr, 3))
+    report.iloc[0, 4] = str(np.round(pf, 2))
+    report.iloc[0, 5] = str(np.round(ep, 2))
+    report.iloc[0, 6] = str(np.round(dd, 2))
+    report.iloc[0, 7] = str(np.round(ddr, 2))
     if inputs is not None:
-        report.iloc[0, 8] = np.round(inputs, 3)
+        report.iloc[0, 8] = np.round(inputs, 2)
     report = report.dropna(axis=1)
     pd.set_option('display.max_columns', 100)
     pd.set_option('display.width', 1000)
@@ -112,12 +112,12 @@ def backtest_ml(ea, symbol, timeframe, spread, start, end, get_model,
         dd, ddr = calc_drawdown(profit[start_test:end_test])
         report.iloc[i, 0] = start_test.strftime('%Y.%m.%d')
         report.iloc[i, 1] = end_test.strftime('%Y.%m.%d')
-        report.iloc[i, 2] = str(np.round(profit[start_test:end_test].sum(), 3))
+        report.iloc[i, 2] = str(np.round(profit[start_test:end_test].sum(), 2))
         report.iloc[i, 3] = str(tt)
-        report.iloc[i, 4] = str(np.round(pf, 3))
-        report.iloc[i, 5] = str(np.round(ep, 3))
-        report.iloc[i, 6] = str(np.round(dd, 3))
-        report.iloc[i, 7] = str(np.round(ddr, 3))
+        report.iloc[i, 4] = str(np.round(pf, 2))
+        report.iloc[i, 5] = str(np.round(ep, 2))
+        report.iloc[i, 6] = str(np.round(dd, 2))
+        report.iloc[i, 7] = str(np.round(ddr, 2))
         if i == 0:
             temp = position[start_test:end_test]
         else:
@@ -132,12 +132,12 @@ def backtest_ml(ea, symbol, timeframe, spread, start, end, get_model,
     dd, ddr = calc_drawdown(profit[start_all:end_all])
     report.iloc[i, 0] = start_all.strftime('%Y.%m.%d')
     report.iloc[i, 1] = end_all.strftime('%Y.%m.%d')
-    report.iloc[i, 2] = str(np.round(profit[start_all:end_all].sum(), 3))
+    report.iloc[i, 2] = str(np.round(profit[start_all:end_all].sum(), 2))
     report.iloc[i, 3] = str(tt)
-    report.iloc[i, 4] = str(np.round(pf, 3))
-    report.iloc[i, 5] = str(np.round(ep, 3))
-    report.iloc[i, 6] = str(np.round(dd, 3))
-    report.iloc[i, 7] = str(np.round(ddr, 3))
+    report.iloc[i, 4] = str(np.round(pf, 2))
+    report.iloc[i, 5] = str(np.round(ep, 2))
+    report.iloc[i, 6] = str(np.round(dd, 2))
+    report.iloc[i, 7] = str(np.round(ddr, 2))
     report = report.iloc[0:i+1, :]
     report = report.dropna(axis=1)
     pd.set_option('display.max_columns', 100)
@@ -179,14 +179,14 @@ def backtest_opt(ea, symbol, timeframe, spread, start, end, rranges,
     dd, ddr = calc_drawdown(profit[start:end])
     report.iloc[0, 0] = start.strftime('%Y.%m.%d')
     report.iloc[0, 1] = end.strftime('%Y.%m.%d')
-    report.iloc[0, 2] = str(np.round(profit[start:end].sum(), 3))
+    report.iloc[0, 2] = str(np.round(profit[start:end].sum(), 2))
     report.iloc[0, 3] = str(tt)
-    report.iloc[0, 4] = str(np.round(pf, 3))
-    report.iloc[0, 5] = str(np.round(ep, 3))
-    report.iloc[0, 6] = str(np.round(dd, 3))
-    report.iloc[0, 7] = str(np.round(ddr, 3))
+    report.iloc[0, 4] = str(np.round(pf, 2))
+    report.iloc[0, 5] = str(np.round(ep, 2))
+    report.iloc[0, 6] = str(np.round(dd, 2))
+    report.iloc[0, 7] = str(np.round(ddr, 2))
     if inputs is not None:
-        report.iloc[0, 8] = np.round(inputs, 3)
+        report.iloc[0, 8] = np.round(inputs, 2)
     report = report.dropna(axis=1)
     pd.set_option('display.max_columns', 100)
     pd.set_option('display.width', 1000)
@@ -242,13 +242,13 @@ def backtest_wft(ea, symbol, timeframe, spread, start, end, rranges, min_trade,
         dd, ddr = calc_drawdown(profit[start_test:end_test])
         report.iloc[i, 0] = start_test.strftime('%Y.%m.%d')
         report.iloc[i, 1] = end_test.strftime('%Y.%m.%d')
-        report.iloc[i, 2] = str(np.round(profit[start_test:end_test].sum(), 3))
+        report.iloc[i, 2] = str(np.round(profit[start_test:end_test].sum(), 2))
         report.iloc[i, 3] = str(tt)
-        report.iloc[i, 4] = str(np.round(pf, 3))
-        report.iloc[i, 5] = str(np.round(ep, 3))
-        report.iloc[i, 6] = str(np.round(dd, 3))
-        report.iloc[i, 7] = str(np.round(ddr, 3))
-        report.iloc[i, 8] = np.round(inputs, 3)
+        report.iloc[i, 4] = str(np.round(pf, 2))
+        report.iloc[i, 5] = str(np.round(ep, 2))
+        report.iloc[i, 6] = str(np.round(dd, 2))
+        report.iloc[i, 7] = str(np.round(ddr, 2))
+        report.iloc[i, 8] = np.round(inputs, 2)
         if i == 0:
             temp = position[start_test:end_test]
         else:
@@ -263,12 +263,12 @@ def backtest_wft(ea, symbol, timeframe, spread, start, end, rranges, min_trade,
     dd, ddr = calc_drawdown(profit[start_all:end_all])
     report.iloc[i, 0] = start_all.strftime('%Y.%m.%d')
     report.iloc[i, 1] = end_all.strftime('%Y.%m.%d')
-    report.iloc[i, 2] = str(np.round(profit[start_all:end_all].sum(), 3))
+    report.iloc[i, 2] = str(np.round(profit[start_all:end_all].sum(), 2))
     report.iloc[i, 3] = str(tt)
-    report.iloc[i, 4] = str(np.round(pf, 3))
-    report.iloc[i, 5] = str(np.round(ep, 3))
-    report.iloc[i, 6] = str(np.round(dd, 3))
-    report.iloc[i, 7] = str(np.round(ddr, 3))
+    report.iloc[i, 4] = str(np.round(pf, 2))
+    report.iloc[i, 5] = str(np.round(ep, 2))
+    report.iloc[i, 6] = str(np.round(dd, 2))
+    report.iloc[i, 7] = str(np.round(ddr, 2))
     report.iloc[i, 8] = ''
     report = report.iloc[0:i+1, :]
     report = report.dropna(axis=1)
@@ -320,19 +320,21 @@ def calc_profit(position, symbol, timeframe, spread):
         adj_spread = spread / 10000.0
     buy_position = position * (position>0)
     sell_position = position * (position<0)
-    buy_cost = ((buy_position>0)&(buy_position.shift(1)<=0)) * adj_spread
-    sell_cost = ((sell_position<0)&(sell_position.shift(1)>=0)) * adj_spread
-    buy_profit = (op-op.shift(1)-buy_cost)*buy_position.shift(1)
-    sell_profit =(op-op.shift(1)+sell_cost)*sell_position.shift(1)
+    buy_cost = (
+            (buy_position>buy_position.shift(1))
+            * (buy_position-buy_position.shift(1)) * adj_spread)
+    sell_cost = (
+            (sell_position<sell_position.shift(1))
+            * (-sell_position+sell_position.shift(1)) * adj_spread)
+    buy_profit = (op-op.shift(1)) * buy_position.shift(1) - buy_cost
+    sell_profit =(op-op.shift(1)) * sell_position.shift(1) - sell_cost
     profit = buy_profit + sell_profit
     return profit
-
+# ドテン用に書き直す必要がある。
 def calc_profit_factor(profit, position, start, end):
     profit = profit[start:end]
     profit = np.array(profit)
-    position = position.shift(1)[start:end]
-    position.iloc[0] = 0.0
-    position = position.astype(int)
+    position = position[start:end]
     position = np.array(position)
     res = np.zeros(len(profit))
 
@@ -340,15 +342,20 @@ def calc_profit_factor(profit, position, start, end):
          cache=True)
     def func(res, profit, position):
         length = len(profit)
-        temp = 0
+        temp = 0.0
         cnt = 0
         for i in range(length):
-            if position[i] != 0:
-                temp += profit[i]
+            if i == 0:
+                if position[0] != 0:
+                    temp = profit[0]
             else:
-                res[cnt] = temp
-                temp = 0
-                cnt += 1
+                if position[i] != 0:
+                    temp += profit[i]
+                elif (position[i] == 0) & (position[i-1] != 0):
+                    temp += profit[i]
+                    res[cnt] = temp
+                    temp = 0.0
+                    cnt += 1
         return res
     res = func(res, profit, position)
     gross_profit = np.sum(res[res>0.0])
