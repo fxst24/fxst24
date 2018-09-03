@@ -293,7 +293,10 @@ def backtest_wft(ea, symbol, timeframe, spread, start, end, rranges, min_trade,
 def calc_drawdown(profit):
     equity = profit.cumsum()
     drawdown = (equity.cummax()-equity).max()
-    drawdown_relative = drawdown / equity.cummax().max() * 100.0
+    if equity.cummax().max() < EPS:
+        drawdown_relative = 10000.0
+    else:
+        drawdown_relative = drawdown / equity.cummax().max() * 100.0
     return drawdown, drawdown_relative
 
 def calc_position(buy_entry, buy_exit, sell_entry, sell_exit, lots):
