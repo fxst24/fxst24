@@ -299,7 +299,8 @@ def calc_drawdown(profit):
         drawdown_relative = drawdown / equity.cummax().max() * 100.0
     return drawdown, drawdown_relative
 
-def calc_position(buy_entry, buy_exit, sell_entry, sell_exit, lots):
+def calc_position(buy_entry, buy_exit, sell_entry, sell_exit, lots,
+                  holding_period=1):
     buy = buy_entry.copy()
     buy[buy_entry==False] = np.nan
     buy[buy_exit==True] = 0.0
@@ -310,8 +311,13 @@ def calc_position(buy_entry, buy_exit, sell_entry, sell_exit, lots):
     sell[sell_exit==True] = 0.0
     sell.iloc[0] = 0.0
     sell = sell.fillna(method='ffill')
-    position = (buy-sell) * lots * UNITS
-    position = position.fillna(0.0)
+    temp = (buy-sell) * lots * UNITS
+    temp = temp.fillna(0.0)
+    for i in range(holding_period):
+        if i == 0:
+            position = temp.copy()  # Must use "copy()"
+        else:
+            position += (temp.shift(i)).fillna(0.0)
     position = position.astype(int)
     return position
 
@@ -408,7 +414,7 @@ def forex_system():
     parser.add_argument('--spread', type=float)
     parser.add_argument('--start', type=str)
     parser.add_argument('--end', type=str)
-    parser.add_argument('--min_trade', type=int, default=260)
+    parser.add_argument('--min_trade', type=int, default=520)
     parser.add_argument('--in_sample_period', type=int, default=360)
     parser.add_argument('--out_of_sample_period', type=int, default=30)
     parser.add_argument('--start_train', type=str, default='')
