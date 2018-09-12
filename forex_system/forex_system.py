@@ -31,6 +31,16 @@ g_oanda = None
 g_environment = None
 g_access_token = None
 g_access_id = None
+# 作成中
+def analyze_profit(profit, start, end):
+    start, end = to_datetime(start, end)
+    res = pd.Series()
+#    for i in range(1, 6):
+#        res[str(i)] = (profit[time_day_of_week(profit)==i])[start:end].sum()
+#    print(res)
+    for i in range(24):
+        res[str(i)] = (profit[time_hour(profit)==i])[start:end].sum()
+    print(res)
 
 def backtest(ea, symbol, timeframe, spread, start, end, inputs):
     empty_folder('temp')
@@ -300,24 +310,28 @@ def calc_drawdown(profit):
     return drawdown, drawdown_relative
 
 def calc_position(buy_entry, buy_exit, sell_entry, sell_exit, lots,
-                  holding_period=1):
-    buy = buy_entry.copy()
-    buy[buy_entry==False] = np.nan
-    buy[buy_exit==True] = 0.0
-    buy.iloc[0] = 0.0
-    buy = buy.fillna(method='ffill')
-    sell = sell_entry.copy()
-    sell[sell_entry==False] = np.nan
-    sell[sell_exit==True] = 0.0
-    sell.iloc[0] = 0.0
-    sell = sell.fillna(method='ffill')
-    temp = (buy-sell) * lots * UNITS
-    temp = temp.fillna(0.0)
-    for i in range(holding_period):
-        if i == 0:
-            position = temp.copy()  # Must use "copy()"
-        else:
-            position += (temp.shift(i)).fillna(0.0)
+                  holding_period=0):
+    if holding_period == 0:
+        buy = buy_entry.copy()
+        buy[buy_entry==False] = np.nan
+        buy[buy_exit==True] = 0.0
+        buy.iloc[0] = 0.0
+        buy = buy.fillna(method='ffill')
+        sell = sell_entry.copy()
+        sell[sell_entry==False] = np.nan
+        sell[sell_exit==True] = 0.0
+        sell.iloc[0] = 0.0
+        sell = sell.fillna(method='ffill')
+        position = (buy-sell) * lots * UNITS
+        position = position.fillna(0.0)
+    else:
+        temp = (buy_entry.astype(int)-sell_entry.astype(int)) * lots * UNITS
+        temp = temp.fillna(0.0)
+        for i in range(holding_period):
+            if i == 0:
+                position = temp.copy()  # Must use "copy()"
+            else:
+                position += (temp.shift(i)).fillna(0.0)
     position = position.astype(int)
     return position
 
@@ -1127,6 +1141,21 @@ def i_open(symbol, timeframe, shift):
             ret = fill_data(ret)
             save_pkl(ret, pkl_file_path)
     return ret
+# 後日修正
+def i_outlier(symbol, timeframe, period, shift):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        vola = i_volatility(symbol, timeframe, int(1440/timeframe), shift)
+        for i in range(period):
+            if i == 0:
+                temp = (vola >= 3.0).astype(int)
+            else:
+                temp += (vola.shift(i) >= 3.0).astype(int)
+        ret = (temp >= 1).astype(int)
+        ret = fill_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
 
 def i_percentrank(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
                   jpy=0, nzd=0, usd=0):
@@ -1168,6 +1197,20 @@ def i_trend_duration(symbol, timeframe, period, shift):
         below = below * (
                 below.groupby((below!=below.shift()).cumsum()).cumcount()+1)
         ret= (above - below) / period
+        ret = fill_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
+def i_volatility(symbol, timeframe, period, shift):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        close = i_close(symbol, timeframe, shift)
+        close = close.apply(np.log)
+        change = close - close.shift(1)
+        mean = change.rolling(window=period).mean()
+        std = change.rolling(window=period).std()
+        ret = (change-mean) / std
         ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
@@ -1348,31 +1391,31 @@ def signal(ea, symbol, timeframe, file_name, inputs, start_train, end_train):
                 print(now.strftime('%Y.%m.%d %H:%M:%S'), file_name, symbol,
                       timeframe, position.iloc[end_row])
 
-def time_day(index):
-    time_day = pd.Series(index.day, index=index)
+def time_day(ts):
+    time_day = pd.Series(ts.index.day, index=ts.index)
     return time_day
 
 
-def time_day_of_week(index):
+def time_day_of_week(ts):
     # 0-Sunday,1,2,3,4,5,6
-    time_day_of_week = pd.Series(index.dayofweek, index=index) + 1
+    time_day_of_week = pd.Series(ts.index.dayofweek, index=ts.index) + 1
     time_day_of_week[time_day_of_week==7] = 0
     return time_day_of_week
 
-def time_hour(index):
-    time_hour = pd.Series(index.hour, index=index)
+def time_hour(ts):
+    time_hour = pd.Series(ts.index.hour, index=ts.index)
     return time_hour
 
-def time_minute(index):
-    time_minute = pd.Series(index.minute, index=index)
+def time_minute(ts):
+    time_minute = pd.Series(ts.index.minute, index=ts.index)
     return time_minute
 
-def time_month(index):
-    time_month = pd.Series(index.month, index=index)
+def time_month(ts):
+    time_month = pd.Series(ts.index.month, index=ts.index)
     return time_month
 
-def time_week_of_month(index):
-    day = time_day(index)
+def time_week_of_month(ts):
+    day = time_day(ts.index)
     time_week_of_month = (np.ceil(day / 7)).astype(int)
     return time_week_of_month
 
@@ -1413,6 +1456,11 @@ def to_csv_file(symbol):
                       'Volume']
     result = result.set_index('Time (UTC)')
     result.to_csv(filename_csv)
+
+def to_datetime(start, end):
+    start = datetime.strptime(start + ' 00:00', '%Y.%m.%d %H:%M')
+    end = datetime.strptime(end + ' 00:00', '%Y.%m.%d %H:%M')
+    return start, end
 
 def to_instrument(symbol):
     if symbol == 'AUDCAD':
