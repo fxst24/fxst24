@@ -1,21 +1,15 @@
 import argparse
-import configparser
 import glob
 import inspect
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
-import oandapy
 import os
 import pandas as pd
-import smtplib
 import struct
 import time
 from collections import OrderedDict
 from datetime import datetime, timedelta
-from email.mime.text import MIMEText
-from numba import float64, int64, jit
-#from pandas_datareader import data as web
 from scipy import optimize
 from scipy.stats import pearson3
 from sklearn.externals import joblib
@@ -31,16 +25,6 @@ g_oanda = None
 g_environment = None
 g_access_token = None
 g_access_id = None
-# 作成中
-def analyze_profit(profit, start, end):
-    start, end = to_datetime(start, end)
-    res = pd.Series()
-#    for i in range(1, 6):
-#        res[str(i)] = (profit[time_day_of_week(profit)==i])[start:end].sum()
-#    print(res)
-    for i in range(24):
-        res[str(i)] = (profit[time_hour(profit)==i])[start:end].sum()
-    print(res)
 
 def backtest(ea, symbol, timeframe, spread, start, end, inputs):
     empty_folder('temp')
@@ -49,30 +33,37 @@ def backtest(ea, symbol, timeframe, spread, start, end, inputs):
     end = datetime.strptime(end + ' 00:00', '%Y.%m.%d %H:%M')
     end -= timedelta(minutes=timeframe)
     report =  pd.DataFrame(
-            index=[''], columns=['start', 'end', 'profit', 'tt', 'pf', 'ep',
-                  'dd', 'ddr', 'inputs'])
-    position = ea(inputs, symbol, timeframe)
-    profit = calc_profit(position, symbol, timeframe, spread)
-    tnp = calc_total_net_profit(profit, start, end)
-    tt = calc_total_trades(position, start, end)
-    pf = calc_profit_factor(profit, position, start, end)
-    ep = tnp / tt
-    dd, ddr = calc_drawdown(profit[start:end])
+            index=[''], columns=['start', 'end', 'trade', 'apr', 'sharpe',
+                  'drawdown', 'inputs'])
+    for i in range(len(symbol)):
+        buy_entry, buy_exit, sell_entry, sell_exit = ea(
+                inputs, symbol[i], timeframe)
+        position = calc_position(
+                buy_entry, buy_exit, sell_entry, sell_exit)[start:end]
+        trade = calc_trade(position, start, end) 
+        pnl = calc_pnl(position, symbol[i], timeframe, spread[i])
+        if i == 0:
+            trade_all = trade
+            pnl_all = pnl
+        else:
+            trade_all += trade
+            pnl_all += pnl
+    apr = calc_apr(pnl_all, start, end)
+    sharpe = calc_sharpe(pnl_all, start, end)
+    drawdown = calc_drawdown(pnl_all, start, end)
     report.iloc[0, 0] = start.strftime('%Y.%m.%d')
     report.iloc[0, 1] = end.strftime('%Y.%m.%d')
-    report.iloc[0, 2] = str(np.round(profit[start:end].sum(), 2))
-    report.iloc[0, 3] = str(tt)
-    report.iloc[0, 4] = str(np.round(pf, 2))
-    report.iloc[0, 5] = str(np.round(ep, 2))
-    report.iloc[0, 6] = str(np.round(dd, 2))
-    report.iloc[0, 7] = str(np.round(ddr, 2))
+    report.iloc[0, 2] = str(trade_all)
+    report.iloc[0, 3] = str(np.round(apr, 2))
+    report.iloc[0, 4] = str(np.round(sharpe, 2))
+    report.iloc[0, 5] = str(np.round(drawdown, 2))
     if inputs is not None:
-        report.iloc[0, 8] = np.round(inputs, 2)
+        report.iloc[0, 6] = np.round(inputs, 2)
     report = report.dropna(axis=1)
     pd.set_option('display.max_columns', 100)
     pd.set_option('display.width', 1000)
     print(report)
-    equity = profit[start:end].cumsum()
+    equity = (1.0+pnl_all).cumprod() - 1.0
     ax=plt.subplot()
     ax.set_xticklabels(equity.index, rotation=45)
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
@@ -85,8 +76,8 @@ def backtest(ea, symbol, timeframe, spread, start, end, inputs):
     plt.show()
     plt.close()
     empty_folder('temp')
-    return profit
-
+    return pnl_all
+# 後日修正
 def backtest_ml(ea, symbol, timeframe, spread, start, end, get_model,
                 in_sample_period, out_of_sample_period):
     empty_folder('temp')
@@ -94,9 +85,10 @@ def backtest_ml(ea, symbol, timeframe, spread, start, end, get_model,
     start = datetime.strptime(start + ' 00:00', '%Y.%m.%d %H:%M')
     end = datetime.strptime(end + ' 00:00', '%Y.%m.%d %H:%M')
     end -= timedelta(minutes=timeframe)
+    inputs = None
     report =  pd.DataFrame(
-            index=[['']*1000], columns=['start_test', 'end_test', 'profit',
-                  'tt', 'pf', 'ep', 'dd', 'ddr'])
+            index=[['']*1000], columns=['start_test', 'end_test', 'trade',
+                  'apr', 'sharpe', 'drawdown'])
     end_test = start
     i = 0
     while True:
@@ -112,48 +104,52 @@ def backtest_ml(ea, symbol, timeframe, spread, start, end, get_model,
             break
         end_test = (start_test + timedelta(days=out_of_sample_period)
             - timedelta(minutes=timeframe))
-        get_model(symbol, timeframe, start_train, end_train)
-        position = ea(None, symbol, timeframe)
-        profit = calc_profit(position, symbol, timeframe, spread)
-        tnp = calc_total_net_profit(profit, start_test, end_test)
-        tt = calc_total_trades(position, start_test, end_test)
-        pf = calc_profit_factor(profit, position, start_test, end_test)
-        ep = tnp / tt
-        dd, ddr = calc_drawdown(profit[start_test:end_test])
+        for j in range(len(symbol)):
+            buy_entry, buy_exit, sell_entry, sell_exit = ea(
+                    inputs, symbol[j], timeframe)
+            position = calc_position(
+                    buy_entry, buy_exit, sell_entry,
+                    sell_exit)[start_test:end_test]
+            trade = calc_trade(position, start_test, end_test) 
+            pnl = calc_pnl(position, symbol[j], timeframe, spread[j])
+            if j == 0:
+                trade_all = trade
+                pnl_all = pnl
+            else:
+                trade_all += trade
+                pnl_all += pnl
+        apr = calc_apr(pnl_all, start_test, end_test)
+        sharpe = calc_sharpe(pnl_all, start_test, end_test)
+        drawdown = calc_drawdown(pnl_all, start_test, end_test)
         report.iloc[i, 0] = start_test.strftime('%Y.%m.%d')
         report.iloc[i, 1] = end_test.strftime('%Y.%m.%d')
-        report.iloc[i, 2] = str(np.round(profit[start_test:end_test].sum(), 2))
-        report.iloc[i, 3] = str(tt)
-        report.iloc[i, 4] = str(np.round(pf, 2))
-        report.iloc[i, 5] = str(np.round(ep, 2))
-        report.iloc[i, 6] = str(np.round(dd, 2))
-        report.iloc[i, 7] = str(np.round(ddr, 2))
+        report.iloc[i, 2] = str(trade)
+        report.iloc[i, 3] = str(np.round(apr, 2))
+        report.iloc[i, 4] = str(np.round(sharpe, 2))
+        report.iloc[i, 5] = str(np.round(drawdown, 2))
         if i == 0:
-            temp = position[start_test:end_test]
+            temp = pnl_all[start_test:end_test]
+            trade_all_all = trade_all
         else:
-            temp = temp.append(position[start_test:end_test])
+            temp = temp.append(pnl_all[start_test:end_test])
+            trade_all_all += trade_all
         i += 1
-    position = temp
-    profit = calc_profit(position, symbol, timeframe, spread)
-    tnp = calc_total_net_profit(profit, start_all, end_all)
-    tt = calc_total_trades(position, start_all, end_all)
-    pf = calc_profit_factor(profit, position, start_all, end_all)
-    ep = tnp / tt
-    dd, ddr = calc_drawdown(profit[start_all:end_all])
+    pnl_all = temp
+    apr = calc_apr(pnl_all, start_all, end_all)
+    sharpe = calc_sharpe(pnl_all, start_all, end_all)
+    drawdown = calc_drawdown(pnl_all, start_all, end_all)
     report.iloc[i, 0] = start_all.strftime('%Y.%m.%d')
     report.iloc[i, 1] = end_all.strftime('%Y.%m.%d')
-    report.iloc[i, 2] = str(np.round(profit[start_all:end_all].sum(), 2))
-    report.iloc[i, 3] = str(tt)
-    report.iloc[i, 4] = str(np.round(pf, 2))
-    report.iloc[i, 5] = str(np.round(ep, 2))
-    report.iloc[i, 6] = str(np.round(dd, 2))
-    report.iloc[i, 7] = str(np.round(ddr, 2))
+    report.iloc[i, 2] = str(trade)
+    report.iloc[i, 3] = str(np.round(apr, 2))
+    report.iloc[i, 4] = str(np.round(sharpe, 2))
+    report.iloc[i, 5] = str(np.round(drawdown, 2))
     report = report.iloc[0:i+1, :]
     report = report.dropna(axis=1)
     pd.set_option('display.max_columns', 100)
     pd.set_option('display.width', 1000)
     print(report)
-    equity = profit[start_all:end_all].cumsum()
+    equity = (1.0+pnl_all).cumprod() - 1.0
     ax=plt.subplot()
     ax.set_xticklabels(equity.index, rotation=45)
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
@@ -166,7 +162,7 @@ def backtest_ml(ea, symbol, timeframe, spread, start, end, get_model,
     plt.show()
     plt.close()
     empty_folder('temp')
-    return profit
+    return pnl_all
 
 def backtest_opt(ea, symbol, timeframe, spread, start, end, rranges,
                  min_trade):
@@ -176,32 +172,39 @@ def backtest_opt(ea, symbol, timeframe, spread, start, end, rranges,
     end = datetime.strptime(end + ' 00:00', '%Y.%m.%d %H:%M')
     end -= timedelta(minutes=timeframe)
     report =  pd.DataFrame(
-            index=[''], columns=['start', 'end', 'profit', 'tt', 'pf', 'ep',
-                  'dd', 'ddr', 'inputs'])
+            index=[''], columns=['start', 'end', 'trade', 'apr', 'sharpe',
+                  'drawdown', 'inputs'])
     inputs = optimize_inputs(ea, symbol, timeframe, spread, start, end,
                              min_trade, rranges)
-    position = ea(inputs, symbol, timeframe)
-    profit = calc_profit(position, symbol, timeframe, spread)
-    tnp = calc_total_net_profit(profit, start, end)
-    tt = calc_total_trades(position, start, end)
-    pf = calc_profit_factor(profit, position, start, end)
-    ep = tnp / tt
-    dd, ddr = calc_drawdown(profit[start:end])
+    for i in range(len(symbol)):
+        buy_entry, buy_exit, sell_entry, sell_exit = ea(
+                inputs, symbol[i], timeframe)
+        position = calc_position(
+                buy_entry, buy_exit, sell_entry, sell_exit)[start:end]
+        trade = calc_trade(position, start, end) 
+        pnl = calc_pnl(position, symbol[i], timeframe, spread[i])
+        if i == 0:
+            trade_all = trade
+            pnl_all = pnl
+        else:
+            trade_all += trade
+            pnl_all += pnl
+    apr = calc_apr(pnl_all, start, end)
+    sharpe = calc_sharpe(pnl_all, start, end)
+    drawdown = calc_drawdown(pnl_all, start, end)
     report.iloc[0, 0] = start.strftime('%Y.%m.%d')
     report.iloc[0, 1] = end.strftime('%Y.%m.%d')
-    report.iloc[0, 2] = str(np.round(profit[start:end].sum(), 2))
-    report.iloc[0, 3] = str(tt)
-    report.iloc[0, 4] = str(np.round(pf, 2))
-    report.iloc[0, 5] = str(np.round(ep, 2))
-    report.iloc[0, 6] = str(np.round(dd, 2))
-    report.iloc[0, 7] = str(np.round(ddr, 2))
+    report.iloc[0, 2] = str(trade_all)
+    report.iloc[0, 3] = str(np.round(apr, 2))
+    report.iloc[0, 4] = str(np.round(sharpe, 2))
+    report.iloc[0, 5] = str(np.round(drawdown, 2))
     if inputs is not None:
-        report.iloc[0, 8] = np.round(inputs, 2)
+        report.iloc[0, 6] = np.round(inputs, 2)
     report = report.dropna(axis=1)
     pd.set_option('display.max_columns', 100)
     pd.set_option('display.width', 1000)
     print(report)
-    equity = profit[start:end].cumsum()
+    equity = (1.0+pnl_all).cumprod() - 1.0
     ax=plt.subplot()
     ax.set_xticklabels(equity.index, rotation=45)
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
@@ -214,7 +217,7 @@ def backtest_opt(ea, symbol, timeframe, spread, start, end, rranges,
     plt.show()
     plt.close()
     empty_folder('temp')
-    return profit
+    return pnl_all
 
 def backtest_wft(ea, symbol, timeframe, spread, start, end, rranges, min_trade,
                  in_sample_period, out_of_sample_period):
@@ -224,8 +227,8 @@ def backtest_wft(ea, symbol, timeframe, spread, start, end, rranges, min_trade,
     end = datetime.strptime(end + ' 00:00', '%Y.%m.%d %H:%M')
     end -= timedelta(minutes=timeframe)
     report =  pd.DataFrame(
-            index=[['']*1000], columns=['start_test', 'end_test', 'profit',
-                  'tt', 'pf', 'ep', 'dd', 'ddr', 'inputs'])
+            index=[['']*1000], columns=['start_test', 'end_test', 'trade',
+                  'apr', 'sharpe', 'drawdown', 'inputs'])
     end_test = start
     i = 0
     while True:
@@ -243,49 +246,54 @@ def backtest_wft(ea, symbol, timeframe, spread, start, end, rranges, min_trade,
             - timedelta(minutes=timeframe))
         inputs = optimize_inputs(ea, symbol, timeframe, spread, start_train,
                                  end_train, min_trade, rranges)
-        position = ea(inputs, symbol, timeframe)
-        profit = calc_profit(position, symbol, timeframe, spread)
-        tnp = calc_total_net_profit(profit, start_test, end_test)
-        tt = calc_total_trades(position, start_test, end_test)
-        pf = calc_profit_factor(profit, position, start_test, end_test)
-        ep = tnp / tt
-        dd, ddr = calc_drawdown(profit[start_test:end_test])
+        for j in range(len(symbol)):
+            buy_entry, buy_exit, sell_entry, sell_exit = ea(
+                    inputs, symbol[j], timeframe)
+            position = calc_position(
+                    buy_entry, buy_exit, sell_entry,
+                    sell_exit)[start_test:end_test]
+            trade = calc_trade(position, start_test, end_test) 
+            pnl = calc_pnl(position, symbol[j], timeframe, spread[j])
+            if j == 0:
+                trade_all = trade
+                pnl_all = pnl
+            else:
+                trade_all += trade
+                pnl_all += pnl
+        apr = calc_apr(pnl_all, start_test, end_test)
+        sharpe = calc_sharpe(pnl_all, start_test, end_test)
+        drawdown = calc_drawdown(pnl_all, start_test, end_test)
         report.iloc[i, 0] = start_test.strftime('%Y.%m.%d')
         report.iloc[i, 1] = end_test.strftime('%Y.%m.%d')
-        report.iloc[i, 2] = str(np.round(profit[start_test:end_test].sum(), 2))
-        report.iloc[i, 3] = str(tt)
-        report.iloc[i, 4] = str(np.round(pf, 2))
-        report.iloc[i, 5] = str(np.round(ep, 2))
-        report.iloc[i, 6] = str(np.round(dd, 2))
-        report.iloc[i, 7] = str(np.round(ddr, 2))
-        report.iloc[i, 8] = np.round(inputs, 2)
+        report.iloc[i, 2] = str(trade_all)
+        report.iloc[i, 3] = str(np.round(apr, 2))
+        report.iloc[i, 4] = str(np.round(sharpe, 2))
+        report.iloc[i, 5] = str(np.round(drawdown, 2))
+        report.iloc[i, 6] = np.round(inputs, 2)
         if i == 0:
-            temp = position[start_test:end_test]
+            temp = pnl_all[start_test:end_test]
+            trade_all_all = trade_all
         else:
-            temp = temp.append(position[start_test:end_test])
+            temp = temp.append(pnl_all[start_test:end_test])
+            trade_all_all += trade_all
         i += 1
-    position = temp
-    profit = calc_profit(position, symbol, timeframe, spread)
-    tnp = calc_total_net_profit(profit, start_all, end_all)
-    tt = calc_total_trades(position, start_all, end_all)
-    pf = calc_profit_factor(profit, position, start_all, end_all)
-    ep = tnp / tt
-    dd, ddr = calc_drawdown(profit[start_all:end_all])
+    pnl_all = temp
+    apr = calc_apr(pnl_all, start_all, end_all)
+    sharpe = calc_sharpe(pnl_all, start_all, end_all)
+    drawdown = calc_drawdown(pnl_all, start_all, end_all)
     report.iloc[i, 0] = start_all.strftime('%Y.%m.%d')
     report.iloc[i, 1] = end_all.strftime('%Y.%m.%d')
-    report.iloc[i, 2] = str(np.round(profit[start_all:end_all].sum(), 2))
-    report.iloc[i, 3] = str(tt)
-    report.iloc[i, 4] = str(np.round(pf, 2))
-    report.iloc[i, 5] = str(np.round(ep, 2))
-    report.iloc[i, 6] = str(np.round(dd, 2))
-    report.iloc[i, 7] = str(np.round(ddr, 2))
-    report.iloc[i, 8] = ''
+    report.iloc[i, 2] = str(trade_all_all)
+    report.iloc[i, 3] = str(np.round(apr, 2))
+    report.iloc[i, 4] = str(np.round(sharpe, 2))
+    report.iloc[i, 5] = str(np.round(drawdown, 2))
+    report.iloc[i, 6] = ''
     report = report.iloc[0:i+1, :]
     report = report.dropna(axis=1)
     pd.set_option('display.max_columns', 100)
     pd.set_option('display.width', 1000)
     print(report)
-    equity = profit[start_all:end_all].cumsum()
+    equity = (1.0+pnl_all).cumprod() - 1.0
     ax=plt.subplot()
     ax.set_xticklabels(equity.index, rotation=45)
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
@@ -298,18 +306,39 @@ def backtest_wft(ea, symbol, timeframe, spread, start, end, rranges, min_trade,
     plt.show()
     plt.close()
     empty_folder('temp')
-    return profit
+    return pnl_all
 
-def calc_drawdown(profit):
-    equity = profit.cumsum()
+def calc_apr(pnl, start, end):
+    cum_pnl = (1.0+pnl[start:end]).cumprod() - 1.0
+    year = (end-start).total_seconds() / (60*60*24*365)
+    apr = cum_pnl.iloc[len(cum_pnl)-2] / year # must use "-2"
+    return apr
+
+def calc_drawdown(pnl, start, end):
+    equity = (1.0+pnl[start:end]).cumprod() - 1.0
     drawdown = (equity.cummax()-equity).max()
-    if equity.cummax().max() < EPS:
-        drawdown_relative = 10000.0
-    else:
-        drawdown_relative = drawdown / equity.cummax().max() * 100.0
-    return drawdown, drawdown_relative
+    return drawdown
 
-def calc_position(buy_entry, buy_exit, sell_entry, sell_exit, lots,
+def calc_pnl(position, symbol, timeframe, spread):
+    op = i_open(symbol, timeframe, 0)
+    if op[len(op)-1] >= 50.0:  # e.g. Cross Yen.
+        adj_spread = spread / 100.0
+    else:
+        adj_spread = spread / 10000.0
+    buy_position = position * (position>0.0)
+    sell_position = position * (position<0.0)
+    buy_cost = (
+            (buy_position>EPS)
+            * (buy_position-buy_position.shift(1)) * (adj_spread / op))
+    sell_cost = (
+            (-sell_position>EPS)
+            * (-sell_position+sell_position.shift(1)) * (adj_spread / op))
+    buy_pnl = (op.shift(-1)-op) / op * buy_position - buy_cost
+    sell_pnl = (op.shift(-1)-op) / op * sell_position - sell_cost
+    pnl = buy_pnl + sell_pnl
+    return pnl
+
+def calc_position(buy_entry, buy_exit, sell_entry, sell_exit,
                   holding_period=0):
     if holding_period == 0:
         buy = buy_entry.copy()
@@ -322,86 +351,37 @@ def calc_position(buy_entry, buy_exit, sell_entry, sell_exit, lots,
         sell[sell_exit==True] = 0.0
         sell.iloc[0] = 0.0
         sell = sell.fillna(method='ffill')
-        position = (buy-sell) * lots * UNITS
+        position = (buy-sell)
         position = position.fillna(0.0)
     else:
-        temp = (buy_entry.astype(int)-sell_entry.astype(int)) * lots * UNITS
+        temp = buy_entry - sell_entry
         temp = temp.fillna(0.0)
         for i in range(holding_period):
             if i == 0:
                 position = temp.copy()  # Must use "copy()"
             else:
                 position += (temp.shift(i)).fillna(0.0)
-    position = position.astype(int)
+        position /= holding_period
     return position
 
-def calc_profit(position, symbol, timeframe, spread):
-    op = i_open(symbol, timeframe, 0)
-    if op[len(op)-1] >= 50.0:  # e.g. Cross Yen.
-        adj_spread = spread / 100.0
+def calc_sharpe(pnl, start, end):
+    mean = pnl[start:end].mean()
+    std = pnl[start:end].std()
+    timeframe = (end-start).total_seconds() / 60 / len(pnl[start:end])
+    if std > EPS:
+        sharpe = mean / std * np.sqrt(260*1440/timeframe)
     else:
-        adj_spread = spread / 10000.0
+        sharpe = 0.0
+    return sharpe
+
+def calc_trade(position, start, end):
     buy_position = position * (position>0)
     sell_position = position * (position<0)
-    buy_cost = (
-            (buy_position>buy_position.shift(1))
-            * (buy_position-buy_position.shift(1)) * adj_spread)
-    sell_cost = (
-            (sell_position<sell_position.shift(1))
-            * (-sell_position+sell_position.shift(1)) * adj_spread)
-    buy_profit = (op-op.shift(1)) * buy_position.shift(1) - buy_cost
-    sell_profit =(op-op.shift(1)) * sell_position.shift(1) - sell_cost
-    profit = buy_profit + sell_profit
-    return profit
-# ドテン用に書き直す必要がある。
-def calc_profit_factor(profit, position, start, end):
-    profit = profit[start:end]
-    profit = np.array(profit)
-    position = position[start:end]
-    position = np.array(position)
-    res = np.zeros(len(profit))
-
-    @jit(float64[:](float64[:], float64[:], int64[:]), nopython=True,
-         cache=True)
-    def func(res, profit, position):
-        length = len(profit)
-        temp = 0.0
-        cnt = 0
-        for i in range(length):
-            if i == 0:
-                if position[0] != 0:
-                    temp = profit[0]
-            else:
-                if position[i] != 0:
-                    temp += profit[i]
-                elif (position[i] == 0) & (position[i-1] != 0):
-                    temp += profit[i]
-                    res[cnt] = temp
-                    temp = 0.0
-                    cnt += 1
-        return res
-    res = func(res, profit, position)
-    gross_profit = np.sum(res[res>0.0])
-    gross_loss = np.sum(res[res<0.0])
-    gross_loss = np.abs(gross_loss)
-    if gross_loss != 0:
-        profit_factor = gross_profit / gross_loss
-    else:
-        profit_factor = np.nan
-    return profit_factor
-
-def calc_total_net_profit(profit, start, end):
-    total_net_profit = profit[start:end].sum()
-    return total_net_profit
-
-def calc_total_trades(position, start, end):
-    buy_position = position * (position>0)
-    sell_position = position * (position<0)
-    buy_trades = (buy_position<buy_position.shift(1)).astype(int)
-    sell_trades = (sell_position>sell_position.shift(1)).astype(int)
-    total_trades = (buy_trades+sell_trades)[start:end]
-    total_trades = total_trades.sum()
-    return total_trades
+    buy_trade = (buy_position<buy_position.shift(1)).astype(int)
+    sell_trade = (sell_position>sell_position.shift(1)).astype(int)
+    trade = (buy_trade+sell_trade)
+    trade = trade[start:end].sum()
+    return trade
 
 def create_folder(folder):
     pathname = os.path.dirname(__file__)
@@ -423,18 +403,14 @@ def fill_data(data):
 def forex_system():
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode', type=str)
-    parser.add_argument('--symbol', type=str)
+    parser.add_argument('--symbol', action='append', type=str)
     parser.add_argument('--timeframe', type=int)
-    parser.add_argument('--spread', type=float)
+    parser.add_argument('--spread', action='append', type=float)
     parser.add_argument('--start', type=str)
     parser.add_argument('--end', type=str)
     parser.add_argument('--min_trade', type=int, default=520)
     parser.add_argument('--in_sample_period', type=int, default=360)
     parser.add_argument('--out_of_sample_period', type=int, default=30)
-    parser.add_argument('--start_train', type=str, default='')
-    parser.add_argument('--end_train', type=str, default='')
-    parser.add_argument('--mail', type=int, default=1)
-    parser.add_argument('--mt4', type=int, default=0)
     args = parser.parse_args()
     mode = args.mode
     symbol = args.symbol
@@ -445,47 +421,29 @@ def forex_system():
     min_trade = args.min_trade
     in_sample_period = args.in_sample_period
     out_of_sample_period = args.out_of_sample_period
-    start_train = args.start_train
-    end_train = args.end_train
-    mail = args.mail
-    mt4 = args.mt4
     calling_module = inspect.getmodule(inspect.stack()[1][0])
     ea = calling_module.ea
     get_model = calling_module.get_model
     inputs = calling_module.INPUTS
     rranges = calling_module.RRANGES
-    profit = None
+    pnl = None
     if mode == 'backtest':
-        profit = backtest(ea, symbol, timeframe, spread, start, end,
+        pnl = backtest(ea, symbol, timeframe, spread, start, end,
                        inputs=inputs)
     elif mode == 'backtest_opt':
-        profit = backtest_opt(ea, symbol, timeframe, spread, start, end,
+        pnl = backtest_opt(ea, symbol, timeframe, spread, start, end,
                            rranges=rranges, min_trade=min_trade)
     elif mode == 'backtest_wft':
-        profit = backtest_wft(ea, symbol, timeframe, spread, start, end,
+        pnl = backtest_wft(ea, symbol, timeframe, spread, start, end,
                            rranges=rranges, min_trade=min_trade,
                            in_sample_period=in_sample_period,
                            out_of_sample_period=out_of_sample_period)
     elif mode == 'backtest_ml':
-        profit = backtest_ml(ea, symbol, timeframe, spread, start, end,
-                           get_model=get_model,
-                           in_sample_period=in_sample_period,
-                           out_of_sample_period=out_of_sample_period)
-    elif mode == 'trade':
-        pathname = os.path.dirname(__file__)
-        temp = inspect.getmodule(inspect.stack()[1][0]).__file__
-        temp = temp.replace(pathname + '/', '') 
-        ea, ext = os.path.splitext(temp)
-        trade(ea, symbol, timeframe, ea, inputs=inputs,
-              start_train=start_train, end_train=end_train, mail=mail, mt4=mt4)
-    elif mode == 'signal':
-        pathname = os.path.dirname(__file__)
-        temp = inspect.getmodule(inspect.stack()[1][0]).__file__
-        temp = temp.replace(pathname + '/', '') 
-        file_name, ext = os.path.splitext(temp)
-        signal(ea, symbol, timeframe, file_name, inputs=inputs,
-               start_train=start_train, end_train=end_train)
-    return profit
+        pnl = backtest_ml(ea, symbol, timeframe, spread, start, end,
+                          get_model=get_model,
+                          in_sample_period=in_sample_period,
+                          out_of_sample_period=out_of_sample_period)
+    return pnl
 
 def get_base_and_quote(symbol):
     if symbol == 'AUDCAD':
@@ -757,31 +715,17 @@ def i_atr(symbol, timeframe, period, shift):
 
 def i_close(symbol, timeframe, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
-    if g_oanda is not None:
-        instrument = to_instrument(symbol)
-        granularity = to_granularity(timeframe)
-        temp = g_oanda.get_history(
-            instrument=instrument, granularity=granularity, count=COUNT)
-        index = pd.Series(np.zeros(COUNT))
-        ret = pd.Series(np.zeros(COUNT))
-        for i in range(COUNT):
-            index[i] = temp['candles'][i]['time']
-            ret[i] = temp['candles'][i]['closeBid']
-            index = pd.to_datetime(index)
-            ret.index = index
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        filename = ('~/py/historical_data/' + symbol + str(timeframe) +
+            '.csv')
+        temp = pd.read_csv(filename, index_col=0, header=0)
+        index = pd.to_datetime(temp.index)
+        temp.index = index
+        ret = temp.iloc[:, 3]
         ret = ret.shift(shift)
-    else:
-        ret = restore_pkl(pkl_file_path)
-        if ret is None:
-            filename = ('~/py/historical_data/' + symbol + str(timeframe) +
-                '.csv')
-            temp = pd.read_csv(filename, index_col=0, header=0)
-            index = pd.to_datetime(temp.index)
-            temp.index = index
-            ret = temp.iloc[:, 3]
-            ret = ret.shift(shift)
-            ret = fill_data(ret)
-            save_pkl(ret, pkl_file_path)
+        ret = fill_data(ret)
+        save_pkl(ret, pkl_file_path)
     return ret
 
 def i_daily_high(symbol, timeframe, shift):
@@ -871,32 +815,17 @@ def i_event(symbol, timeframe, before, after):
 
 def i_high(symbol, timeframe, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
-    #
-    if g_oanda is not None:
-        instrument = to_instrument(symbol)
-        granularity = to_granularity(timeframe)
-        temp = g_oanda.get_history(
-            instrument=instrument, granularity=granularity, count=COUNT)
-        index = pd.Series(np.zeros(COUNT))
-        ret = pd.Series(np.zeros(COUNT))
-        for i in range(COUNT):
-            index[i] = temp['candles'][i]['time']
-            ret[i] = temp['candles'][i]['highBid']
-            index = pd.to_datetime(index)
-            ret.index = index
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        filename = ('~/py/historical_data/' + symbol + str(timeframe) +
+            '.csv')
+        temp = pd.read_csv(filename, index_col=0, header=0)
+        index = pd.to_datetime(temp.index)
+        temp.index = index
+        ret = temp.iloc[:, 1]
         ret = ret.shift(shift)
-    else:
-        ret = restore_pkl(pkl_file_path)
-        if ret is None:
-            filename = ('~/py/historical_data/' + symbol + str(timeframe) +
-                '.csv')
-            temp = pd.read_csv(filename, index_col=0, header=0)
-            index = pd.to_datetime(temp.index)
-            temp.index = index
-            ret = temp.iloc[:, 1]
-            ret = ret.shift(shift)
-            ret = fill_data(ret)
-            save_pkl(ret, pkl_file_path)
+        ret = fill_data(ret)
+        save_pkl(ret, pkl_file_path)
     return ret
 
 def i_highest(symbol, timeframe, period, shift):
@@ -1044,31 +973,17 @@ def i_ku_zscore(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
 
 def i_low(symbol, timeframe, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
-    if g_oanda is not None:
-        instrument = to_instrument(symbol)
-        granularity = to_granularity(timeframe)
-        temp = g_oanda.get_history(
-            instrument=instrument, granularity=granularity, count=COUNT)
-        index = pd.Series(np.zeros(COUNT))
-        ret = pd.Series(np.zeros(COUNT))
-        for i in range(COUNT):
-            index[i] = temp['candles'][i]['time']
-            ret[i] = temp['candles'][i]['lowBid']
-            index = pd.to_datetime(index)
-            ret.index = index
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        filename = ('~/py/historical_data/' + symbol + str(timeframe) +
+            '.csv')
+        temp = pd.read_csv(filename, index_col=0, header=0)
+        index = pd.to_datetime(temp.index)
+        temp.index = index
+        ret = temp.iloc[:, 2]
         ret = ret.shift(shift)
-    else:
-        ret = restore_pkl(pkl_file_path)
-        if ret is None:
-            filename = ('~/py/historical_data/' + symbol + str(timeframe) +
-                '.csv')
-            temp = pd.read_csv(filename, index_col=0, header=0)
-            index = pd.to_datetime(temp.index)
-            temp.index = index
-            ret = temp.iloc[:, 2]
-            ret = ret.shift(shift)
-            ret = fill_data(ret)
-            save_pkl(ret, pkl_file_path)
+        ret = fill_data(ret)
+        save_pkl(ret, pkl_file_path)
     return ret
 
 def i_lowest(symbol, timeframe, period, shift):
@@ -1115,44 +1030,15 @@ def i_no_entry_level(symbol, timeframe, period, pct, shift):
 
 def i_open(symbol, timeframe, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
-    if g_oanda is not None:
-        instrument = to_instrument(symbol)
-        granularity = to_granularity(timeframe)
-        temp = g_oanda.get_history(
-            instrument=instrument, granularity=granularity, count=COUNT)
-        index = pd.Series(np.zeros(COUNT))
-        ret = pd.Series(np.zeros(COUNT))
-        for i in range(COUNT):
-            index[i] = temp['candles'][i]['time']
-            ret[i] = temp['candles'][i]['openBid']
-            index = pd.to_datetime(index)
-            ret.index = index
-        ret = ret.shift(shift)
-    else:
-        ret = restore_pkl(pkl_file_path)
-        if ret is None:
-            filename = ('~/py/historical_data/' + symbol + str(timeframe) +
-                '.csv')
-            temp = pd.read_csv(filename, index_col=0, header=0)
-            index = pd.to_datetime(temp.index)
-            temp.index = index
-            ret = temp.iloc[:, 0]
-            ret = ret.shift(shift)
-            ret = fill_data(ret)
-            save_pkl(ret, pkl_file_path)
-    return ret
-# 後日修正
-def i_outlier(symbol, timeframe, period, shift):
-    pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
-        vola = i_volatility(symbol, timeframe, int(1440/timeframe), shift)
-        for i in range(period):
-            if i == 0:
-                temp = (vola >= 3.0).astype(int)
-            else:
-                temp += (vola.shift(i) >= 3.0).astype(int)
-        ret = (temp >= 1).astype(int)
+        filename = ('~/py/historical_data/' + symbol + str(timeframe) +
+            '.csv')
+        temp = pd.read_csv(filename, index_col=0, header=0)
+        index = pd.to_datetime(temp.index)
+        temp.index = index
+        ret = temp.iloc[:, 0]
+        ret = ret.shift(shift)
         ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
@@ -1217,31 +1103,17 @@ def i_volatility(symbol, timeframe, period, shift):
 
 def i_volume(symbol, timeframe, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
-    if g_oanda is not None:
-        instrument = to_instrument(symbol)
-        granularity = to_granularity(timeframe)
-        temp = g_oanda.get_history(
-            instrument=instrument, granularity=granularity, count=COUNT)
-        index = pd.Series(np.zeros(COUNT))
-        ret = pd.Series(np.zeros(COUNT))
-        for i in range(COUNT):
-            index[i] = temp['candles'][i]['time']
-            ret[i] = temp['candles'][i]['volumeBid']
-            index = pd.to_datetime(index)
-            ret.index = index
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        filename = ('~/py/historical_data/' + symbol + str(timeframe) +
+            '.csv')
+        temp = pd.read_csv( filename, index_col=0, header=0)
+        index = pd.to_datetime(temp.index)
+        temp.index = index
+        ret = temp.iloc[:, 4]
         ret = ret.shift(shift)
-    else:
-        ret = restore_pkl(pkl_file_path)
-        if ret is None:
-            filename = ('~/py/historical_data/' + symbol + str(timeframe) +
-                '.csv')
-            temp = pd.read_csv( filename, index_col=0, header=0)
-            index = pd.to_datetime(temp.index)
-            temp.index = index
-            ret = temp.iloc[:, 4]
-            ret = ret.shift(shift)
-            ret = fill_data(ret)
-            save_pkl(ret, pkl_file_path)
+        ret = fill_data(ret)
+        save_pkl(ret, pkl_file_path)
     return ret
 
 def i_zscore(symbol, timeframe, period, shift):
@@ -1259,34 +1131,30 @@ def i_zscore(symbol, timeframe, period, shift):
 def optimize_inputs(ea, symbol, timeframe, spread, start, end, min_trade,
                        rranges):
     def func(inputs, ea, symbol, timeframe, spread, start, end, min_trade):
-        position = ea(inputs, symbol, timeframe)
-        profit = calc_profit(position, symbol, timeframe, spread)
-        #tnp = calc_total_net_profit(profit, start, end)
-        tt = calc_total_trades(position, start, end)
-        pf = calc_profit_factor(profit, position, start, end)
-        #ep = tnp / tt
-        #dd, ddr = calc_drawdown(profit[start:end])
+        for i in range(len(symbol)):
+            buy_entry, buy_exit, sell_entry, sell_exit = ea(
+                    inputs, symbol[i], timeframe)
+            position = calc_position(
+                    buy_entry, buy_exit, sell_entry, sell_exit)[start:end]
+            trade = calc_trade(position, start, end) 
+            pnl = calc_pnl(position, symbol[i], timeframe, spread[i])
+            if i == 0:
+                trade_all = trade
+                pnl_all = pnl
+            else:
+                trade_all += trade
+                pnl_all += pnl
+        sharpe = calc_sharpe(pnl_all, start, end)        
         years = (end-start).total_seconds() / (60*60*24*365)
-        if tt / years < min_trade:
-            pf = 0.0
-        return -pf
+        if trade_all/years < min_trade*len(symbol):
+            sharpe = 0.0
+        return -sharpe
 
     inputs = optimize.brute(
             func, rranges, args=(
                     ea, symbol, timeframe, spread, start, end, min_trade),
                     finish=None)
     return inputs
-
-def order_close(ticket):
-    g_oanda.close_trade(g_access_id, ticket)
- 
-def order_send(symbol, units, side):
-    instrument = to_instrument(symbol)
-    response = g_oanda.create_order(
-            account_id=g_access_id, instrument=instrument, units=units,
-            side=side, type='market')
-    ticket = response['tradeOpened']['id']
-    return ticket
 
 def rename_historical_data_filename(symbol):
     new_name = './historical_data/' + symbol + '.csv'
@@ -1322,74 +1190,6 @@ def save_pkl(data, pkl_file_path):
 def seconds():
     seconds = datetime.now().second
     return seconds
-
-def send_mail(subject, some_text, fromaddr, toaddr, host, port, password):
-    msg = MIMEText(some_text)
-    msg['Subject'] = subject
-    msg['From'] = fromaddr
-    msg['To'] = toaddr
-    with smtplib.SMTP_SSL(host, port) as s:
-        s.login(fromaddr, password)
-        s.send_message(msg)
-
-def send_signal_to_mt4(filename, signal):
-    f = open(filename, 'w')
-    f.write(str(int(signal.iloc[len(signal)-1] + 2)))
-    f.close()
-
-def signal(ea, symbol, timeframe, file_name, inputs, start_train, end_train):
-    global g_oanda
-    global g_environment
-    global g_access_token
-    global g_access_id
-    path = os.path.dirname(__file__)
-    config = configparser.ConfigParser()
-    config.read(path + '/settings.ini')
-    host = 'smtp.mail.yahoo.co.jp'
-    port = 465
-    fromaddr = config['DEFAULT']['fromaddr']
-    toaddr = config['DEFAULT']['toaddr']
-    password = config['DEFAULT']['password']
-    if g_environment is None:
-        g_environment = config['DEFAULT']['environment']
-    if g_access_token is None:
-        g_access_token = config['DEFAULT']['access_token']
-    if g_access_id is None:
-        g_access_id = config['DEFAULT']['account_id']
-    if g_oanda is None:
-        g_oanda = oandapy.API(environment=g_environment,
-                              access_token=g_access_token)
-    second_before = 0
-    pre_history_time = None
-    instrument = to_instrument(symbol)
-    granularity = to_granularity(timeframe)
-    while True:
-        second_now = seconds()
-        if second_now != second_before:
-            second_before = second_now
-            history = None
-            history = g_oanda.get_history(
-                    instrument=instrument, granularity=granularity,
-                    count=COUNT)
-            if history is not None:  # Maybe useless.
-                history_time = history['candles'][COUNT-1]['time']
-                if history_time != pre_history_time:
-                    pre_history_time = history_time
-                    position = ea(inputs, symbol, timeframe)
-                    end_row = len(position) - 1
-                    open0 = i_open(symbol, timeframe, 0)
-                    price = open0[len(open0)-1]
-                    if position.iloc[end_row] != position.iloc[end_row-1]:
-                        subject = file_name
-                        some_text = (
-                                'Symbol: ' + symbol + '\n' + 'Signal: '
-                                + str(position.iloc[end_row]) + '\n'
-                                + 'Price: ' + str(price))
-                        send_mail(subject, some_text, fromaddr, toaddr,
-                                  host, port, password)
-                now = datetime.now()
-                print(now.strftime('%Y.%m.%d %H:%M:%S'), file_name, symbol,
-                      timeframe, position.iloc[end_row])
 
 def time_day(ts):
     time_day = pd.Series(ts.index.day, index=ts.index)
@@ -1462,190 +1262,6 @@ def to_datetime(start, end):
     end = datetime.strptime(end + ' 00:00', '%Y.%m.%d %H:%M')
     return start, end
 
-def to_instrument(symbol):
-    if symbol == 'AUDCAD':
-        instrument = 'AUD_CAD'
-    elif symbol == 'AUDCHF':
-        instrument = 'AUD_CHF'
-    elif symbol == 'AUDJPY':
-        instrument = 'AUD_JPY'
-    elif symbol == 'AUDNZD':
-        instrument = 'AUD_NZD'
-    elif symbol == 'AUDUSD':
-        instrument = 'AUD_USD'
-    elif symbol == 'CADCHF':
-        instrument = 'CAD_CHF'
-    elif symbol == 'CADJPY':
-        instrument = 'CAD_JPY'
-    elif symbol == 'CHFJPY':
-        instrument = 'CHF_JPY'
-    elif symbol == 'EURAUD':
-        instrument = 'EUR_AUD'
-    elif symbol == 'EURCAD':
-        instrument = 'EUR_CAD'
-    elif symbol == 'EURCHF':
-        instrument = 'EUR_CHF'
-    elif symbol == 'EURGBP':
-        instrument = 'EUR_GBP'
-    elif symbol == 'EURJPY':
-        instrument = 'EUR_JPY'
-    elif symbol == 'EURNZD':
-        instrument = 'EUR_NZD'
-    elif symbol == 'EURUSD':
-        instrument = 'EUR_USD' 
-    elif symbol == 'GBPAUD':
-        instrument = 'GBP_AUD'
-    elif symbol == 'GBPCAD':
-        instrument = 'GBP_CAD'
-    elif symbol == 'GBPCHF':
-        instrument = 'GBP_CHF'
-    elif symbol == 'GBPJPY':
-        instrument = 'GBP_JPY'
-    elif symbol == 'GBPNZD':
-        instrument = 'GBP_NZD'
-    elif symbol == 'GBPUSD':
-        instrument = 'GBP_USD'
-    elif symbol == 'NZDCAD':
-        instrument = 'NZD_CAD'
-    elif symbol == 'NZDCHF':
-        instrument = 'NZD_CHF'
-    elif symbol == 'NZDJPY':
-        instrument = 'NZD_JPY'
-    elif symbol == 'NZDUSD':
-        instrument = 'NZD_USD'
-    elif symbol == 'USDCAD':
-        instrument = 'USD_CAD'
-    elif symbol == 'USDCHF':
-        instrument = 'USD_CHF'
-    else:
-        instrument = 'USD_JPY'
-    return instrument
-
-def to_granularity(timeframe):
-    if timeframe == 1:
-        granularity = 'M1'
-    elif timeframe == 5:
-        granularity = 'M5'
-    elif timeframe == 15:
-        granularity = 'M15'
-    elif timeframe == 30:
-        granularity = 'M30'
-    elif timeframe == 60:
-        granularity = 'H1'
-    elif timeframe == 240:
-        granularity = 'H4'
-    else:
-        granularity = 'D'
-    return granularity
-
 def to_period(minute, timeframe):
     period = int(minute / timeframe)
     return period
-
-def trade(ea, symbol, timeframe, file_name, inputs, start_train, end_train,
-          mail, mt4):
-    global g_oanda
-    global g_environment
-    global g_access_token
-    global g_access_id
-    path = os.path.dirname(__file__)
-    config = configparser.ConfigParser()
-    config.read(path + '/settings.ini')
-    if mail == 1:
-        host = 'smtp.mail.yahoo.co.jp'
-        port = 465
-        fromaddr = config['DEFAULT']['fromaddr']
-        toaddr = config['DEFAULT']['toaddr']
-        password = config['DEFAULT']['password']
-    if g_environment is None:
-        g_environment = config['DEFAULT']['environment']
-    if g_access_token is None:
-        g_access_token = config['DEFAULT']['access_token']
-    if g_access_id is None:
-        g_access_id = config['DEFAULT']['account_id']
-    if g_oanda is None:
-        g_oanda = oandapy.API(environment=g_environment,
-                              access_token=g_access_token)
-    second_before = 0
-    pre_history_time = None
-    instrument = to_instrument(symbol)
-    granularity = to_granularity(timeframe)
-    if mt4 == 1:
-        folder_ea = config['DEFAULT']['folder_ea']
-        filename = folder_ea + '/' + file_name + '.csv'
-        f = open(filename, 'w')
-        f.write(str(2))
-        f.close()
-    pos = 0
-    ticket = 0
-    while True:
-        second_now = seconds()
-        if second_now != second_before:
-            second_before = second_now
-            history = None
-            history = g_oanda.get_history(
-                    instrument=instrument, granularity=granularity,
-                    count=COUNT)
-            if history is not None:  # Maybe useless.
-                history_time = history['candles'][COUNT-1]['time']
-                if history_time != pre_history_time:
-                    pre_history_time = history_time
-                    position = ea(inputs, symbol, timeframe)
-                    end_row = len(position) - 1
-                    open0 = i_open(symbol, timeframe, 0)
-                    price = open0[len(open0)-1]
-                    if (pos == 1 and signal.iloc[end_row] != 1):
-                        pos = 0
-                        order_close(ticket)
-                        ticket = 0
-                        if mail == 1:
-                            subject = file_name
-                            some_text = (symbol + ' ' +
-                                         str(signal.iloc[end_row]) + ' '
-                                         + str(price))
-                            send_mail(subject, some_text, fromaddr, toaddr,
-                                      host, port, password)
-                        if mt4 == 1:
-                            send_signal_to_mt4(filename, signal)
-                    elif (pos == -1 and signal[end_row] != -1):
-                        pos = 0
-                        order_close(ticket)
-                        ticket = 0
-                        if mail == 1:
-                            subject = file_name
-                            some_text = (symbol + ' ' +
-                                         str(signal.iloc[end_row]) + ' '
-                                         + str(price))
-                            send_mail(subject, some_text, fromaddr, toaddr,
-                                      host, port, password)
-                        if mt4 == 1:
-                            send_signal_to_mt4(filename, signal)
-                    elif (pos == 0 and signal[end_row] == 1):
-                        pos = 1
-                        ticket = order_send(symbol, np.abs(signal[end_row]),
-                                            'buy')
-                        if mail == 1:
-                            subject = file_name
-                            some_text = (symbol + ' ' +
-                                         str(signal.iloc[end_row]) + ' '
-                                         + str(price))
-                            send_mail(subject, some_text, fromaddr, toaddr,
-                                      host, port, password)
-                        if mt4 == 1:
-                            send_signal_to_mt4(filename, signal)
-                    elif (pos == 0 and signal[end_row] == -1):
-                        pos = -1
-                        ticket = order_send(symbol, np.abs(signal[end_row]),
-                                            'sell')
-                        if mail == 1:
-                            subject = file_name
-                            some_text = (symbol + ' ' +
-                                         str(signal.iloc[end_row]) + ' '
-                                         + str(price))
-                            send_mail(subject, some_text, fromaddr, toaddr,
-                                      host, port, password)
-                        if mt4 == 1:
-                            send_signal_to_mt4(filename, signal)
-                now = datetime.now()
-                print(now.strftime('%Y.%m.%d %H:%M:%S'), file_name, symbol,
-                      timeframe, signal.iloc[end_row])
