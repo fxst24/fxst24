@@ -77,7 +77,7 @@ def backtest(ea, symbol, timeframe, spread, start, end, inputs):
     plt.close()
     empty_folder('temp')
     return pnl_all
-# 後日修正
+
 def backtest_ml(ea, symbol, timeframe, spread, start, end, get_model,
                 in_sample_period, out_of_sample_period):
     empty_folder('temp')
