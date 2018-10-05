@@ -17,14 +17,7 @@ from sklearn.externals import joblib
 import pandas.plotting._converter as pandacnv
 pandacnv.register()
 
-UNITS = 100000
-COUNT = 500
 EPS = 1.0e-5
-
-g_oanda = None
-g_environment = None
-g_access_token = None
-g_access_id = None
 
 def backtest(ea, symbol, timeframe, spread, start, end, inputs):
     empty_folder('temp')
@@ -1170,7 +1163,7 @@ def restore_model(filename):
     return ret
 
 def restore_pkl(pkl_file_path):
-    if g_oanda is None and os.path.exists(pkl_file_path) == True:
+    if os.path.exists(pkl_file_path) == True:
         ret = joblib.load(pkl_file_path)
     else:
         ret = None
@@ -1183,9 +1176,8 @@ def save_model(model, filename):
     joblib.dump(model, pathname + '/' + filename + '.pkl') 
 
 def save_pkl(data, pkl_file_path):
-    if g_oanda is None:
-        create_folder('temp')
-        joblib.dump(data, pkl_file_path)
+    create_folder('temp')
+    joblib.dump(data, pkl_file_path)
 
 def seconds():
     seconds = datetime.now().second
@@ -1194,7 +1186,6 @@ def seconds():
 def time_day(ts):
     time_day = pd.Series(ts.index.day, index=ts.index)
     return time_day
-
 
 def time_day_of_week(ts):
     # 0-Sunday,1,2,3,4,5,6
