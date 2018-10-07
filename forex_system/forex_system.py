@@ -1,4 +1,5 @@
 import argparse
+import gc
 import glob
 import inspect
 import matplotlib.dates as mdates
@@ -269,6 +270,9 @@ def backtest_wft(ea, symbol, timeframe, spread, start, end, rranges, min_trade,
         else:
             temp = temp.append(pnl_all[start_test:end_test])
             trade_all_all += trade_all
+        del position
+        del pnl
+        gc.collect()
         i += 1
     pnl_all = temp
     apr = calc_apr(pnl_all, start_all, end_all)
@@ -777,35 +781,6 @@ def i_daily_open(symbol, timeframe, shift):
         save_pkl(ret, pkl_file_path)
     return ret
 
-def i_event(symbol, timeframe, before, after):
-    pkl_file_path = get_pkl_file_path()  # Must put this first.
-    ret = restore_pkl(pkl_file_path)
-    if ret is None:
-        close = i_close(symbol, timeframe, 0)
-        index = close.index
-        temp = pd.Series(index=index)
-        week_of_month = time_week_of_month(index)
-        day_of_week = time_day_of_week(index)
-        hour = time_hour(index)
-        minute = time_minute(index)
-        b = int(before / timeframe)
-        a = int(after / timeframe)
-        # US-NFP
-        temp[(week_of_month==1) & (day_of_week==5) & (hour==15)
-            & (minute==30)] = 1
-        temp = temp.fillna(0)
-        ret = temp.copy()
-        for i in range(b):
-            ret += temp.shift(-i-1)
-        for i in range(a):
-            ret += temp.shift(i+1)    
-        ret = ret.fillna(0)
-        ret[ret>1] = 1
-        ret = fill_data(ret)
-        ret = ret.astype(int)
-        save_pkl(ret, pkl_file_path)
-    return ret
-
 def i_high(symbol, timeframe, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
@@ -1059,6 +1034,16 @@ def i_roc(symbol, timeframe, period, shift):
         close = i_close(symbol, timeframe, shift)
         ret = (close / close.shift(period) - 1.0) * 100.0
         ret = fill_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
+def i_time_zone(ts, start_hour, end_hour):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        ret = (time_hour(ts)>=start_hour) & (time_hour(ts)<end_hour)
+        ret = fill_data(ret)
+        ret = ret.astype(int)
         save_pkl(ret, pkl_file_path)
     return ret
 
