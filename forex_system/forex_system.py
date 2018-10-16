@@ -13,6 +13,7 @@ from collections import OrderedDict
 from datetime import datetime, timedelta
 from scipy import optimize
 from scipy.stats import pearson3
+from sklearn import linear_model
 from sklearn.externals import joblib
 
 import pandas.plotting._converter as pandacnv
@@ -28,7 +29,7 @@ def backtest(ea, symbol, timeframe, spread, start, end, inputs):
     end -= timedelta(minutes=timeframe)
     report =  pd.DataFrame(
             index=[''], columns=['start', 'end', 'trade', 'apr', 'sharpe',
-                  'drawdown', 'inputs'])
+                  'drawdown', 'r2', 'inputs'])
     for i in range(len(symbol)):
         buy_entry, buy_exit, sell_entry, sell_exit = ea(
                 inputs, symbol[i], timeframe)
@@ -45,19 +46,21 @@ def backtest(ea, symbol, timeframe, spread, start, end, inputs):
     apr = calc_apr(pnl_all, start, end)
     sharpe = calc_sharpe(pnl_all, start, end)
     drawdown = calc_drawdown(pnl_all, start, end)
+    r2 = calc_r2(pnl_all, start, end)
     report.iloc[0, 0] = start.strftime('%Y.%m.%d')
     report.iloc[0, 1] = end.strftime('%Y.%m.%d')
     report.iloc[0, 2] = str(trade_all)
     report.iloc[0, 3] = str(np.round(apr, 2))
     report.iloc[0, 4] = str(np.round(sharpe, 2))
     report.iloc[0, 5] = str(np.round(drawdown, 2))
+    report.iloc[0, 6] = str(np.round(r2, 2))
     if inputs is not None:
-        report.iloc[0, 6] = np.round(inputs, 2)
+        report.iloc[0, 7] = np.round(inputs, 2)
     report = report.dropna(axis=1)
     pd.set_option('display.max_columns', 100)
     pd.set_option('display.width', 1000)
     print(report)
-    equity = (1.0+pnl_all).cumprod() - 1.0
+    equity = (1.0+pnl_all[start:end]).cumprod() - 1.0
     ax=plt.subplot()
     ax.set_xticklabels(equity.index, rotation=45)
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
@@ -159,7 +162,7 @@ def backtest_ml(ea, symbol, timeframe, spread, start, end, get_model,
     return pnl_all
 
 def backtest_opt(ea, symbol, timeframe, spread, start, end, rranges,
-                 min_trade):
+                 min_trade, method):
     empty_folder('temp')
     create_folder('temp')
     start = datetime.strptime(start + ' 00:00', '%Y.%m.%d %H:%M')
@@ -167,9 +170,9 @@ def backtest_opt(ea, symbol, timeframe, spread, start, end, rranges,
     end -= timedelta(minutes=timeframe)
     report =  pd.DataFrame(
             index=[''], columns=['start', 'end', 'trade', 'apr', 'sharpe',
-                  'drawdown', 'inputs'])
+                  'drawdown', 'r2', 'inputs'])
     inputs = optimize_inputs(ea, symbol, timeframe, spread, start, end,
-                             min_trade, rranges)
+                             min_trade, method, rranges)
     for i in range(len(symbol)):
         buy_entry, buy_exit, sell_entry, sell_exit = ea(
                 inputs, symbol[i], timeframe)
@@ -186,19 +189,21 @@ def backtest_opt(ea, symbol, timeframe, spread, start, end, rranges,
     apr = calc_apr(pnl_all, start, end)
     sharpe = calc_sharpe(pnl_all, start, end)
     drawdown = calc_drawdown(pnl_all, start, end)
+    r2 = calc_r2(pnl_all, start, end)
     report.iloc[0, 0] = start.strftime('%Y.%m.%d')
     report.iloc[0, 1] = end.strftime('%Y.%m.%d')
     report.iloc[0, 2] = str(trade_all)
     report.iloc[0, 3] = str(np.round(apr, 2))
     report.iloc[0, 4] = str(np.round(sharpe, 2))
     report.iloc[0, 5] = str(np.round(drawdown, 2))
+    report.iloc[0, 6] = str(np.round(r2, 2))
     if inputs is not None:
-        report.iloc[0, 6] = np.round(inputs, 2)
+        report.iloc[0, 7] = np.round(inputs, 2)
     report = report.dropna(axis=1)
     pd.set_option('display.max_columns', 100)
     pd.set_option('display.width', 1000)
     print(report)
-    equity = (1.0+pnl_all).cumprod() - 1.0
+    equity = (1.0+pnl_all[start:end]).cumprod() - 1.0
     ax=plt.subplot()
     ax.set_xticklabels(equity.index, rotation=45)
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
@@ -214,7 +219,7 @@ def backtest_opt(ea, symbol, timeframe, spread, start, end, rranges,
     return pnl_all
 
 def backtest_wft(ea, symbol, timeframe, spread, start, end, rranges, min_trade,
-                 in_sample_period, out_of_sample_period):
+                 method, in_sample_period, out_of_sample_period):
     empty_folder('temp')
     create_folder('temp')
     start = datetime.strptime(start + ' 00:00', '%Y.%m.%d %H:%M')
@@ -222,7 +227,7 @@ def backtest_wft(ea, symbol, timeframe, spread, start, end, rranges, min_trade,
     end -= timedelta(minutes=timeframe)
     report =  pd.DataFrame(
             index=[['']*1000], columns=['start_test', 'end_test', 'trade',
-                  'apr', 'sharpe', 'drawdown', 'inputs'])
+                  'apr', 'sharpe', 'drawdown', 'r2', 'inputs'])
     end_test = start
     i = 0
     while True:
@@ -239,7 +244,7 @@ def backtest_wft(ea, symbol, timeframe, spread, start, end, rranges, min_trade,
         end_test = (start_test + timedelta(days=out_of_sample_period)
             - timedelta(minutes=timeframe))
         inputs = optimize_inputs(ea, symbol, timeframe, spread, start_train,
-                                 end_train, min_trade, rranges)
+                                 end_train, min_trade, method, rranges)
         for j in range(len(symbol)):
             buy_entry, buy_exit, sell_entry, sell_exit = ea(
                     inputs, symbol[j], timeframe)
@@ -257,13 +262,15 @@ def backtest_wft(ea, symbol, timeframe, spread, start, end, rranges, min_trade,
         apr = calc_apr(pnl_all, start_test, end_test)
         sharpe = calc_sharpe(pnl_all, start_test, end_test)
         drawdown = calc_drawdown(pnl_all, start_test, end_test)
+        r2 = calc_r2(pnl_all, start_test, end_test)
         report.iloc[i, 0] = start_test.strftime('%Y.%m.%d')
         report.iloc[i, 1] = end_test.strftime('%Y.%m.%d')
         report.iloc[i, 2] = str(trade_all)
         report.iloc[i, 3] = str(np.round(apr, 2))
         report.iloc[i, 4] = str(np.round(sharpe, 2))
         report.iloc[i, 5] = str(np.round(drawdown, 2))
-        report.iloc[i, 6] = np.round(inputs, 2)
+        report.iloc[i, 6] = str(np.round(r2, 2))
+        report.iloc[i, 7] = np.round(inputs, 2)
         if i == 0:
             temp = pnl_all[start_test:end_test]
             trade_all_all = trade_all
@@ -278,19 +285,21 @@ def backtest_wft(ea, symbol, timeframe, spread, start, end, rranges, min_trade,
     apr = calc_apr(pnl_all, start_all, end_all)
     sharpe = calc_sharpe(pnl_all, start_all, end_all)
     drawdown = calc_drawdown(pnl_all, start_all, end_all)
+    r2 = calc_r2(pnl_all, start_all, end_all)
     report.iloc[i, 0] = start_all.strftime('%Y.%m.%d')
     report.iloc[i, 1] = end_all.strftime('%Y.%m.%d')
     report.iloc[i, 2] = str(trade_all_all)
     report.iloc[i, 3] = str(np.round(apr, 2))
     report.iloc[i, 4] = str(np.round(sharpe, 2))
     report.iloc[i, 5] = str(np.round(drawdown, 2))
-    report.iloc[i, 6] = ''
+    report.iloc[i, 6] = str(np.round(r2, 2))
+    report.iloc[i, 7] = ''
     report = report.iloc[0:i+1, :]
     report = report.dropna(axis=1)
     pd.set_option('display.max_columns', 100)
     pd.set_option('display.width', 1000)
     print(report)
-    equity = (1.0+pnl_all).cumprod() - 1.0
+    equity = (1.0+pnl_all[start_all:end_all]).cumprod() - 1.0
     ax=plt.subplot()
     ax.set_xticklabels(equity.index, rotation=45)
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
@@ -333,6 +342,7 @@ def calc_pnl(position, symbol, timeframe, spread):
     buy_pnl = (op.shift(-1)-op) / op * buy_position - buy_cost
     sell_pnl = (op.shift(-1)-op) / op * sell_position - sell_cost
     pnl = buy_pnl + sell_pnl
+    pnl = pnl.fillna(0.0)
     return pnl
 
 def calc_position(buy_entry, buy_exit, sell_entry, sell_exit,
@@ -360,6 +370,17 @@ def calc_position(buy_entry, buy_exit, sell_entry, sell_exit,
                 position += (temp.shift(i)).fillna(0.0)
         position /= holding_period
     return position
+
+def calc_r2(pnl, start, end):
+    clf = linear_model.LinearRegression()
+    y = (1.0+pnl[start:end]).cumprod() - 1.0
+    y = np.array(y)
+    y = y.reshape(len(y), -1)
+    x = np.arange(len(y))
+    x = x.reshape(len(x), -1)
+    clf.fit(x, y)
+    r2 = clf.score(x, y)
+    return r2
 
 def calc_sharpe(pnl, start, end):
     mean = pnl[start:end].mean()
@@ -406,6 +427,7 @@ def forex_system():
     parser.add_argument('--start', type=str)
     parser.add_argument('--end', type=str)
     parser.add_argument('--min_trade', type=int, default=520)
+    parser.add_argument('--method', type=str, default='sharpe')
     parser.add_argument('--in_sample_period', type=int, default=360)
     parser.add_argument('--out_of_sample_period', type=int, default=30)
     args = parser.parse_args()
@@ -416,6 +438,7 @@ def forex_system():
     start = args.start
     end = args.end
     min_trade = args.min_trade
+    method = args.method
     in_sample_period = args.in_sample_period
     out_of_sample_period = args.out_of_sample_period
     calling_module = inspect.getmodule(inspect.stack()[1][0])
@@ -429,10 +452,10 @@ def forex_system():
                        inputs=inputs)
     elif mode == 'backtest_opt':
         pnl = backtest_opt(ea, symbol, timeframe, spread, start, end,
-                           rranges=rranges, min_trade=min_trade)
+                           rranges=rranges, min_trade=min_trade, method=method)
     elif mode == 'backtest_wft':
         pnl = backtest_wft(ea, symbol, timeframe, spread, start, end,
-                           rranges=rranges, min_trade=min_trade,
+                           rranges=rranges, min_trade=min_trade, method=method,
                            in_sample_period=in_sample_period,
                            out_of_sample_period=out_of_sample_period)
     elif mode == 'backtest_ml':
@@ -1107,7 +1130,7 @@ def i_zscore(symbol, timeframe, period, shift):
     return ret
 
 def optimize_inputs(ea, symbol, timeframe, spread, start, end, min_trade,
-                       rranges):
+                    method, rranges):
     def func(inputs, ea, symbol, timeframe, spread, start, end, min_trade):
         for i in range(len(symbol)):
             buy_entry, buy_exit, sell_entry, sell_exit = ea(
@@ -1122,11 +1145,18 @@ def optimize_inputs(ea, symbol, timeframe, spread, start, end, min_trade,
             else:
                 trade_all += trade
                 pnl_all += pnl
-        sharpe = calc_sharpe(pnl_all, start, end)        
+        if method == 'sharpe':
+            ret = calc_sharpe(pnl_all, start, end)  
+        else:
+            ret = calc_r2(pnl_all, start, end)
         years = (end-start).total_seconds() / (60*60*24*365)
         if trade_all/years < min_trade*len(symbol):
-            sharpe = 0.0
-        return -sharpe
+            ret = 0.0
+        del position
+        del pnl
+        del pnl_all
+        gc.collect()
+        return -ret
 
     inputs = optimize.brute(
             func, rranges, args=(
