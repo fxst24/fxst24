@@ -962,6 +962,19 @@ def i_ku_zscore(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
         save_pkl(ret, pkl_file_path)
     return ret
 
+def i_level(symbol, timeframe, period, shift):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        ret = pd.DataFrame()
+        close = i_close(symbol, timeframe, shift)
+        hl_band = i_hl_band(symbol, timeframe, period, shift)
+        ret['high'] = (hl_band['high']-close) / close * 100.0
+        ret['low'] = (close-hl_band['low']) / hl_band['low'] * 100.0
+        ret = fill_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
 def i_low(symbol, timeframe, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
@@ -1000,22 +1013,6 @@ def i_ma(symbol, timeframe, period, shift):
         close = i_close(symbol, timeframe, shift)
         ret = close.rolling(window=period).mean()
         ret = fill_data(ret)
-        save_pkl(ret, pkl_file_path)
-    return ret
-
-def i_no_entry_level(symbol, timeframe, period, pct, shift):
-    pkl_file_path = get_pkl_file_path()  # Must put this first.
-    ret = restore_pkl(pkl_file_path)
-    if ret is None:
-        ret = pd.DataFrame()
-        close = i_close(symbol, timeframe, shift)
-        hl_band = i_hl_band(symbol, timeframe, period, shift)
-        from_upper = (hl_band['high']-close) / close * 100.0
-        from_lower = (close-hl_band['low']) / hl_band['low'] * 100.0
-        ret['buy'] = from_lower < pct
-        ret['sell'] = from_upper < pct
-        ret = fill_data(ret)
-        ret = ret.astype(int)
         save_pkl(ret, pkl_file_path)
     return ret
 
@@ -1083,7 +1080,28 @@ def i_trend_duration(symbol, timeframe, period, shift):
         below = high < ma
         below = below * (
                 below.groupby((below!=below.shift()).cumsum()).cumcount()+1)
-        ret= (above - below) / period
+        ret = (above-below) / period
+        ret = fill_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
+def i_trend_duration2(symbol, timeframe, period, shift):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        high = i_high(symbol, timeframe, shift)
+        low = i_low(symbol, timeframe, shift)
+        ma = i_ma(symbol, timeframe, period, shift)
+        above = low > ma
+        above = above * (
+                above.groupby((above!=above.shift()).cumsum()).cumcount()+1)
+        below = high < ma
+        below = below * (
+                below.groupby((below!=below.shift()).cumsum()).cumcount()+1)
+        ret = above - below
+        mean = ret.rolling(window=period).mean()
+        std = ret.rolling(window=period).std()
+        ret = (ret-mean) / std
         ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
