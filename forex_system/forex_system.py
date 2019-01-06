@@ -561,7 +561,7 @@ def get_current_filename():
     current_filename, ext = os.path.splitext(current_filename)
     return current_filename
 
-def get_historical_data(symbol, start, end):
+def get_historical_data(symbol, timeframe, start, end):
     start = start + ' 00:00'
     end = end + ' 00:00'
     index = pd.date_range(start, end, freq='T')
@@ -581,16 +581,45 @@ def get_historical_data(symbol, start, end):
     ohlcv_dict['volume'] = 'sum'
     data1 = data1.fillna(method='ffill')
     data1 = data1[~data1.index.duplicated()]
-    for i in [1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60, 120, 180, 240, 360,
-              480, 720, 1440]:
-        if i == 1:
-            data = data1.copy()
-        else:
-            data = data1.resample(
-                    str(i)+'T', label='left', closed='left').apply(ohlcv_dict)
-        data = data[data.index.dayofweek<5]
-        filename =  './historical_data/' + symbol + str(i) + '.csv'
-        data.to_csv(filename)
+    if timeframe == 1:
+        data = data1.copy()
+    elif timeframe == 'tse':
+        data = data1.resample(
+                '60T', label='left', closed='left').apply(ohlcv_dict)
+        position = pd.Series(np.zeros(len(data)), index=data.index)
+        position[(time_month(data)<3) | (time_month(data)>10)] = (
+                (time_hour(data)>=2) & (time_hour(data)<8))
+        position[(time_month(data)>=3) & (time_month(data)<=10)] = (
+                (time_hour(data)>=3) & (time_hour(data)<9))
+        data[position==False] = np.nan
+        data = data.dropna()
+        data = data.resample(
+                '1440T', label='left', closed='left').apply(ohlcv_dict)
+    elif timeframe == 'lse':
+        data = data1.resample(
+                '30T', label='left', closed='left').apply(ohlcv_dict)
+        position = (((time_hour(data)>=10) & (time_hour(data)<18)) |
+                ((time_hour(data)==18) & (time_minute(data)<30)))
+        data[position==False] = np.nan
+        data = data.dropna()
+        data = data.resample(
+                '1440T', label='left', closed='left').apply(ohlcv_dict)
+    elif timeframe == 'nyse':
+        data = data1.resample(
+                '30T', label='left', closed='left').apply(ohlcv_dict)
+        position = (((time_hour(data)==16) & (time_minute(data)>=30)) |
+                ((time_hour(data)>=17) & (time_hour(data)<23)))
+        data[position==False] = np.nan
+        data = data.dropna()
+        data = data.resample(
+                '1440T', label='left', closed='left').apply(ohlcv_dict)
+    else:
+        data = data1.resample(
+                str(timeframe)+'T', label='left',
+                closed='left').apply(ohlcv_dict)
+    data = data[data.index.dayofweek<5]
+    filename =  './historical_data/' + symbol + str(timeframe) + '.csv'
+    data.to_csv(filename)
 
 def get_model_dir():
     dirname = os.path.dirname(__file__)
@@ -1067,6 +1096,35 @@ def i_time_zone(ts, start_hour, end_hour):
         save_pkl(ret, pkl_file_path)
     return ret
 
+def i_trading_hours(ts, exchange):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    ret = restore_pkl(pkl_file_path)
+    #trading hours
+    # tse: 02:00-08:00 (03:00-09:00)
+    # les: 10:00-18:30
+    # nyse: 16:30-23:00
+    #summer time
+    # usa: 03-10 (not exact)
+    if ret is None:
+        if exchange == 'tse':
+            ret = pd.Series(np.zeros(len(ts)), index=ts.index)
+            ret[(time_month(ts)<3) | (time_month(ts)>10)] = (
+                    (time_hour(ts)>=2) & (time_hour(ts)<8))
+            ret[(time_month(ts)>=3) & (time_month(ts)<=10)] = (
+                    (time_hour(ts)>=3) & (time_hour(ts)<9))
+        elif exchange == 'lse':
+            ret = (((time_hour(ts)>=10) & (time_hour(ts)<18)) |
+                    ((time_hour(ts)==18) & (time_minute(ts)<30)))
+        elif exchange == 'nyse':
+            ret = (((time_hour(ts)==16) & (time_minute(ts)>=30)) |
+                    ((time_hour(ts)>=17) & (time_hour(ts)<23)))
+        else:
+            ret = time_hour(ts) < 0
+        ret = fill_data(ret)
+        ret = ret.astype(int)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
 def i_trend_duration(symbol, timeframe, period, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
@@ -1081,27 +1139,6 @@ def i_trend_duration(symbol, timeframe, period, shift):
         below = below * (
                 below.groupby((below!=below.shift()).cumsum()).cumcount()+1)
         ret = (above-below) / period
-        ret = fill_data(ret)
-        save_pkl(ret, pkl_file_path)
-    return ret
-
-def i_trend_duration2(symbol, timeframe, period, shift):
-    pkl_file_path = get_pkl_file_path()  # Must put this first.
-    ret = restore_pkl(pkl_file_path)
-    if ret is None:
-        high = i_high(symbol, timeframe, shift)
-        low = i_low(symbol, timeframe, shift)
-        ma = i_ma(symbol, timeframe, period, shift)
-        above = low > ma
-        above = above * (
-                above.groupby((above!=above.shift()).cumsum()).cumcount()+1)
-        below = high < ma
-        below = below * (
-                below.groupby((below!=below.shift()).cumsum()).cumcount()+1)
-        ret = above - below
-        mean = ret.rolling(window=period).mean()
-        std = ret.rolling(window=period).std()
-        ret = (ret-mean) / std
         ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
