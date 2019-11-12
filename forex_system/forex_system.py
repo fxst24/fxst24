@@ -1,4 +1,3 @@
-import argparse
 import gc
 import glob
 import inspect
@@ -21,48 +20,175 @@ pandacnv.register()
 
 EPS = 1.0e-5
 
-def backtest(ea, symbol, timeframe, spread, start, end, inputs):
+def backtest(ea, symbol, timeframe, spread, start, end, mode, inputs=None,
+             rranges=None, min_trade=260, method='sharpe',
+             in_sample_period=365, out_of_sample_period=365):
+    t1 = time.time()
     empty_folder('temp')
     create_folder('temp')
     start = datetime.strptime(start + ' 00:00', '%Y.%m.%d %H:%M')
     end = datetime.strptime(end + ' 23:59', '%Y.%m.%d %H:%M')
     report =  pd.DataFrame()
-    buy_entry, buy_exit, sell_entry, sell_exit = ea(inputs, symbol, timeframe)
-    position = calc_position(
-            buy_entry, buy_exit, sell_entry, sell_exit)[start:end]
-    trade = calc_trade(position, start, end) 
-    pnl = calc_pnl(position, symbol, timeframe, spread)
-    apr = calc_apr(pnl, start, end)
-    sharpe = calc_sharpe(pnl, start, end)
-    drawdown = calc_drawdown(pnl, start, end)
-    r2 = calc_r2(pnl, start, end)
-    report.loc[0, 'start'] = start.strftime('%Y.%m.%d')
-    report.loc[0, 'end'] = end.strftime('%Y.%m.%d')
-    report.loc[0, 'trade'] = str(trade)
-    report.loc[0, 'apr'] = str(np.round(apr, 2))
-    report.loc[0, 'sharpe'] = str(np.round(sharpe, 2))
-    report.loc[0, 'drawdown'] = str(np.round(drawdown, 2))
-    report.loc[0, 'r2'] = str(np.round(r2, 2))
-    if inputs is not None:
-        report.loc[0, 'inputs'] = str(np.round(inputs, 2))
-    report = report.dropna(axis=1)
-    pd.set_option('display.max_columns', 100)
-    pd.set_option('display.width', 1000)
-    print(report)
-    equity = pnl[start:end].cumsum()
-    ax=plt.subplot()
-    ax.set_xticklabels(equity.index, rotation=45)
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
-    plt.plot(equity)
-    plt.title('Backtest')
-    plt.xlabel('Date')
-    plt.ylabel('Equith Curve')
-    plt.tight_layout()
-    plt.savefig('backtest.png', dpi=150)
-    plt.show()
-    plt.close()
+    if mode == 1:
+        buy_entry, buy_exit, sell_entry, sell_exit = ea(
+                inputs, symbol, timeframe)
+        position = calc_position(
+                buy_entry, buy_exit, sell_entry, sell_exit)[start:end]
+        trade = calc_trade(position, start, end) 
+        pnl = calc_pnl(position, symbol, timeframe, spread)
+        apr = calc_apr(pnl, start, end)
+        sharpe = calc_sharpe(pnl, start, end)
+        drawdown = calc_drawdown(pnl, start, end)
+        r2 = calc_r2(pnl, start, end)
+        report.loc[0, 'start'] = start.strftime('%Y.%m.%d')
+        report.loc[0, 'end'] = end.strftime('%Y.%m.%d')
+        report.loc[0, 'trade'] = str(trade)
+        report.loc[0, 'apr'] = str(np.round(apr, 2))
+        report.loc[0, 'sharpe'] = str(np.round(sharpe, 2))
+        report.loc[0, 'drawdown'] = str(np.round(drawdown, 2))
+        report.loc[0, 'r2'] = str(np.round(r2, 2))
+        if inputs is not None:
+            report.loc[0, 'inputs'] = str(np.round(inputs, 2))
+        report = report.dropna(axis=1)
+        pd.set_option('display.max_columns', 100)
+        pd.set_option('display.width', 1000)
+        print(report)
+        equity = pnl[start:end].cumsum()
+        ax=plt.subplot()
+        ax.set_xticklabels(equity.index, rotation=45)
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+        plt.plot(equity)
+        plt.title('Backtest')
+        plt.xlabel('Date')
+        plt.ylabel('Equith Curve')
+        plt.tight_layout()
+        plt.savefig('backtest.png', dpi=150)
+        plt.show()
+        plt.close()
+    elif mode == 2:
+        inputs = optimize_inputs(ea, symbol, timeframe, spread, start, end,
+                                 min_trade, method, rranges)
+        buy_entry, buy_exit, sell_entry, sell_exit = ea(
+                inputs, symbol, timeframe)
+        position = calc_position(
+                buy_entry, buy_exit, sell_entry, sell_exit)[start:end]
+        trade = calc_trade(position, start, end) 
+        pnl = calc_pnl(position, symbol, timeframe, spread)
+        apr = calc_apr(pnl, start, end)
+        sharpe = calc_sharpe(pnl, start, end)
+        drawdown = calc_drawdown(pnl, start, end)
+        r2 = calc_r2(pnl, start, end)
+        report.loc[0, 'start'] = start.strftime('%Y.%m.%d')
+        report.loc[0, 'end'] = end.strftime('%Y.%m.%d')
+        report.loc[0, 'trade'] = str(trade)
+        report.loc[0, 'apr'] = str(np.round(apr, 2))
+        report.loc[0, 'sharpe'] = str(np.round(sharpe, 2))
+        report.loc[0, 'drawdown'] = str(np.round(drawdown, 2))
+        report.loc[0, 'r2'] = str(np.round(r2, 2))
+        if inputs is not None:
+            report.loc[0, 'inputs'] = str(np.round(inputs, 2))
+        report = report.dropna(axis=1)
+        pd.set_option('display.max_columns', 100)
+        pd.set_option('display.width', 1000)
+        print(report)
+        equity = pnl[start:end].cumsum()
+        ax=plt.subplot()
+        ax.set_xticklabels(equity.index, rotation=45)
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+        plt.plot(equity)
+        plt.title('Backtest')
+        plt.xlabel('Date')
+        plt.ylabel('Equith Curve')
+        plt.tight_layout()  #
+        plt.savefig('backtest.png', dpi=150)
+        plt.show()
+        plt.close()
+    elif mode == 3:
+        end_test = start
+        i = 0
+        while True:
+            start_train = start + timedelta(days=out_of_sample_period*i)
+            end_train = (start_train + timedelta(days=in_sample_period)
+                - timedelta(minutes=timeframe))
+            start_test = end_train + timedelta(minutes=timeframe)
+            if i == 0:
+                start_all = start_test
+            if (start_test + timedelta(days=out_of_sample_period)
+                - timedelta(minutes=timeframe)) > end:
+                end_all = end_test
+                break
+            end_test = (start_test + timedelta(days=out_of_sample_period)
+                - timedelta(minutes=timeframe))
+            inputs = optimize_inputs(
+                    ea, symbol, timeframe, spread, start_train, end_train,
+                    min_trade, method, rranges)
+            buy_entry, buy_exit, sell_entry, sell_exit = ea(
+                    inputs, symbol, timeframe)
+            position = calc_position(buy_entry, buy_exit, sell_entry,
+                                     sell_exit)[start_test:end_test]
+            trade_temp = calc_trade(position, start_test, end_test) 
+            pnl_temp = calc_pnl(position, symbol, timeframe, spread)
+            apr = calc_apr(pnl_temp, start_test, end_test)
+            sharpe = calc_sharpe(pnl_temp, start_test, end_test)
+            drawdown = calc_drawdown(pnl_temp, start_test, end_test)
+            r2 = calc_r2(pnl_temp, start_test, end_test)
+            report.loc[i, 'start'] = start_test.strftime('%Y.%m.%d')
+            report.loc[i, 'end'] = end_test.strftime('%Y.%m.%d')
+            report.loc[i, 'trade'] = str(trade_temp)
+            report.loc[i, 'apr'] = str(np.round(apr, 2))
+            report.loc[i, 'sharpe'] = str(np.round(sharpe, 2))
+            report.loc[i, 'drawdown'] = str(np.round(drawdown, 2))
+            report.loc[i, 'r2'] = str(np.round(r2, 2))
+            report.loc[i, 'inputs'] = str(np.round(inputs, 2))
+            if i == 0:
+                pnl = pnl_temp[start_test:end_test]
+                trade = trade_temp
+            else:
+                pnl = pnl.append(pnl_temp[start_test:end_test])
+                trade += trade_temp
+            del position
+            del pnl_temp
+            gc.collect()
+            i += 1
+        apr = calc_apr(pnl, start_all, end_all)
+        sharpe = calc_sharpe(pnl, start_all, end_all)
+        drawdown = calc_drawdown(pnl, start_all, end_all)
+        r2 = calc_r2(pnl, start_all, end_all)
+        report.loc[i, 'start'] = start_all.strftime('%Y.%m.%d')
+        report.loc[i, 'end'] = end_all.strftime('%Y.%m.%d')
+        report.loc[i, 'trade'] = str(trade)
+        report.loc[i, 'apr'] = str(np.round(apr, 2))
+        report.loc[i, 'sharpe'] = str(np.round(sharpe, 2))
+        report.loc[i, 'drawdown'] = str(np.round(drawdown, 2))
+        report.loc[i, 'r2'] = str(np.round(r2, 2))
+        report.loc[i, 'inputs'] = ''
+        report = report.iloc[0:i+1, :]
+        report = report.dropna(axis=1)
+        pd.set_option('display.max_columns', 100)
+        pd.set_option('display.width', 1000)
+        print(report)
+        equity = pnl[start_all:end_all].cumsum()
+        ax=plt.subplot()
+        ax.set_xticklabels(equity.index, rotation=45)
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+        plt.plot(equity)
+        plt.title('Backtest')
+        plt.xlabel('Date')
+        plt.ylabel('Equity Curve')
+        plt.tight_layout()
+        plt.savefig('backtest.png', dpi=150)
+        plt.show()
+        plt.close()
+        empty_folder('temp')
+    t2 = time.time()
+    m = np.floor((t2-t1)/60)
+    s = t2-t1-m*60
+    m = int(m)
+    s = int(s)
+    print('所要時間は'+str(m)+'分'+str(s)+'秒です。')
     return pnl
 
+# 要手直し
 def backtest_ml(ea, symbol, timeframe, spread, start, end, get_model,
                 in_sample_period, out_of_sample_period):
     empty_folder('temp')
@@ -149,144 +275,14 @@ def backtest_ml(ea, symbol, timeframe, spread, start, end, get_model,
     empty_folder('temp')
     return pnl_all
 
-def backtest_opt(ea, symbol, timeframe, spread, start, end, rranges, min_trade,
-                 method):
-    empty_folder('temp')
-    create_folder('temp')
-    start = datetime.strptime(start + ' 00:00', '%Y.%m.%d %H:%M')
-    end = datetime.strptime(end + ' 23:59', '%Y.%m.%d %H:%M')
-    report =  pd.DataFrame()
-    inputs = optimize_inputs(ea, symbol, timeframe, spread, start, end,
-                             min_trade, method, rranges)
-    buy_entry, buy_exit, sell_entry, sell_exit = ea(inputs, symbol, timeframe)
-    position = calc_position(
-            buy_entry, buy_exit, sell_entry, sell_exit)[start:end]
-    trade = calc_trade(position, start, end) 
-    pnl = calc_pnl(position, symbol, timeframe, spread)
-    apr = calc_apr(pnl, start, end)
-    sharpe = calc_sharpe(pnl, start, end)
-    drawdown = calc_drawdown(pnl, start, end)
-    r2 = calc_r2(pnl, start, end)
-    report.loc[0, 'start'] = start.strftime('%Y.%m.%d')
-    report.loc[0, 'end'] = end.strftime('%Y.%m.%d')
-    report.loc[0, 'trade'] = str(trade)
-    report.loc[0, 'apr'] = str(np.round(apr, 2))
-    report.loc[0, 'sharpe'] = str(np.round(sharpe, 2))
-    report.loc[0, 'drawdown'] = str(np.round(drawdown, 2))
-    report.loc[0, 'r2'] = str(np.round(r2, 2))
-    if inputs is not None:
-        report.loc[0, 'inputs'] = str(np.round(inputs, 2))
-    report = report.dropna(axis=1)
-    pd.set_option('display.max_columns', 100)
-    pd.set_option('display.width', 1000)
-    print(report)
-    equity = pnl[start:end].cumsum()
-    ax=plt.subplot()
-    ax.set_xticklabels(equity.index, rotation=45)
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
-    plt.plot(equity)
-    plt.title('Backtest')
-    plt.xlabel('Date')
-    plt.ylabel('Equith Curve')
-    plt.tight_layout()  #
-    plt.savefig('backtest.png', dpi=150)
-    plt.show()
-    plt.close()
-    return pnl
-
-def backtest_wft(ea, symbol, timeframe, spread, start, end, rranges, min_trade,
-                 method, in_sample_period, out_of_sample_period):
-    empty_folder('temp')
-    create_folder('temp')
-    start = datetime.strptime(start + ' 00:00', '%Y.%m.%d %H:%M')
-    end = datetime.strptime(end + ' 00:00', '%Y.%m.%d %H:%M')
-    report =  pd.DataFrame()
-    end_test = start
-    i = 0
-    while True:
-        start_train = start + timedelta(days=out_of_sample_period*i)
-        end_train = (start_train + timedelta(days=in_sample_period)
-            - timedelta(minutes=timeframe))
-        start_test = end_train + timedelta(minutes=timeframe)
-        if i == 0:
-            start_all = start_test
-        if (start_test + timedelta(days=out_of_sample_period)
-            - timedelta(minutes=timeframe)) > end:
-            end_all = end_test
-            break
-        end_test = (start_test + timedelta(days=out_of_sample_period)
-            - timedelta(minutes=timeframe))
-        inputs = optimize_inputs(ea, symbol, timeframe, spread, start_train,
-                                 end_train, min_trade, method, rranges)
-        buy_entry, buy_exit, sell_entry, sell_exit = ea(inputs, symbol,
-                                                        timeframe)
-        position = calc_position(buy_entry, buy_exit, sell_entry,
-                                 sell_exit)[start_test:end_test]
-        trade = calc_trade(position, start_test, end_test) 
-        pnl = calc_pnl(position, symbol, timeframe, spread)
-        apr = calc_apr(pnl, start_test, end_test)
-        sharpe = calc_sharpe(pnl, start_test, end_test)
-        drawdown = calc_drawdown(pnl, start_test, end_test)
-        r2 = calc_r2(pnl, start_test, end_test)
-        report.loc[i, 'start'] = start_test.strftime('%Y.%m.%d')
-        report.loc[i, 'end'] = end_test.strftime('%Y.%m.%d')
-        report.loc[i, 'trade'] = str(trade)
-        report.loc[i, 'apr'] = str(np.round(apr, 2))
-        report.loc[i, 'sharpe'] = str(np.round(sharpe, 2))
-        report.loc[i, 'drawdown'] = str(np.round(drawdown, 2))
-        report.loc[i, 'r2'] = str(np.round(r2, 2))
-        report.loc[i, 'inputs'] = str(np.round(inputs, 2))
-        if i == 0:
-            temp = pnl[start_test:end_test]
-            trade_all = trade
-        else:
-            temp = temp.append(pnl[start_test:end_test])
-            trade_all += trade
-        del position
-        del pnl
-        gc.collect()
-        i += 1
-    pnl_all = temp
-    apr = calc_apr(pnl_all, start_all, end_all)
-    sharpe = calc_sharpe(pnl_all, start_all, end_all)
-    drawdown = calc_drawdown(pnl_all, start_all, end_all)
-    r2 = calc_r2(pnl_all, start_all, end_all)
-    report.loc[i, 'start'] = start_all.strftime('%Y.%m.%d')
-    report.loc[i, 'end'] = end_all.strftime('%Y.%m.%d')
-    report.loc[i, 'trade'] = str(trade_all)
-    report.loc[i, 'apr'] = str(np.round(apr, 2))
-    report.loc[i, 'sharpe'] = str(np.round(sharpe, 2))
-    report.loc[i, 'drawdown'] = str(np.round(drawdown, 2))
-    report.loc[i, 'r2'] = str(np.round(r2, 2))
-    report.loc[i, 'inputs'] = ''
-    report = report.iloc[0:i+1, :]
-    report = report.dropna(axis=1)
-    pd.set_option('display.max_columns', 100)
-    pd.set_option('display.width', 1000)
-    print(report)
-    equity = pnl_all[start_all:end_all].cumsum()
-    ax=plt.subplot()
-    ax.set_xticklabels(equity.index, rotation=45)
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
-    plt.plot(equity)
-    plt.title('Backtest')
-    plt.xlabel('Date')
-    plt.ylabel('Equity Curve')
-    plt.tight_layout()
-    plt.savefig('backtest.png', dpi=150)
-    plt.show()
-    plt.close()
-    empty_folder('temp')
-    return pnl_all
-
 def calc_apr(pnl, start, end):
-    cum_pnl = (1.0+pnl[start:end]).cumprod() - 1.0
+    cum_pnl = pnl[start:end].cumsum()
     year = (end-start).total_seconds() / (60*60*24*365)
     apr = cum_pnl.iloc[len(cum_pnl)-2] / year # must use "-2"
     return apr
 
 def calc_drawdown(pnl, start, end):
-    equity = (1.0+pnl[start:end]).cumprod() - 1.0
+    equity = pnl[start:end].cumsum()
     drawdown = (equity.cummax()-equity).max()
     return drawdown
 
@@ -338,7 +334,7 @@ def calc_position(buy_entry, buy_exit, sell_entry, sell_exit,
 
 def calc_r2(pnl, start, end):
     clf = linear_model.LinearRegression()
-    y = (1.0+pnl[start:end]).cumprod() - 1.0
+    y = (pnl[start:end]).cumsum()
     y = np.array(y)
     y = y.reshape(len(y), -1)
     x = np.arange(len(y))
@@ -350,7 +346,8 @@ def calc_r2(pnl, start, end):
 def calc_sharpe(pnl, start, end):
     mean = pnl[start:end].mean()
     std = pnl[start:end].std()
-    timeframe = (end-start).total_seconds() / 60 / len(pnl[start:end])
+    timeframe = ((end-start).total_seconds() / 60 /
+                 len(pnl[start:end]))
     if std > EPS:
         sharpe = mean / std * np.sqrt(260*1440/timeframe)
     else:
@@ -382,57 +379,6 @@ def fill_data(data):
     filled_data = filled_data.fillna(method='ffill')
     filled_data = filled_data.fillna(method='bfill')
     return filled_data
-
-def forex_system():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', type=str)
-    parser.add_argument('--symbol', type=str)
-    parser.add_argument('--timeframe', type=int)
-    parser.add_argument('--start', type=str)
-    parser.add_argument('--end', type=str)
-    parser.add_argument('--lots', type=float, default=0.1)
-    parser.add_argument('--spread', type=float)
-    parser.add_argument('--tp', type=float, default=0.0)
-    parser.add_argument('--sl', type=float, default=0.0)
-    parser.add_argument('--limit', type=float, default=0.0)
-    parser.add_argument('--expiration', type=int, default=10)
-    parser.add_argument('--min_trade', type=int, default=260)
-    parser.add_argument('--method', type=str, default='sharpe')
-    parser.add_argument('--in_sample_period', type=int, default=365)
-    parser.add_argument('--out_of_sample_period', type=int, default=365)
-    args = parser.parse_args()
-    mode = args.mode
-    symbol = args.symbol
-    timeframe = args.timeframe
-    start = args.start
-    end = args.end
-    spread = args.spread
-    min_trade = args.min_trade
-    method = args.method
-    in_sample_period = args.in_sample_period
-    out_of_sample_period = args.out_of_sample_period
-    calling_module = inspect.getmodule(inspect.stack()[1][0])
-    ea = calling_module.ea
-    get_model = calling_module.get_model
-    inputs = calling_module.INPUTS
-    rranges = calling_module.RRANGES
-    if mode == 'backtest':
-        pnl = backtest(ea, symbol, timeframe, spread, start, end,
-                       inputs=inputs)
-    elif mode == 'backtest_opt':
-        pnl = backtest_opt(ea, symbol, timeframe, spread, start, end,
-                           rranges=rranges, min_trade=min_trade, method=method)
-    elif mode == 'backtest_wft':
-        pnl = backtest_wft(ea, symbol, timeframe, spread, start, end,
-                           rranges=rranges, min_trade=min_trade, method=method,
-                           in_sample_period=in_sample_period, 
-                           out_of_sample_period=out_of_sample_period)
-    elif mode == 'backtest_ml':
-        pnl = backtest_ml(ea, symbol, timeframe, spread, start, end,
-                          get_model=get_model,
-                          in_sample_period=in_sample_period,
-                          out_of_sample_period=out_of_sample_period)
-    return pnl
 
 def get_base_and_quote(symbol):
     if symbol == 'AUDCAD':
@@ -1125,6 +1071,23 @@ def i_percentrank(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
         save_pkl(ret, pkl_file_path)
     return ret
 
+def i_random_walk(symbol, timeframe, fast_period, slow_period, shift):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        close = i_close(symbol, timeframe, shift)
+        change = (close-close.shift(1)) / close.shift(1)
+        # mean = 0.0
+        std = change.rolling(window=slow_period).std()
+        ret = ((close-close.shift(fast_period))/close.shift(fast_period)) / (std*np.sqrt(fast_period))
+#        change = np.log(close) - np.log(close.shift(1))
+#        # mean = 0.0
+#        std = change.rolling(window=slow_period).std()
+#        ret = (np.log(close)-np.log(close.shift(fast_period))) / (std*np.sqrt(fast_period))
+        ret = fill_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
 def i_roc(symbol, timeframe, period, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
@@ -1145,6 +1108,16 @@ def i_standardized_kairi(symbol, timeframe, fast_period, slow_period, shift):
         mean = kairi.rolling(window=slow_period).mean()
         std = kairi.rolling(window=slow_period).std()
         ret = (kairi-mean) / std
+        ret = fill_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
+def i_std_dev(symbol, timeframe, period, shift):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        close = i_close(symbol, timeframe, shift)
+        ret = close.rolling(window=period).std()
         ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
@@ -1188,19 +1161,29 @@ def i_trading_hours(ts, exchange):
         save_pkl(ret, pkl_file_path)
     return ret
 
-def i_trend_duration(symbol, timeframe, period, shift):
+def i_trend_duration(symbol, timeframe, period, mode, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
-        high = i_high(symbol, timeframe, shift)
-        low = i_low(symbol, timeframe, shift)
-        ma = i_ma(symbol, timeframe, period, shift)
-        above = low > ma
-        above = above * (
-                above.groupby((above!=above.shift()).cumsum()).cumcount()+1)
-        below = high < ma
-        below = below * (
-                below.groupby((below!=below.shift()).cumsum()).cumcount()+1)
+        if mode == 'close':
+            close = i_close(symbol, timeframe, shift)
+            ma = i_ma(symbol, timeframe, period, shift)
+            above = close > ma
+            above = above * (above.groupby(
+                    (above!=above.shift()).cumsum()).cumcount()+1)
+            below = close < ma
+            below = below * (below.groupby(
+                    (below!=below.shift()).cumsum()).cumcount()+1)
+        elif mode == 'highlow':
+            high = i_high(symbol, timeframe, shift)
+            low = i_low(symbol, timeframe, shift)
+            ma = i_ma(symbol, timeframe, period, shift)
+            above = low > ma
+            above = above * (above.groupby(
+                    (above!=above.shift()).cumsum()).cumcount()+1)
+            below = high < ma
+            below = below * (below.groupby(
+                    (below!=below.shift()).cumsum()).cumcount()+1)
         ret = (above-below) / period
         ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
@@ -1259,7 +1242,7 @@ def optimize_inputs(ea, symbol, timeframe, spread, start, end, min_trade,
             ret = calc_sharpe(pnl, start, end)
         elif method == 'drawdown':
             ret = -calc_drawdown(pnl, start, end)
-        else:
+        elif method == 'r2':
             ret = calc_r2(pnl, start, end)
         years = (end-start).total_seconds() / (60*60*24*365)
         if trade/years < min_trade:
