@@ -184,12 +184,13 @@ def backtest(ea, symbol, timeframe, spread, start, end, mode=1, inputs=None,
             plt.show()
             plt.close()
     empty_folder('temp')
-    t2 = time.time()
-    m = np.floor((t2-t1)/60)
-    s = t2-t1-m*60
-    m = int(m)
-    s = int(s)
-    print('所要時間は'+str(m)+'分'+str(s)+'秒です。')
+    if report == 1:
+        t2 = time.time()
+        m = np.floor((t2-t1)/60)
+        s = t2-t1-m*60
+        m = int(m)
+        s = int(s)
+        print('所要時間は'+str(m)+'分'+str(s)+'秒です。')
     return pnl
 
 # 要手直し
