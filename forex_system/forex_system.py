@@ -1,31 +1,35 @@
+# 標準ライブラリ
 import gc
 import glob
 import inspect
-import joblib
-import matplotlib.dates as mdates
-import matplotlib.pyplot as plt
-import numpy as np
 import os
-import pandas as pd
 import struct
 import time
 from collections import OrderedDict
 from datetime import datetime, timedelta
+
+# 外部ライブラリ
+import joblib
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 from scipy import optimize
 from scipy.stats import pearson3
 from sklearn import linear_model
 
-import pandas.plotting._converter as pandacnv
-pandacnv.register()
+# これを入れないと警告が出てうざい。
+from pandas.plotting import register_matplotlib_converters
+register_matplotlib_converters()
 
 EPS = 1.0e-5
 
+# バックテストを実行する。後で見直し。
 def backtest(ea, symbol, timeframe, spread, start, end, mode=1, inputs=None,
              rranges=None, min_trade=260, method='sharpe',
              in_sample_period=365, out_of_sample_period=365, report=1):
     t1 = time.time()
     empty_folder('temp')
-    create_folder('temp')
     start = datetime.strptime(start + ' 00:00', '%Y.%m.%d %H:%M')
     end = datetime.strptime(end + ' 23:59', '%Y.%m.%d %H:%M')
     table =  pd.DataFrame()
@@ -193,11 +197,11 @@ def backtest(ea, symbol, timeframe, spread, start, end, mode=1, inputs=None,
         print('所要時間は'+str(m)+'分'+str(s)+'秒です。')
     return pnl
 
-# 要手直し
+# 機械学習用のバックテストを実行する。
+# 今のままでは使えないので後日手直し。
 def backtest_ml(ea, symbol, timeframe, spread, start, end, get_model,
                 in_sample_period, out_of_sample_period):
     empty_folder('temp')
-    create_folder('temp')
     start = datetime.strptime(start + ' 00:00', '%Y.%m.%d %H:%M')
     end = datetime.strptime(end + ' 00:00', '%Y.%m.%d %H:%M')
     end -= timedelta(minutes=timeframe)
@@ -280,20 +284,25 @@ def backtest_ml(ea, symbol, timeframe, spread, start, end, get_model,
     empty_folder('temp')
     return pnl_all
 
+# 年利率（annual profit rate）を計算する。
+# 複利にはしていない。
 def calc_apr(pnl, start, end):
     cum_pnl = pnl[start:end].cumsum()
     year = (end-start).total_seconds() / (60*60*24*365)
-    apr = cum_pnl.iloc[len(cum_pnl)-2] / year # must use "-2"
+    apr = cum_pnl.iloc[len(cum_pnl)-1] / year # 「-2」にしろとコメントに
+    # 書いたが理由を忘れた。とりあえず「-1」としておく。
     return apr
 
+# 最大ドローダウン（％）を計算する。
 def calc_drawdown(pnl, start, end):
     equity = pnl[start:end].cumsum()
     drawdown = (equity.cummax()-equity).max()
     return drawdown
 
+# 損益を計算する。
 def calc_pnl(position, symbol, timeframe, spread):
     op = i_open(symbol, timeframe, 0)
-    if op[len(op)-1] >= 50.0:  # e.g. Cross Yen.
+    if op[len(op)-1] >= 50.0:  # 例えばクロス円。
         adj_spread = spread / 100.0
     else:
         adj_spread = spread / 10000.0
@@ -310,7 +319,7 @@ def calc_pnl(position, symbol, timeframe, spread):
     pnl = buy_pnl + sell_pnl
     pnl = pnl.fillna(0.0)
     return pnl
-
+# ポジション数を計算する。ドテンに対応しているか後日確認。
 def calc_position(buy_entry, buy_exit, sell_entry, sell_exit,
                   holding_period=0):
     if holding_period == 0:
@@ -324,14 +333,14 @@ def calc_position(buy_entry, buy_exit, sell_entry, sell_exit,
         sell[sell_exit==True] = 0.0
         sell.iloc[0] = 0.0
         sell = sell.fillna(method='ffill')
-        position = (buy-sell)
+        position = buy - sell
         position = position.fillna(0.0)
     else:
         temp = buy_entry - sell_entry
         temp = temp.fillna(0.0)
         for i in range(holding_period):
             if i == 0:
-                position = temp.copy()  # Must use "copy()"
+                position = temp.copy()  # 必ず「copy()」を使う。
             else:
                 position += (temp.shift(i)).fillna(0.0)
         position /= holding_period
@@ -368,13 +377,12 @@ def calc_trade(position, start, end):
     trade = trade[start:end].sum()
     return trade
 
-def create_folder(folder):
-    pathname = os.path.dirname(__file__)
-    if os.path.exists(pathname + '/' + folder) == False:
-        os.mkdir(pathname + '/' + folder)
-
 def empty_folder(folder):
     pathname = os.path.dirname(__file__)
+    # 指定したフォルダーがなければ作成する。
+    if os.path.exists(pathname + '/' + folder) == False:
+        os.mkdir(pathname + '/' + folder)
+    # 指定したフォルダーを空にする。
     for filename in glob.glob(pathname + '/' + folder + '/*'):
         os.remove(filename)
 
@@ -550,6 +558,10 @@ def get_model_dir():
     return model_dir
 
 def get_pkl_file_path():
+    pathname = os.path.dirname(__file__)
+    # tempフォルダーがなければ作成する。
+    if os.path.exists(pathname + '/temp') == False:
+        os.mkdir(pathname + '/temp')
     dir_name = os.path.dirname(__file__) + '/temp/'
     framerecords = inspect.stack()
     framerecord = framerecords[1]
@@ -1280,7 +1292,6 @@ def save_model(model, filename):
     joblib.dump(model, pathname + '/' + filename + '.pkl') 
 
 def save_pkl(data, pkl_file_path):
-    create_folder('temp')
     joblib.dump(data, pkl_file_path)
 
 def seconds():
