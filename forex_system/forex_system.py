@@ -5,7 +5,6 @@ import inspect
 import os
 import struct
 import time
-from collections import OrderedDict
 from datetime import datetime, timedelta
 
 # 外部ライブラリ
@@ -15,14 +14,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy import optimize
-from scipy.stats import pearson3
 from sklearn import linear_model
 
 # これを入れないと警告が出てうざい。
 from pandas.plotting import register_matplotlib_converters
 register_matplotlib_converters()
 
-EPS = 1.0e-5
+eps = 1.0e-5
 
 # バックテストを実行する。後で見直し。
 def backtest(ea, symbol, timeframe, spread, start, end, mode=1, inputs=None,
@@ -36,13 +34,15 @@ def backtest(ea, symbol, timeframe, spread, start, end, mode=1, inputs=None,
     if mode == 1:
         buy_entry, buy_exit, sell_entry, sell_exit = ea(
                 inputs, symbol, timeframe)
-        position = calc_position(
-                buy_entry, buy_exit, sell_entry, sell_exit)[start:end]
-        trade = calc_trade(position, start, end) 
-        pnl = calc_pnl(position, symbol, timeframe, spread)
+        buy_position, sell_position = calc_position(
+                buy_entry, buy_exit, sell_entry, sell_exit)
+        buy_position = buy_position[start:end]
+        sell_position = sell_position[start:end]
+        trade = calc_trade(buy_position, sell_position, start, end) 
+        pnl = calc_pnl(buy_position, sell_position, symbol, timeframe, spread)
         if report == 1:
             apr = calc_apr(pnl, start, end)
-            sharpe = calc_sharpe(pnl, start, end)
+            sharpe = calc_sharpe(pnl, timeframe, start, end)
             drawdown = calc_drawdown(pnl, start, end)
             r2 = calc_r2(pnl, start, end)
             table.loc[0, 'start'] = start.strftime('%Y.%m.%d')
@@ -75,13 +75,15 @@ def backtest(ea, symbol, timeframe, spread, start, end, mode=1, inputs=None,
                                  min_trade, method, rranges)
         buy_entry, buy_exit, sell_entry, sell_exit = ea(
                 inputs, symbol, timeframe)
-        position = calc_position(
-                buy_entry, buy_exit, sell_entry, sell_exit)[start:end]
-        trade = calc_trade(position, start, end) 
-        pnl = calc_pnl(position, symbol, timeframe, spread)
+        buy_position, sell_position = calc_position(
+                buy_entry, buy_exit, sell_entry, sell_exit)
+        buy_position = buy_position[start:end]
+        sell_position = sell_position[start:end]
+        trade = calc_trade(buy_position, sell_position, start, end) 
+        pnl = calc_pnl(buy_position, sell_position, symbol, timeframe, spread)
         if report == 1:
             apr = calc_apr(pnl, start, end)
-            sharpe = calc_sharpe(pnl, start, end)
+            sharpe = calc_sharpe(pnl, timeframe, start, end)
             drawdown = calc_drawdown(pnl, start, end)
             r2 = calc_r2(pnl, start, end)
             table.loc[0, 'start'] = start.strftime('%Y.%m.%d')
@@ -130,10 +132,15 @@ def backtest(ea, symbol, timeframe, spread, start, end, mode=1, inputs=None,
                     min_trade, method, rranges)
             buy_entry, buy_exit, sell_entry, sell_exit = ea(
                     inputs, symbol, timeframe)
-            position = calc_position(buy_entry, buy_exit, sell_entry,
-                                     sell_exit)[start_test:end_test]
-            trade_temp = calc_trade(position, start_test, end_test) 
-            pnl_temp = calc_pnl(position, symbol, timeframe, spread)
+            buy_position, sell_position = calc_position(
+                    buy_entry, buy_exit, sell_entry,
+                    sell_exit)
+            buy_position = buy_position[start_test:end_test]
+            sell_position = sell_position[start_test:end_test]
+            trade_temp = calc_trade(
+                    buy_position, sell_position, start_test, end_test) 
+            pnl_temp = calc_pnl(
+                    buy_position, sell_position, symbol, timeframe, spread)
             if i == 0:
                 pnl = pnl_temp[start_test:end_test]
                 trade = trade_temp
@@ -142,7 +149,7 @@ def backtest(ea, symbol, timeframe, spread, start, end, mode=1, inputs=None,
                 trade += trade_temp
             if report == 1:
                 apr = calc_apr(pnl_temp, start_test, end_test)
-                sharpe = calc_sharpe(pnl_temp, start_test, end_test)
+                sharpe = calc_sharpe(pnl_temp, timeframe, start_test, end_test)
                 drawdown = calc_drawdown(pnl_temp, start_test, end_test)
                 r2 = calc_r2(pnl_temp, start_test, end_test)
                 table.loc[i, 'start'] = start_test.strftime('%Y.%m.%d')
@@ -153,13 +160,14 @@ def backtest(ea, symbol, timeframe, spread, start, end, mode=1, inputs=None,
                 table.loc[i, 'drawdown'] = str(np.round(drawdown, 2))
                 table.loc[i, 'r2'] = str(np.round(r2, 2))
                 table.loc[i, 'inputs'] = str(np.round(inputs, 2))
-            del position
+            del buy_position
+            del sell_position
             del pnl_temp
             gc.collect()
             i += 1
         if report == 1:
             apr = calc_apr(pnl, start_all, end_all)
-            sharpe = calc_sharpe(pnl, start_all, end_all)
+            sharpe = calc_sharpe(pnl, timeframe, start_all, end_all)
             drawdown = calc_drawdown(pnl, start_all, end_all)
             r2 = calc_r2(pnl, start_all, end_all)
             table.loc[i, 'start'] = start_all.strftime('%Y.%m.%d')
@@ -227,11 +235,14 @@ def backtest_ml(ea, symbol, timeframe, spread, start, end, get_model,
         for j in range(len(symbol)):
             buy_entry, buy_exit, sell_entry, sell_exit = ea(
                     inputs, symbol[j], timeframe)
-            position = calc_position(
+            buy_position, sell_position = calc_position(
                     buy_entry, buy_exit, sell_entry,
                     sell_exit)[start_test:end_test]
-            trade = calc_trade(position, start_test, end_test) 
-            pnl = calc_pnl(position, symbol[j], timeframe, spread[j])
+            trade = calc_trade(
+                    buy_position, sell_position, start_test, end_test) 
+            pnl = calc_pnl(
+                    buy_position, sell_position, symbol[j], timeframe,
+                    spread[j])
             if j == 0:
                 trade_all = trade
                 pnl_all = pnl
@@ -239,7 +250,7 @@ def backtest_ml(ea, symbol, timeframe, spread, start, end, get_model,
                 trade_all += trade
                 pnl_all += pnl
         apr = calc_apr(pnl_all, start_test, end_test)
-        sharpe = calc_sharpe(pnl_all, start_test, end_test)
+        sharpe = calc_sharpe(pnl_all, timeframe, start_test, end_test)
         drawdown = calc_drawdown(pnl_all, start_test, end_test)
         report.iloc[i, 0] = start_test.strftime('%Y.%m.%d')
         report.iloc[i, 1] = end_test.strftime('%Y.%m.%d')
@@ -256,7 +267,7 @@ def backtest_ml(ea, symbol, timeframe, spread, start, end, get_model,
         i += 1
     pnl_all = temp
     apr = calc_apr(pnl_all, start_all, end_all)
-    sharpe = calc_sharpe(pnl_all, start_all, end_all)
+    sharpe = calc_sharpe(pnl_all, timeframe, start_all, end_all)
     drawdown = calc_drawdown(pnl_all, start_all, end_all)
     report.iloc[i, 0] = start_all.strftime('%Y.%m.%d')
     report.iloc[i, 1] = end_all.strftime('%Y.%m.%d')
@@ -289,8 +300,7 @@ def backtest_ml(ea, symbol, timeframe, spread, start, end, get_model,
 def calc_apr(pnl, start, end):
     cum_pnl = pnl[start:end].cumsum()
     year = (end-start).total_seconds() / (60*60*24*365)
-    apr = cum_pnl.iloc[len(cum_pnl)-1] / year # 「-2」にしろとコメントに
-    # 書いたが理由を忘れた。とりあえず「-1」としておく。
+    apr = cum_pnl.iloc[len(cum_pnl)-1] / year
     return apr
 
 # 最大ドローダウン（％）を計算する。
@@ -300,52 +310,46 @@ def calc_drawdown(pnl, start, end):
     return drawdown
 
 # 損益を計算する。
-def calc_pnl(position, symbol, timeframe, spread):
+# コストはポジションを持ったタイミングで発生したと考える。
+def calc_pnl(buy_position, sell_position, symbol, timeframe, spread):
     op = i_open(symbol, timeframe, 0)
-    if op[len(op)-1] >= 50.0:  # 例えばクロス円。
+    # 通貨ペアによってスプレッドを調整する。
+    if op[len(op)-1] >= 50.0:  # 例えばドル円で0.4pisなら0.004円。
         adj_spread = spread / 100.0
-    else:
+    else:  # 例えばユーロドルで0.5pisなら0.00005ドル。
         adj_spread = spread / 10000.0
-    buy_position = position * (position>0.0)
-    sell_position = position * (position<0.0)
-    buy_cost = (
-            (buy_position>EPS)
-            * (buy_position-buy_position.shift(1)) * (adj_spread / op))
-    sell_cost = (
-            (-sell_position>EPS)
-            * (-sell_position+sell_position.shift(1)) * (adj_spread / op))
+    # 買いポジションのコストを求める。
+    buy_entry_point = (buy_position==1.0) & (buy_position.shift(1)==0.0)
+    buy_entry_point = buy_entry_point.astype(int)
+    buy_cost = buy_entry_point * (adj_spread/op)
+    # 売りポジションのコストを求める。
+    sell_entry_point = (sell_position==-1.0) & (sell_position.shift(1)==0.0)
+    sell_entry_point = sell_entry_point.astype(int)
+    sell_cost = sell_entry_point * (adj_spread/op)
+    # 損益を計算する。
     buy_pnl = (op.shift(-1)-op) / op * buy_position - buy_cost
     sell_pnl = (op.shift(-1)-op) / op * sell_position - sell_cost
     pnl = buy_pnl + sell_pnl
     pnl = pnl.fillna(0.0)
     return pnl
-# ポジション数を計算する。ドテンに対応しているか後日確認。
-def calc_position(buy_entry, buy_exit, sell_entry, sell_exit,
-                  holding_period=0):
-    if holding_period == 0:
-        buy = buy_entry.copy()
-        buy[buy_entry==False] = np.nan
-        buy[buy_exit==True] = 0.0
-        buy.iloc[0] = 0.0
-        buy = buy.fillna(method='ffill')
-        sell = sell_entry.copy()
-        sell[sell_entry==False] = np.nan
-        sell[sell_exit==True] = 0.0
-        sell.iloc[0] = 0.0
-        sell = sell.fillna(method='ffill')
-        position = buy - sell
-        position = position.fillna(0.0)
-    else:
-        temp = buy_entry - sell_entry
-        temp = temp.fillna(0.0)
-        for i in range(holding_period):
-            if i == 0:
-                position = temp.copy()  # 必ず「copy()」を使う。
-            else:
-                position += (temp.shift(i)).fillna(0.0)
-        position /= holding_period
-    return position
 
+# ポジションを計算する。ドテンに対応しているか後日確認。
+def calc_position(buy_entry, buy_exit, sell_entry, sell_exit):
+    # 買いポジションを求める。
+    buy = buy_entry.copy()
+    buy[buy_entry==False] = np.nan
+    buy[buy_exit==True] = 0.0
+    buy.iloc[0] = 0.0
+    buy_position = buy.fillna(method='ffill')
+    # 売りポジションを求める。
+    sell = sell_entry.copy()
+    sell[sell_entry==False] = np.nan
+    sell[sell_exit==True] = 0.0
+    sell.iloc[0] = 0.0
+    sell_position = -sell.fillna(method='ffill')
+    return buy_position, sell_position
+
+# 資産曲線の形状をR^2で計算する。
 def calc_r2(pnl, start, end):
     clf = linear_model.LinearRegression()
     y = (pnl[start:end]).cumsum()
@@ -357,26 +361,27 @@ def calc_r2(pnl, start, end):
     r2 = clf.score(x, y)
     return r2
 
-def calc_sharpe(pnl, start, end):
+# シャープレシオを計算する。
+def calc_sharpe(pnl, timeframe, start, end):
     mean = pnl[start:end].mean()
     std = pnl[start:end].std()
-    timeframe = ((end-start).total_seconds() / 60 /
-                 len(pnl[start:end]))
-    if std > EPS:
+    if std > eps:
         sharpe = mean / std * np.sqrt(260*1440/timeframe)
     else:
         sharpe = 0.0
     return sharpe
 
-def calc_trade(position, start, end):
-    buy_position = position * (position>0)
-    sell_position = position * (position<0)
-    buy_trade = (buy_position<buy_position.shift(1)).astype(int)
-    sell_trade = (sell_position>sell_position.shift(1)).astype(int)
-    trade = (buy_trade+sell_trade)
-    trade = trade[start:end].sum()
+# トレード数を計算する。
+def calc_trade(buy_position, sell_position, start, end):
+    buy_entry_point = (buy_position==1.0) & (buy_position.shift(1)==0.0)
+    buy_entry_point = buy_entry_point.astype(int)
+    sell_entry_point = (sell_position==-1.0) & (sell_position.shift(1)==0.0)
+    sell_entry_point = sell_entry_point.astype(int)
+    entry_point = buy_entry_point + sell_entry_point
+    trade = entry_point[start:end].sum()
     return trade
 
+# フォルダーを空にする。
 def empty_folder(folder):
     pathname = os.path.dirname(__file__)
     # 指定したフォルダーがなければ作成する。
@@ -386,10 +391,15 @@ def empty_folder(folder):
     for filename in glob.glob(pathname + '/' + folder + '/*'):
         os.remove(filename)
 
+# データを補完する。
+# NAを埋める関数を利用してデータで補完する。
 def fill_data(data):
     filled_data = data.copy()
+    # 無限大、無限小も保管したいのでNAに変換する。
     filled_data[(filled_data==np.inf) | (filled_data==-np.inf)] = np.nan
+    # 前のデータでNAを補完する。
     filled_data = filled_data.fillna(method='ffill')
+    # 先頭からNAが存在する場合があるので、そのときは後のデータで補完する。
     filled_data = filled_data.fillna(method='bfill')
     return filled_data
 
@@ -489,66 +499,6 @@ def get_current_filename():
     current_filename, ext = os.path.splitext(current_filename)
     return current_filename
 
-def get_historical_data(symbol, timeframe, start, end):
-    start = start + ' 00:00'
-    end = end + ' 00:00'
-    index = pd.date_range(start, end, freq='T')
-    data1 = pd.DataFrame(index=index)
-    filename = './historical_data/' + symbol + '.csv'
-    temp = pd.read_csv(filename, index_col=0)
-    temp.index = pd.to_datetime(temp.index)
-    temp.index = temp.index + timedelta(hours=2)
-    data1 = pd.concat([data1, temp], axis=1)
-    label = ['open', 'high', 'low', 'close', 'volume']
-    data1.columns = label
-    ohlcv_dict = OrderedDict()
-    ohlcv_dict['open'] = 'first'
-    ohlcv_dict['high'] = 'max'
-    ohlcv_dict['low'] = 'min'
-    ohlcv_dict['close'] = 'last'
-    ohlcv_dict['volume'] = 'sum'
-    data1 = data1.fillna(method='ffill')
-    data1 = data1[~data1.index.duplicated()]
-    if timeframe == 1:
-        data = data1.copy()
-    elif timeframe == 'tse':
-        data = data1.resample(
-                '60T', label='left', closed='left').apply(ohlcv_dict)
-        position = pd.Series(np.zeros(len(data)), index=data.index)
-        position[(time_month(data)<3) | (time_month(data)>10)] = (
-                (time_hour(data)>=2) & (time_hour(data)<8))
-        position[(time_month(data)>=3) & (time_month(data)<=10)] = (
-                (time_hour(data)>=3) & (time_hour(data)<9))
-        data[position==False] = np.nan
-        data = data.dropna()
-        data = data.resample(
-                '1440T', label='left', closed='left').apply(ohlcv_dict)
-    elif timeframe == 'lse':
-        data = data1.resample(
-                '30T', label='left', closed='left').apply(ohlcv_dict)
-        position = (((time_hour(data)>=10) & (time_hour(data)<18)) |
-                ((time_hour(data)==18) & (time_minute(data)<30)))
-        data[position==False] = np.nan
-        data = data.dropna()
-        data = data.resample(
-                '1440T', label='left', closed='left').apply(ohlcv_dict)
-    elif timeframe == 'nyse':
-        data = data1.resample(
-                '30T', label='left', closed='left').apply(ohlcv_dict)
-        position = (((time_hour(data)==16) & (time_minute(data)>=30)) |
-                ((time_hour(data)>=17) & (time_hour(data)<23)))
-        data[position==False] = np.nan
-        data = data.dropna()
-        data = data.resample(
-                '1440T', label='left', closed='left').apply(ohlcv_dict)
-    else:
-        data = data1.resample(
-                str(timeframe)+'T', label='left',
-                closed='left').apply(ohlcv_dict)
-    data = data[data.index.dayofweek<5]
-    filename =  './historical_data/' + symbol + str(timeframe) + '.csv'
-    data.to_csv(filename)
-
 def get_model_dir():
     dirname = os.path.dirname(__file__)
     filename = inspect.currentframe().f_back.f_code.co_filename
@@ -578,105 +528,6 @@ def get_pkl_file_path():
     arg_values += '.pkl'
     pkl_file_path = dir_name + func_name + arg_values
     return pkl_file_path
-
-def get_randomwalk_data(mean=0.0, std=0.01/np.sqrt(1440), skew=0.0):
-    mean = mean / 6
-    std = std / np.sqrt(6)
-    skew = skew * np.sqrt(6)
-    usdjpy = i_close('USDJPY', 1, 0)
-    start = usdjpy.index[0]
-    end = usdjpy.index[len(usdjpy)-1] + timedelta(seconds=59)
-    index = pd.date_range(start, end, freq='10S')
-    index = index[index.dayofweek<5]
-    n = len(index)
-    rnd = pearson3.rvs(skew=skew, loc=mean, scale=std, size=n) 
-    randomwalk = rnd.cumsum() + np.log(100)
-    randomwalk = np.exp(randomwalk)
-    randomwalk = pd.Series(randomwalk, index=index)
-    randomwalk1 = randomwalk.resample('T').ohlc()
-    volume = pd.DataFrame([6]*len(randomwalk1), index=randomwalk1.index,
-                       columns=['volume'])
-    randomwalk1 = pd.concat([randomwalk1, volume], axis=1)
-    ohlcv_dict = OrderedDict()
-    ohlcv_dict['open'] = 'first'
-    ohlcv_dict['high'] = 'max'
-    ohlcv_dict['low'] = 'min'
-    ohlcv_dict['close'] = 'last'
-    ohlcv_dict['volume'] = 'sum'
-    randomwalk2 = randomwalk1.resample(
-            '2T', label='left', closed='left').apply(ohlcv_dict)
-    randomwalk3 = randomwalk1.resample(
-            '3T', label='left', closed='left').apply(ohlcv_dict)
-    randomwalk4 = randomwalk1.resample(
-            '4T', label='left', closed='left').apply(ohlcv_dict)
-    randomwalk5 = randomwalk1.resample(
-            '5T', label='left', closed='left').apply(ohlcv_dict)
-    randomwalk6 = randomwalk1.resample(
-            '6T', label='left', closed='left').apply(ohlcv_dict)
-    randomwalk10 = randomwalk1.resample(
-            '10T', label='left', closed='left').apply(ohlcv_dict)
-    randomwalk12 = randomwalk1.resample(
-            '12T', label='left', closed='left').apply(ohlcv_dict)
-    randomwalk15 = randomwalk1.resample(
-            '15T', label='left', closed='left').apply(ohlcv_dict)
-    randomwalk20 = randomwalk1.resample(
-            '20T', label='left', closed='left').apply(ohlcv_dict)
-    randomwalk30 = randomwalk1.resample(
-            '30T', label='left', closed='left').apply(ohlcv_dict)
-    randomwalk60 = randomwalk1.resample(
-            '60T', label='left', closed='left').apply(ohlcv_dict)
-    randomwalk120 = randomwalk1.resample(
-            '120T', label='left', closed='left').apply(ohlcv_dict)
-    randomwalk180 = randomwalk1.resample(
-            '180T', label='left', closed='left').apply(ohlcv_dict)
-    randomwalk240 = randomwalk1.resample(
-            '240T', label='left', closed='left').apply(ohlcv_dict)
-    randomwalk360 = randomwalk1.resample(
-            '360T', label='left', closed='left').apply(ohlcv_dict)
-    randomwalk480 = randomwalk1.resample(
-            '480T', label='left', closed='left').apply(ohlcv_dict)
-    randomwalk720 = randomwalk1.resample(
-            '720T', label='left', closed='left').apply(ohlcv_dict)
-    randomwalk1440 = randomwalk1.resample(
-            '1440T', label='left', closed='left').apply(ohlcv_dict)
-    randomwalk1 = randomwalk1[randomwalk1.index.dayofweek<5]
-    randomwalk2 = randomwalk2[randomwalk2.index.dayofweek<5]
-    randomwalk3 = randomwalk3[randomwalk3.index.dayofweek<5]
-    randomwalk4 = randomwalk4[randomwalk4.index.dayofweek<5]
-    randomwalk5 = randomwalk5[randomwalk5.index.dayofweek<5]
-    randomwalk6 = randomwalk6[randomwalk6.index.dayofweek<5]
-    randomwalk10 = randomwalk10[randomwalk10.index.dayofweek<5]
-    randomwalk12 = randomwalk12[randomwalk12.index.dayofweek<5]
-    randomwalk15 = randomwalk15[randomwalk15.index.dayofweek<5]
-    randomwalk20 = randomwalk20[randomwalk20.index.dayofweek<5]
-    randomwalk30 = randomwalk30[randomwalk30.index.dayofweek<5]
-    randomwalk60 = randomwalk60[randomwalk60.index.dayofweek<5]
-    randomwalk120 = randomwalk120[randomwalk120.index.dayofweek<5]
-    randomwalk180 = randomwalk180[randomwalk180.index.dayofweek<5]
-    randomwalk240 = randomwalk240[randomwalk240.index.dayofweek<5]
-    randomwalk360 = randomwalk360[randomwalk360.index.dayofweek<5]
-    randomwalk480 = randomwalk480[randomwalk480.index.dayofweek<5]
-    randomwalk720 = randomwalk720[randomwalk720.index.dayofweek<5]
-    randomwalk1440 = randomwalk1440[randomwalk1440.index.dayofweek<5]
-    randomwalk1.to_csv('~/py/historical_data/RANDOM1.csv')
-    randomwalk2.to_csv('~/py/historical_data/RANDOM2.csv')
-    randomwalk3.to_csv('~/py/historical_data/RANDOM3.csv')
-    randomwalk4.to_csv('~/py/historical_data/RANDOM4.csv')
-    randomwalk5.to_csv('~/py/historical_data/RANDOM5.csv')
-    randomwalk6.to_csv('~/py/historical_data/RANDOM6.csv')
-    randomwalk10.to_csv('~/py/historical_data/RANDOM10.csv')
-    randomwalk12.to_csv('~/py/historical_data/RANDOM12.csv')
-    randomwalk15.to_csv('~/py/historical_data/RANDOM15.csv')
-    randomwalk20.to_csv('~/py/historical_data/RANDOM20.csv')
-    randomwalk30.to_csv('~/py/historical_data/RANDOM30.csv')
-    randomwalk60.to_csv('~/py/historical_data/RANDOM60.csv')
-    randomwalk120.to_csv('~/py/historical_data/RANDOM120.csv')
-    randomwalk180.to_csv('~/py/historical_data/RANDOM180.csv')
-    randomwalk240.to_csv('~/py/historical_data/RANDOM240.csv')
-    randomwalk360.to_csv('~/py/historical_data/RANDOM360.csv')
-    randomwalk480.to_csv('~/py/historical_data/RANDOM480.csv')
-    randomwalk720.to_csv('~/py/historical_data/RANDOM720.csv')
-    randomwalk1440.to_csv('~/py/historical_data/RANDOM1440.csv')
 
 def i_atr(symbol, timeframe, period, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
@@ -1241,12 +1092,14 @@ def optimize_inputs(ea, symbol, timeframe, spread, start, end, min_trade,
     def func(inputs, ea, symbol, timeframe, spread, start, end, min_trade):
         buy_entry, buy_exit, sell_entry, sell_exit = ea(inputs, symbol,
                                                         timeframe)
-        position = calc_position(
-                buy_entry, buy_exit, sell_entry, sell_exit)[start:end]
-        trade = calc_trade(position, start, end) 
-        pnl = calc_pnl(position, symbol, timeframe, spread)
+        buy_position, sell_position = calc_position(
+                buy_entry, buy_exit, sell_entry, sell_exit)
+        buy_position = buy_position[start:end]
+        sell_position = sell_position[start:end]
+        trade = calc_trade(buy_position, sell_position, start, end) 
+        pnl = calc_pnl(buy_position, sell_position, symbol, timeframe, spread)
         if method == 'sharpe':
-            ret = calc_sharpe(pnl, start, end)
+            ret = calc_sharpe(pnl, timeframe, start, end)
         elif method == 'drawdown':
             ret = -calc_drawdown(pnl, start, end)
         elif method == 'r2':
@@ -1254,7 +1107,8 @@ def optimize_inputs(ea, symbol, timeframe, spread, start, end, min_trade,
         years = (end-start).total_seconds() / (60*60*24*365)
         if trade/years < min_trade:
             ret = 0.0
-        del position
+        del buy_position
+        del sell_position
         del pnl
         gc.collect()
         return -ret
