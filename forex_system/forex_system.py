@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy import optimize
+from scipy.stats import spearmanr
 from sklearn import linear_model
 
 # これを入れないと警告が出てうざい。
@@ -654,7 +655,7 @@ def i_highest(symbol, timeframe, period, shift):
             ret = period - 1 - argmax
             return ret
         high = i_high(symbol, timeframe, shift)
-        ret = high.rolling(window=period).apply(func)
+        ret = high.rolling(window=period).apply(func, raw=True)
         ret = fill_data(ret)
         ret = ret.astype(int)
         save_pkl(ret, pkl_file_path)
@@ -892,7 +893,7 @@ def i_lowest(symbol, timeframe, period, shift):
             ret = period - 1 - argmin
             return ret
         low = i_low(symbol, timeframe, shift)
-        ret = low.rolling(window=period).apply(func)
+        ret = low.rolling(window=period).apply(func, raw=True)
         ret = fill_data(ret)
         ret = ret.astype(int)
         save_pkl(ret, pkl_file_path)
@@ -952,6 +953,23 @@ def i_random_walk(symbol, timeframe, fast_period, slow_period, shift):
 #        # mean = 0.0
 #        std = change.rolling(window=slow_period).std()
 #        ret = (np.log(close)-np.log(close.shift(fast_period))) / (std*np.sqrt(fast_period))
+        ret = fill_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
+# RCIを返す。
+# 短い足だと時間かかりまくり。
+def i_rci(symbol, timeframe, period, shift):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        def func(close):
+            n = len(close)
+            no = np.arange(n)
+            ret = spearmanr(no, close)[0]
+            return ret
+        close = i_close(symbol, timeframe, shift)
+        ret = close.rolling(window=period).apply(func, raw=True)
         ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
