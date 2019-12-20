@@ -28,7 +28,6 @@ def backtest(ea, symbol, timeframe, spread, start, end, mode=1, inputs=None,
              rranges=None, min_trade=260, method='sharpe',
              in_sample_period=365, out_of_sample_period=365, report=1):
     t1 = time.time()
-    empty_folder('temp')
     start = datetime.strptime(start + ' 00:00', '%Y.%m.%d %H:%M')
     end = datetime.strptime(end + ' 23:59', '%Y.%m.%d %H:%M')
     table =  pd.DataFrame()
@@ -46,6 +45,8 @@ def backtest(ea, symbol, timeframe, spread, start, end, mode=1, inputs=None,
             sharpe = calc_sharpe(pnl, timeframe, start, end)
             drawdown = calc_drawdown(pnl, start, end)
             r2 = calc_r2(pnl, start, end)
+            table.loc[0, 'symbol'] = symbol
+            table.loc[0, 'timeframe'] = str(timeframe)
             table.loc[0, 'start'] = start.strftime('%Y.%m.%d')
             table.loc[0, 'end'] = end.strftime('%Y.%m.%d')
             table.loc[0, 'trade'] = str(trade)
@@ -87,6 +88,8 @@ def backtest(ea, symbol, timeframe, spread, start, end, mode=1, inputs=None,
             sharpe = calc_sharpe(pnl, timeframe, start, end)
             drawdown = calc_drawdown(pnl, start, end)
             r2 = calc_r2(pnl, start, end)
+            table.loc[0, 'symbol'] = symbol
+            table.loc[0, 'timeframe'] = str(timeframe)
             table.loc[0, 'start'] = start.strftime('%Y.%m.%d')
             table.loc[0, 'end'] = end.strftime('%Y.%m.%d')
             table.loc[0, 'trade'] = str(trade)
@@ -153,6 +156,8 @@ def backtest(ea, symbol, timeframe, spread, start, end, mode=1, inputs=None,
                 sharpe = calc_sharpe(pnl_temp, timeframe, start_test, end_test)
                 drawdown = calc_drawdown(pnl_temp, start_test, end_test)
                 r2 = calc_r2(pnl_temp, start_test, end_test)
+                table.loc[i, 'symbol'] = symbol
+                table.loc[i, 'timeframe'] = str(timeframe)
                 table.loc[i, 'start'] = start_test.strftime('%Y.%m.%d')
                 table.loc[i, 'end'] = end_test.strftime('%Y.%m.%d')
                 table.loc[i, 'trade'] = str(trade_temp)
@@ -171,6 +176,8 @@ def backtest(ea, symbol, timeframe, spread, start, end, mode=1, inputs=None,
             sharpe = calc_sharpe(pnl, timeframe, start_all, end_all)
             drawdown = calc_drawdown(pnl, start_all, end_all)
             r2 = calc_r2(pnl, start_all, end_all)
+            table.loc[i, 'symbol'] = symbol
+            table.loc[i, 'timeframe'] = str(timeframe)
             table.loc[i, 'start'] = start_all.strftime('%Y.%m.%d')
             table.loc[i, 'end'] = end_all.strftime('%Y.%m.%d')
             table.loc[i, 'trade'] = str(trade)
@@ -196,7 +203,6 @@ def backtest(ea, symbol, timeframe, spread, start, end, mode=1, inputs=None,
             plt.savefig('backtest.png', dpi=150)
             plt.show()
             plt.close()
-    empty_folder('temp')
     if report == 1:
         t2 = time.time()
         m = np.floor((t2-t1)/60)
@@ -210,7 +216,6 @@ def backtest(ea, symbol, timeframe, spread, start, end, mode=1, inputs=None,
 # 今のままでは使えないので後日手直し。
 def backtest_ml(ea, symbol, timeframe, spread, start, end, get_model,
                 in_sample_period, out_of_sample_period):
-    empty_folder('temp')
     start = datetime.strptime(start + ' 00:00', '%Y.%m.%d %H:%M')
     end = datetime.strptime(end + ' 00:00', '%Y.%m.%d %H:%M')
     end -= timedelta(minutes=timeframe)
@@ -293,7 +298,6 @@ def backtest_ml(ea, symbol, timeframe, spread, start, end, get_model,
     plt.savefig('backtest.png', dpi=150)
     plt.show()
     plt.close()
-    empty_folder('temp')
     return pnl_all
 
 # 年利率（annual profit rate）を計算する。
@@ -1167,35 +1171,35 @@ def save_pkl(data, pkl_file_path):
     joblib.dump(data, pkl_file_path)
 
 def seconds():
-    seconds = datetime.now().second
-    return seconds
+    ret = datetime.now().second
+    return ret
 
 def time_day(index):
-    time_day = pd.Series(index.day, index=index)
-    return time_day
+    ret = pd.Series(index.day, index=index)
+    return ret
 
 def time_day_of_week(index):
     # 0-Sunday,1,2,3,4,5,6
-    time_day_of_week = pd.Series(index.dayofweek, index=index) + 1
-    time_day_of_week[time_day_of_week==7] = 0
-    return time_day_of_week
+    ret = pd.Series(index.dayofweek, index=index) + 1
+    ret[ret==7] = 0
+    return ret
 
 def time_hour(index):
-    time_hour = pd.Series(index.hour, index=index)
-    return time_hour
+    ret = pd.Series(index.hour, index=index)
+    return ret
 
 def time_minute(index):
-    time_minute = pd.Series(index.minute, index=index)
-    return time_minute
+    ret = pd.Series(index.minute, index=index)
+    return ret
 
 def time_month(index):
-    time_month = pd.Series(index.month, index=index)
-    return time_month
+    ret = pd.Series(index.month, index=index)
+    return ret
 
 def time_week_of_month(index):
     day = time_day(index)
-    time_week_of_month = (np.ceil(day / 7)).astype(int)
-    return time_week_of_month
+    ret = (np.ceil(day / 7)).astype(int)
+    return ret
 
 def to_csv_file(symbol):
     filename_hst = './historical_data/' + symbol + '.hst'
