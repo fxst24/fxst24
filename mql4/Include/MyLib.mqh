@@ -1,7 +1,7 @@
 #include <stderror.mqh>
 #include <stdlib.mqh>
 
-#import "mylib.ex4"
+#import "MyLib.ex4"
 
 void email(int BuyEntry, int BuyExit, int SellEntry, int SellExit);
 bool IsTradingTime(void);

@@ -1,6 +1,6 @@
 #property library
 
-#include <mylib.mqh>
+#include <MyLib.mqh>
 
 #define EPS 0.00001
 
