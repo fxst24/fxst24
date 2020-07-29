@@ -28,8 +28,8 @@ def backtest(ea, symbol, timeframe, spread, start, end, mode=1, inputs=None,
              rranges=None, min_trade=260, method='sharpe',
              in_sample_period=365, out_of_sample_period=365, report=1):
     t1 = time.time()
-    start = datetime.strptime(start + ' 00:00', '%Y.%m.%d %H:%M')
-    end = datetime.strptime(end + ' 23:59', '%Y.%m.%d %H:%M')
+    start_dt = datetime.strptime(start + ' 00:00', '%Y-%m-%d %H:%M')
+    end_dt = datetime.strptime(end + ' 23:59', '%Y-%m-%d %H:%M')
     table =  pd.DataFrame()
     if mode == 1:
         buy_entry, buy_exit, sell_entry, sell_exit = ea(
@@ -46,13 +46,13 @@ def backtest(ea, symbol, timeframe, spread, start, end, mode=1, inputs=None,
             drawdown = calc_drawdown(pnl, start, end)
             r2 = calc_r2(pnl, start, end)
             table.loc[0, 'symbol'] = symbol
-            table.loc[0, 'timeframe'] = str(timeframe)
-            table.loc[0, 'start'] = start.strftime('%Y.%m.%d')
-            table.loc[0, 'end'] = end.strftime('%Y.%m.%d')
+            table.loc[0, 'tf'] = str(timeframe)
+            table.loc[0, 'start'] = start
+            table.loc[0, 'end'] = end
             table.loc[0, 'trade'] = str(trade)
             table.loc[0, 'apr'] = str(np.round(apr, 2))
-            table.loc[0, 'sharpe'] = str(np.round(sharpe, 2))
-            table.loc[0, 'drawdown'] = str(np.round(drawdown, 2))
+            table.loc[0, 'sr'] = str(np.round(sharpe, 2))
+            table.loc[0, 'dd'] = str(np.round(drawdown, 2))
             table.loc[0, 'r2'] = str(np.round(r2, 2))
             if inputs is not None:
                 table.loc[0, 'inputs'] = str(np.round(inputs, 2))
@@ -89,13 +89,13 @@ def backtest(ea, symbol, timeframe, spread, start, end, mode=1, inputs=None,
             drawdown = calc_drawdown(pnl, start, end)
             r2 = calc_r2(pnl, start, end)
             table.loc[0, 'symbol'] = symbol
-            table.loc[0, 'timeframe'] = str(timeframe)
-            table.loc[0, 'start'] = start.strftime('%Y.%m.%d')
-            table.loc[0, 'end'] = end.strftime('%Y.%m.%d')
+            table.loc[0, 'tf'] = str(timeframe)
+            table.loc[0, 'start'] = start
+            table.loc[0, 'end'] = end
             table.loc[0, 'trade'] = str(trade)
             table.loc[0, 'apr'] = str(np.round(apr, 2))
-            table.loc[0, 'sharpe'] = str(np.round(sharpe, 2))
-            table.loc[0, 'drawdown'] = str(np.round(drawdown, 2))
+            table.loc[0, 'sr'] = str(np.round(sharpe, 2))
+            table.loc[0, 'dd'] = str(np.round(drawdown, 2))
             table.loc[0, 'r2'] = str(np.round(r2, 2))
             if inputs is not None:
                 table.loc[0, 'inputs'] = str(np.round(inputs, 2))
@@ -116,21 +116,26 @@ def backtest(ea, symbol, timeframe, spread, start, end, mode=1, inputs=None,
             plt.show()
             plt.close()
     elif mode == 3:
-        end_test = start
+        end_test_dt = start_dt
         i = 0
         while True:
-            start_train = start + timedelta(days=out_of_sample_period*i)
-            end_train = (start_train + timedelta(days=in_sample_period)
+            start_train_dt = start_dt + timedelta(days=out_of_sample_period*i)
+            end_train_dt = (start_train_dt + timedelta(days=in_sample_period)
                 - timedelta(minutes=timeframe))
-            start_test = end_train + timedelta(minutes=timeframe)
+            start_test_dt = end_train_dt + timedelta(minutes=timeframe)
             if i == 0:
-                start_all = start_test
-            if (start_test + timedelta(days=out_of_sample_period)
-                - timedelta(minutes=timeframe)) > end:
-                end_all = end_test
+                start_all_dt = start_test_dt
+            if (start_test_dt + timedelta(days=out_of_sample_period)
+                - timedelta(minutes=timeframe)) > end_dt:
+                end_all_dt = end_test_dt
                 break
-            end_test = (start_test + timedelta(days=out_of_sample_period)
+            end_test_dt = (
+                start_test_dt + timedelta(days=out_of_sample_period)
                 - timedelta(minutes=timeframe))
+            start_train = str(start_train_dt)
+            end_train = str(end_train_dt)
+            start_test = str(start_test_dt)
+            end_test = str(end_test_dt)
             inputs = optimize_inputs(
                     ea, symbol, timeframe, spread, start_train, end_train,
                     min_trade, method, rranges)
@@ -157,13 +162,13 @@ def backtest(ea, symbol, timeframe, spread, start, end, mode=1, inputs=None,
                 drawdown = calc_drawdown(pnl_temp, start_test, end_test)
                 r2 = calc_r2(pnl_temp, start_test, end_test)
                 table.loc[i, 'symbol'] = symbol
-                table.loc[i, 'timeframe'] = str(timeframe)
-                table.loc[i, 'start'] = start_test.strftime('%Y.%m.%d')
-                table.loc[i, 'end'] = end_test.strftime('%Y.%m.%d')
+                table.loc[i, 'tf'] = str(timeframe)
+                table.loc[i, 'start'] = start_test[:10]
+                table.loc[i, 'end'] = end_test[:10]
                 table.loc[i, 'trade'] = str(trade_temp)
                 table.loc[i, 'apr'] = str(np.round(apr, 2))
-                table.loc[i, 'sharpe'] = str(np.round(sharpe, 2))
-                table.loc[i, 'drawdown'] = str(np.round(drawdown, 2))
+                table.loc[i, 'sr'] = str(np.round(sharpe, 2))
+                table.loc[i, 'dd'] = str(np.round(drawdown, 2))
                 table.loc[i, 'r2'] = str(np.round(r2, 2))
                 table.loc[i, 'inputs'] = str(np.round(inputs, 2))
             del buy_position
@@ -172,18 +177,20 @@ def backtest(ea, symbol, timeframe, spread, start, end, mode=1, inputs=None,
             gc.collect()
             i += 1
         if report == 1:
+            start_all = str(start_all_dt)
+            end_all = str(end_all_dt)
             apr = calc_apr(pnl, start_all, end_all)
             sharpe = calc_sharpe(pnl, timeframe, start_all, end_all)
             drawdown = calc_drawdown(pnl, start_all, end_all)
             r2 = calc_r2(pnl, start_all, end_all)
             table.loc[i, 'symbol'] = symbol
-            table.loc[i, 'timeframe'] = str(timeframe)
-            table.loc[i, 'start'] = start_all.strftime('%Y.%m.%d')
-            table.loc[i, 'end'] = end_all.strftime('%Y.%m.%d')
+            table.loc[i, 'tf'] = str(timeframe)
+            table.loc[i, 'start'] = start_all[:10]
+            table.loc[i, 'end'] = end_all[:10]
             table.loc[i, 'trade'] = str(trade)
             table.loc[i, 'apr'] = str(np.round(apr, 2))
-            table.loc[i, 'sharpe'] = str(np.round(sharpe, 2))
-            table.loc[i, 'drawdown'] = str(np.round(drawdown, 2))
+            table.loc[i, 'sr'] = str(np.round(sharpe, 2))
+            table.loc[i, 'dd'] = str(np.round(drawdown, 2))
             table.loc[i, 'r2'] = str(np.round(r2, 2))
             table.loc[i, 'inputs'] = ''
             table = table.iloc[0:i+1, :]
@@ -304,7 +311,8 @@ def backtest_ml(ea, symbol, timeframe, spread, start, end, get_model,
 # 複利にはしていない。
 def calc_apr(pnl, start, end):
     cum_pnl = pnl[start:end].cumsum()
-    year = (end-start).total_seconds() / (60*60*24*365)
+    start_dt, end_dt = to_datetime(start, end)
+    year = ((end_dt-start_dt).total_seconds()+60*60*24) / (60*60*24*365)
     apr = cum_pnl.iloc[len(cum_pnl)-1] / year
     return apr
 
@@ -319,9 +327,11 @@ def calc_drawdown(pnl, start, end):
 def calc_pnl(buy_position, sell_position, symbol, timeframe, spread):
     op = i_open(symbol, timeframe, 0)
     # 通貨ペアによってスプレッドを調整する。
-    if op[len(op)-1] >= 50.0:  # 例えばドル円で0.4pisなら0.004円。
+    if op[len(op)-1] >= 1000.0:  # 例えばUS500で6.0pisなら6.0ドル。
+        adj_spread = spread
+    elif op[len(op)-1] >= 5.0:  # 例えばUSDJPYで0.4pisなら0.004円。
         adj_spread = spread / 100.0
-    else:  # 例えばユーロドルで0.5pisなら0.00005ドル。
+    else:  # 例えばEURUSDで0.5pisなら0.00005ドル。
         adj_spread = spread / 10000.0
     # 買いポジションのコストを求める。
     buy_entry_point = (buy_position==1.0) & (buy_position.shift(1)==0.0)
@@ -702,61 +712,6 @@ def i_kairi(symbol, timeframe, period, shift):
         save_pkl(kairi, pkl_file_path)
     return kairi
 
-def i_ku_chart(timeframe, open_hour, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
-               jpy=0, nzd=0, usd=0):
-    pkl_file_path = get_pkl_file_path()  # Must put this first.
-    ret = restore_pkl(pkl_file_path)
-    if ret is None:
-        audusd = 0.0
-        cadusd = 0.0
-        chfusd = 0.0
-        eurusd = 0.0
-        gbpusd = 0.0
-        jpyusd = 0.0
-        nzdusd = 0.0
-        if aud == 1:
-            audusd = np.log(i_close('AUDUSD', timeframe, shift))
-        if cad == 1:
-            cadusd = -np.log(i_close('USDCAD', timeframe, shift))
-        if chf == 1:
-            chfusd = -np.log(i_close('USDCHF', timeframe, shift))
-        if eur == 1:
-            eurusd = np.log(i_close('EURUSD', timeframe, shift))
-        if gbp == 1:
-            gbpusd = np.log(i_close('GBPUSD', timeframe, shift))
-        if jpy == 1:
-            jpyusd = -np.log(i_close('USDJPY', timeframe, shift))
-        if nzd == 1:
-            nzdusd = np.log(i_close('NZDUSD', timeframe, shift))
-        n = aud + cad + chf + eur + gbp + jpy + nzd + usd
-        a = (audusd * aud + cadusd * cad + chfusd * chf + eurusd * eur
-             + gbpusd * gbp + jpyusd * jpy + nzdusd * nzd) / n
-        ret = pd.DataFrame()
-        if aud == 1:
-            ret['AUD'] = audusd - a
-        if cad == 1:
-            ret['CAD'] = cadusd - a
-        if chf == 1:
-            ret['CHF'] = chfusd - a
-        if eur == 1:
-            ret['EUR'] = eurusd - a
-        if gbp == 1:
-            ret['GBP'] = gbpusd - a
-        if jpy == 1:
-            ret['JPY'] = jpyusd - a
-        if nzd == 1:
-            ret['NZD'] = nzdusd - a
-        if usd == 1:
-            ret['USD'] = -a
-        temp = ret.copy()
-        index = temp.index
-        temp[(time_hour(index)!=open_hour)|(time_minute(index)!=0)] = np.nan
-        temp = fill_data(temp)
-        ret -= temp
-        ret = fill_data(ret)
-        save_pkl(ret, pkl_file_path)
-    return ret
-
 def i_ku_close(timeframe, shift, aud=0, cad=0, chf=0, eur=0, gbp=0, jpy=0,
                nzd=0, usd=0):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
@@ -807,6 +762,18 @@ def i_ku_close(timeframe, shift, aud=0, cad=0, chf=0, eur=0, gbp=0, jpy=0,
         save_pkl(ret, pkl_file_path)
     return ret
 
+def i_ku_ma(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
+             jpy=0, nzd=0, usd=0):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        ku_close = i_ku_close(timeframe, shift, aud=aud, cad=cad, chf=chf,
+                              eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
+        ret = ku_close.rolling(window=period).mean()
+        ret = fill_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
 def i_ku_roc(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
              jpy=0, nzd=0, usd=0):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
@@ -845,8 +812,9 @@ def i_ku_trend_duration(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0,
         save_pkl(ret, pkl_file_path)
     return ret
 
-def i_ku_zscore(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
-                jpy=0, nzd=0, usd=0):
+def i_ku_z_score(
+        timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0, jpy=0,
+        nzd=0, usd=0):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
@@ -933,7 +901,7 @@ def i_percentrank(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
     if ret is None:
-        temp = i_ku_zscore(
+        temp = i_ku_z_score(
                 timeframe, period, shift, aud=aud, cad=cad, chf=chf, eur=eur,
                 gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
         n = aud + cad + chf + eur + gbp + jpy + nzd + usd
@@ -1126,7 +1094,8 @@ def optimize_inputs(ea, symbol, timeframe, spread, start, end, min_trade,
             ret = -calc_drawdown(pnl, start, end)
         elif method == 'r2':
             ret = calc_r2(pnl, start, end)
-        years = (end-start).total_seconds() / (60*60*24*365)
+        start_dt, end_dt = to_datetime(start, end)
+        years = ((end_dt-start_dt).total_seconds()+60*60*24) / (60*60*24*365)
         if trade/years < min_trade:
             ret = 0.0
         del buy_position
@@ -1139,6 +1108,8 @@ def optimize_inputs(ea, symbol, timeframe, spread, start, end, min_trade,
             func, rranges, args=(
                     ea, symbol, timeframe, spread, start, end, min_trade),
                     finish=None)
+    if(isinstance(inputs, np.ndarray)==False):
+        inputs = np.array([inputs])
     return inputs
 
 def rename_historical_data_filename(symbol):
@@ -1240,8 +1211,8 @@ def to_csv_file(symbol):
     result.to_csv(filename_csv)
 
 def to_datetime(start, end):
-    start = datetime.strptime(start + ' 00:00', '%Y.%m.%d %H:%M')
-    end = datetime.strptime(end + ' 23:59', '%Y.%m.%d %H:%M')
+    start = datetime.strptime(start[:10], '%Y-%m-%d')# + ' 00:00', '%Y.%m.%d %H:%M')
+    end = datetime.strptime(end[:10], '%Y-%m-%d')# + ' 23:59', '%Y.%m.%d %H:%M')
     return start, end
 
 def to_period(minute, timeframe):
