@@ -827,6 +827,17 @@ def i_ku_z_score(
         save_pkl(ret, pkl_file_path)
     return ret
 
+def i_kurt(symbol, timeframe, period, shift):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        close = i_close(symbol, timeframe, shift)
+        change = (close-close.shift(1)) / close.shift(1)
+        ret = change.rolling(window=period).kurt()
+        ret = fill_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
 def i_level(symbol, timeframe, period, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
@@ -877,6 +888,17 @@ def i_ma(symbol, timeframe, period, shift):
     if ret is None:
         close = i_close(symbol, timeframe, shift)
         ret = close.rolling(window=period).mean()
+        ret = fill_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
+def i_mean(symbol, timeframe, period, shift):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        close = i_close(symbol, timeframe, shift)
+        change = (close-close.shift(1)) / close.shift(1)
+        ret = change.rolling(window=period).mean()
         ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
@@ -956,6 +978,17 @@ def i_roc(symbol, timeframe, period, shift):
         save_pkl(ret, pkl_file_path)
     return ret
 
+def i_skew(symbol, timeframe, period, shift):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        close = i_close(symbol, timeframe, shift)
+        change = (close-close.shift(1)) / close.shift(1)
+        ret = change.rolling(window=period).skew()
+        ret = fill_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
 def i_standardized_kairi(symbol, timeframe, fast_period, slow_period, shift):
     pkl_file_path = get_pkl_file_path()  # Must put this first.
     ret = restore_pkl(pkl_file_path)
@@ -966,6 +999,17 @@ def i_standardized_kairi(symbol, timeframe, fast_period, slow_period, shift):
         mean = kairi.rolling(window=slow_period).mean()
         std = kairi.rolling(window=slow_period).std()
         ret = (kairi-mean) / std
+        ret = fill_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
+def i_std(symbol, timeframe, period, shift):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        close = i_close(symbol, timeframe, shift)
+        change = (close-close.shift(1)) / close.shift(1)
+        ret = change.rolling(window=period).std()
         ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
@@ -1033,6 +1077,17 @@ def i_trend_duration(symbol, timeframe, period, mode, shift):
             below = below * (below.groupby(
                     (below!=below.shift()).cumsum()).cumcount()+1)
         ret = (above-below) / period
+        ret = fill_data(ret)
+        save_pkl(ret, pkl_file_path)
+    return ret
+
+def i_var(symbol, timeframe, period, shift):
+    pkl_file_path = get_pkl_file_path()  # Must put this first.
+    ret = restore_pkl(pkl_file_path)
+    if ret is None:
+        close = i_close(symbol, timeframe, shift)
+        change = (close-close.shift(1)) / close.shift(1)
+        ret = change.rolling(window=period).var()
         ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
