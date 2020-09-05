@@ -119,7 +119,8 @@ def backtest(ea, symbol, timeframe, spread, start, end, mode=1, inputs=None,
         end_test_dt = start_dt
         i = 0
         while True:
-            start_train_dt = start_dt + timedelta(days=out_of_sample_period*i)
+            start_train_dt = start_dt + timedelta(
+                days=-in_sample_period+out_of_sample_period*i)
             end_train_dt = (start_train_dt + timedelta(days=in_sample_period)
                 - timedelta(minutes=timeframe))
             start_test_dt = end_train_dt + timedelta(minutes=timeframe)
@@ -322,6 +323,13 @@ def calc_drawdown(pnl, start, end):
     drawdown = (equity.cummax()-equity).max()
     return drawdown
 
+# 尖度を計算する。
+def calc_kurt(pnl, start, end):
+    pnl[pnl==0.0] = np.nan
+    pnl = pnl.dropna()
+    kurt = pnl.kurt()
+    return kurt
+
 # 損益を計算する。
 # コストはポジションを持ったタイミングで発生したと考える。
 def calc_pnl(buy_position, sell_position, symbol, timeframe, spread):
@@ -385,6 +393,13 @@ def calc_sharpe(pnl, timeframe, start, end):
     else:
         sharpe = 0.0
     return sharpe
+
+# 歪度を計算する。
+def calc_skew(pnl, start, end):
+    pnl[pnl==0.0] = np.nan
+    pnl = pnl.dropna()
+    skew = pnl.skew()
+    return skew
 
 # トレード数を計算する。
 def calc_trade(buy_position, sell_position, start, end):
@@ -781,7 +796,7 @@ def i_ku_roc(timeframe, period, shift, aud=0, cad=0, chf=0, eur=0, gbp=0,
     if ret is None:
         ku_close = i_ku_close(timeframe, shift, aud=aud, cad=cad, chf=chf,
                               eur=eur, gbp=gbp, jpy=jpy, nzd=nzd, usd=usd)
-        ret = ku_close - ku_close.shift(period)
+        ret = (ku_close-ku_close.shift(period)) * 100.0
         ret = fill_data(ret)
         save_pkl(ret, pkl_file_path)
     return ret
